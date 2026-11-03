@@ -260,3 +260,14 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .past-card .meta { justify-content: space-between; margin-top: 8px; }
 .past-card .ratebtn, .day .ratebtn { flex: none; padding: 6px 12px; border-radius: 999px; border: 1.5px solid #e3a42b; background: transparent; color: #b77b0f; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .past-card .ratebtn.voted { background: #e3a42b; color: #fff; }
+
+/* ---------- shopping notes ---------- */
+.notes .customrow { margin: 4px 0 8px; }
+.notelist { list-style: none; margin: 0; padding: 0; }
+.note { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+.note > div { flex: 1; display: flex; flex-direction: column; }
+.notetext { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.delnote { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--surface-2); color: var(--muted); font-size: 22px; line-height: 1; cursor: pointer; }
+.nonote { padding: 4px 0; }
+#nameform .customrow { margin-top: 6px; }
+#nameform .customrow input { font-weight: 400; }

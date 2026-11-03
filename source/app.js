@@ -190,13 +190,15 @@ const state = {
   dbError: '',
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
+  notes: {},               // shopping notes: id -> { text, by, at }
+  myName: '',              // name shown on notes (Settings); falls back to the email
   calWeek: 0,              // calendar page: 0 = this week
 };
 const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubPlan = null, unsubRatings = null, lastSnapPending = false;
+let unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -244,8 +246,39 @@ function startFirestore() {
     state.ratings = r;
     if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
   }, () => {});
+  unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), (snap) => {
+    state.notes = { ...((snap.exists() && snap.data().n) || {}) };
+    renderNotes();
+  }, () => {});
+  unsubProfile = onSnapshot(doc(db, 'profiles', state.user.uid), (snap) => {
+    state.myName = (snap.exists() && snap.data().name) || '';
+    const inp = $('#myname'); if (inp && document.activeElement !== inp) inp.value = state.myName;
+  }, () => {});
 }
-function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = null; }
+function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = null; }
+
+// ---------------------------------------------------------------- shopping notes
+// Shared notes at the top of the shopping list, stored in Firestore notes/shopping as { n: { id: { text, by, at } } }.
+const myDisplayName = () => state.myName || (state.user && state.user.email) || 'Me';
+function writeNotes(changes) {
+  for (const [id, v] of Object.entries(changes)) { if (v) state.notes[id] = v; else delete state.notes[id]; }
+  renderNotes();
+  if (!state.firebase) { ls.set('local-notes', state.notes); return; }
+  const n = {}; for (const [id, v] of Object.entries(changes)) n[id] = v || deleteField();
+  setDoc(doc(state.firebase.db, 'notes', 'shopping'), { n }, { merge: true }).catch((e) => toast('Could not save note: ' + (e.code || e.message)));
+}
+function addNote(text) {
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  writeNotes({ [id]: { text, by: myDisplayName(), at: Date.now() } });
+}
+function notesListHtml() {
+  const notes = Object.entries(state.notes).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+  if (!notes.length) return '<li class="nonote small">No notes yet.</li>';
+  return notes.map(([id, x]) => `<li class="note"><div><span class="notetext">${esc(x.text)}</span>
+    <span class="small">${esc(x.by || '')}${x.at ? ` · ${esc(new Date(x.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }))}` : ''}</span></div>
+    <button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button></li>`).join('');
+}
+function renderNotes() { const ul = $('#notelist'); if (ul) ul.innerHTML = notesListHtml(); }
 
 // ---------------------------------------------------------------- ratings
 // One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
@@ -613,7 +646,11 @@ function renderShopping() {
   setTitle('Shopping list', false); setTab('shopping');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
-  let h = banners() + `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
+  let h = banners();
+  h += `<section class="card notes"><p class="section-label">Notes</p>
+    <form id="noteform" class="customrow"><input type="text" id="notetext" maxlength="200" placeholder="Add a note for both of you" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+    <ul id="notelist" class="notelist">${notesListHtml()}</ul></section>`;
+  h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
   if (!m.shopping.length) h += '<p class="empty">No shopping list found. Add a "Shopping" tab to the spreadsheet.</p>';
   for (const sec of m.shopping) {
     h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml('shopping', x.key,
@@ -631,6 +668,8 @@ function renderSettings() {
   h += '<section class="card"><p class="section-label">Sharing</p>';
   if (!state.firebase) h += '<p>Not set up yet. Ticks are saved on this phone only. Follow SETUP.md steps 2–5 to share ticks between phones.</p>';
   else if (state.user) h += `<p>Signed in as <strong>${esc(state.user.email)}</strong>.</p><p class="small">Status: ${esc($('#sync').textContent)}</p><button class="btn ghost" id="signout">Sign out</button>`;
+  h += `<form id="nameform"><label class="field">Your name <span class="small">(shown on your notes)</span>
+    <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
   h += `<section class="card"><p class="section-label">While cooking</p>
@@ -701,6 +740,8 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
+  const dn = e.target.closest('[data-delnote]');
+  if (dn) { if (await confirmDialog('Delete this note for both of you?', 'Delete')) writeNotes({ [dn.dataset.delnote]: null }); return; }
   const pf = e.target.closest('[data-pastfilter]');
   if (pf) { ls.set('past-filter', pf.dataset.pastfilter); route(); return; }
   const rm = e.target.closest('[data-ratemeal]');
@@ -750,6 +791,21 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target.matches('.item[data-key]')) { e.preventDefault(); e.target.click(); }
 });
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'noteform') {
+    e.preventDefault();
+    const inp = $('#notetext'); const text = inp.value.replace(/\s+/g, ' ').trim();
+    if (text) { addNote(text); inp.value = ''; }
+    return;
+  }
+  if (e.target.id === 'nameform') {
+    e.preventDefault();
+    const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
+    state.myName = name;
+    if (state.firebase && state.user) setDoc(doc(state.firebase.db, 'profiles', state.user.uid), { name, email: state.user.email }, { merge: true }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
+    else ls.set('local-name', name);
+    toast(name ? `Saved. Your notes will show "${name}"` : 'Saved. Your notes will show your email');
+    return;
+  }
   if (e.target.id === 'loginform') {
     e.preventDefault();
     const email = $('#email').value.trim(), pw = $('#password').value;
@@ -897,6 +953,8 @@ function start() {
     state.ticks = ls.get('local-ticks', {});
     state.plan = ls.get('local-plan', {});
     state.ratings = ls.get('local-ratings', {});
+    state.notes = ls.get('local-notes', {});
+    state.myName = ls.get('local-name', '');
     state.sync = 'local'; renderSync();
   }
   route();
