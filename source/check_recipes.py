@@ -9,8 +9,9 @@ import sys
 import openpyxl
 
 SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip"}
-RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text"]
+RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in"]
+ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
 
 
 def main(path):
@@ -42,7 +43,7 @@ def check_meals(ws, tab, errors, warnings):
         errors.append(f"{tab} columns must be {RECIPE_COLS}, found {header}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        recipe, typ, meal, section, group, order, amount, text = (list(row) + [None] * 8)[:8]
+        recipe, typ, meal, section, group, order, amount, text, rid = (list(row) + [None] * 9)[:9]
         if not any(row):
             continue
         where = f"{tab} row {i}"
@@ -53,7 +54,14 @@ def check_meals(ws, tab, errors, warnings):
         if str(typ or "").strip() not in ("Main", "Side"):
             errors.append(f"{where}: Type must be Main or Side, found {typ!r}")
         m = meals.setdefault(str(meal or recipe).strip(), {})
-        d = m.setdefault(str(recipe).strip(), {"type": str(typ or "").strip(), "steps": 0, "ings": 0, "plan": 0, "planrows": 0, "sideref": False})
+        d = m.setdefault(str(recipe).strip(), {"type": str(typ or "").strip(), "steps": 0, "ings": 0, "plan": 0, "planrows": 0, "sideref": False, "ids": set()})
+        rid = str(rid or "").strip()
+        if not rid:
+            errors.append(f"{where}: missing ID (every row of a dish carries the dish's ID)")
+        elif not re.fullmatch(r"d-[a-z0-9-]+", rid):
+            errors.append(f"{where}: ID {rid!r} should look like d-dish-name (lower-case letters, digits, dashes)")
+        else:
+            d["ids"].add(rid)
         s = str(section).strip().lower()
         if s == "step":
             d["steps"] += 1
@@ -91,7 +99,15 @@ def check_meals(ws, tab, errors, warnings):
                 warnings.append(f"Meal {meal!r}: usually one or two sides, found {len(sides)}")
         if tab == "Recipes" and not re.match(r"^\d+ ", meal):
             warnings.append(f"Meal {meal!r}: start the name with a number (e.g. '5 Salmon Night') to set its place in the list")
-        print(f"- {meal}: " + "; ".join(f"{n} ({d['type']}, {d['ings']} ingredients, {d['steps']} steps)" for n, d in dishes.items()))
+        for n, d in dishes.items():
+            if len(d["ids"]) > 1:
+                errors.append(f"{tab} dish {n!r}: rows have different IDs {sorted(d['ids'])}. Use one ID for all of the dish's rows")
+            for i in d["ids"]:
+                other = ALL_IDS.get(i)
+                if other and other != (tab, meal, n):
+                    errors.append(f"ID {i!r} is used by two dishes: {other[2]!r} ({other[0]}) and {n!r} ({tab}). IDs must be unique and never reused")
+                ALL_IDS[i] = (tab, meal, n)
+        print(f"- {meal}: " + "; ".join(f"{n} ({d['type']}, {next(iter(d['ids']), 'no ID')})" for n, d in dishes.items()))
     return meals
 
 

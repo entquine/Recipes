@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
+  collection, doc, onSnapshot, setDoc, deleteDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const APP_NAME = "What's Cooking with Brian";
@@ -83,7 +83,8 @@ function buildMeals(recipes) {
     let meal = meals.get(mealName);
     if (!meal) { meal = { name: mealName, title: displayMealName(mealName), id: 'm-' + slug(mealName), dishes: new Map(), planTotal: '', planFirst: '', plan: [] }; meals.set(mealName, meal); }
     let dish = meal.dishes.get(recipe);
-    if (!dish) { dish = { name: recipe, type: /side/i.test(r.type) ? 'Side' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
+    if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
+    if (!dish.id && r.id) dish.id = r.id;
     const order = r.order === '' ? NaN : parseFloat(r.order);
     switch (section) {
       case 'makes': dish.makes = r.text; break;
@@ -119,6 +120,7 @@ function buildMeals(recipes) {
     meal.main = dishes.find((d) => d.type === 'Main') || dishes[0];
     meal.sides = dishes.filter((d) => d !== meal.main);
     meal.kind = meal.main.type; // 'Main' or 'Side' (past entries are one dish each)
+    meal.rid = meal.main.id || 'd-' + slug(meal.main.name); // ratings and calendar entries are keyed on the main dish's ID
     const mins = meal.plan.map((p) => p.min).filter((m) => m != null);
     meal.totalMin = mins.length ? Math.max(...mins) : null;
     meal.keys = dishes.flatMap((d) => d.steps.map((s) => s.key));
@@ -241,11 +243,13 @@ function startFirestore() {
   });
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) };
+    if (!snap.metadata.fromCache) { loaded.plan = true; migrateToIds(); }
     if (/^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
   }, () => {});
   unsubRatings = onSnapshot(collection(db, 'ratings'), (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
     state.ratings = r;
+    if (!snap.metadata.fromCache) { loaded.ratings = true; migrateToIds(); }
     if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
   }, () => {});
   unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), (snap) => {
@@ -398,14 +402,71 @@ async function editItem(id) { // id null = new item; otherwise edit your own ite
   toast(x ? 'Item updated' : 'Item added');
 }
 
+// ---------------------------------------------------------------- moving to dish IDs (one-time)
+// Ratings used to be stored under the meal name (ratings/m-<name>), and calendar days held meal names.
+// Both now use the main dish's ID. This copies old ratings to the ID and rewrites calendar days.
+// It runs whenever both phones have loaded the data, does nothing once everything is moved,
+// and never deletes anything. Old copies are removed later with Settings > Remove old ratings.
+const loaded = { ratings: false, plan: false };
+function migrateToIds() {
+  if (!state.model || (state.firebase && !(loaded.ratings && loaded.plan))) return;
+  for (const meal of allMeals()) {
+    const old = oldRatingIds(meal).map((k) => state.ratings[k]).filter(Boolean);
+    if (!old.length) continue;
+    const cur = state.ratings[meal.rid];
+    const votes = { ...Object.assign({}, ...old.map((o) => o.votes || {})), ...((cur && cur.votes) || {}) }; // newer (ID) votes win
+    const missing = Object.keys(votes).some((u) => !cur || !cur.votes || cur.votes[u] == null);
+    if (!missing) continue;
+    const rec = { name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name), votes };
+    state.ratings[meal.rid] = rec;
+    if (!state.firebase) ls.set('local-ratings', state.ratings);
+    else setDoc(doc(state.firebase.db, 'ratings', meal.rid), { ...rec, movedFrom: oldRatingIds(meal), at: serverTimestamp() }, { merge: true })
+      .catch((e) => console.warn('rating move failed', e));
+  }
+  const days = {};
+  for (const [day, v] of Object.entries(state.plan)) {
+    const meal = typeof v === 'string' ? mealByName(v) : null;
+    if (meal && v !== meal.rid) days[day] = meal.rid;
+  }
+  if (Object.keys(days).length) writePlan(days);
+}
+function oldRatingsReport() { // which old name-based ratings can be safely removed
+  const safe = [], kept = [];
+  for (const [id, r] of Object.entries(state.ratings)) {
+    if (!id.startsWith('m-')) continue;
+    const meal = allMeals().find((x) => oldRatingIds(x).includes(id));
+    const cur = meal && state.ratings[meal.rid];
+    const copied = cur && Object.keys((r && r.votes) || {}).every((u) => cur.votes && cur.votes[u] != null);
+    if (copied || !Object.keys((r && r.votes) || {}).length) safe.push(id); else kept.push(id);
+  }
+  return { safe, kept };
+}
+async function removeOldRatings() {
+  const { safe, kept } = oldRatingsReport();
+  if (!safe.length) { toast(kept.length ? 'Nothing safe to remove yet' : 'No old ratings left'); return; }
+  if (!(await confirmDialog(`Remove ${safe.length} old rating record${safe.length > 1 ? 's' : ''}? Every rating has already been copied to the new format, so nothing you see changes.${kept.length ? ` ${kept.length} will be kept because their meal isn't in the spreadsheet.` : ''}`, 'Remove'))) return;
+  for (const id of safe) {
+    delete state.ratings[id];
+    if (state.firebase) deleteDoc(doc(state.firebase.db, 'ratings', id)).catch((e) => toast('Could not remove: ' + (e.code || e.message)));
+  }
+  if (!state.firebase) ls.set('local-ratings', state.ratings);
+  toast(`Removed ${safe.length} old rating record${safe.length > 1 ? 's' : ''}`);
+  route();
+}
+
 // ---------------------------------------------------------------- ratings
 // One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
 // so the calendar can still show the rating after the recipe is removed from the sheet.
 const myId = () => (state.user ? state.user.uid : 'local');
 const votesNeeded = () => (state.firebase ? 2 : 1);
-const ratingId = (mealName) => 'm-' + slug(mealName);
-function ratingInfo(mealName) {
-  const r = state.ratings[ratingId(mealName)];
+const oldRatingIds = (meal) => [meal.name, ...(OLD_NAMES[meal.rid] || [])].map((n) => 'm-' + slug(n)); // name-based keys used before IDs
+function ratingDoc(key) { // key: meal ID, meal name, or calendar value
+  const meal = mealByName(key);
+  if (!meal) return state.ratings[key] || state.ratings['m-' + slug(String(key))] || null;
+  return state.ratings[meal.rid] || oldRatingIds(meal).map((k) => state.ratings[k]).find(Boolean) || null; // old key until moved
+}
+function ratingInfo(key) {
+  const r = ratingDoc(key);
   const votes = Object.values((r && r.votes) || {}).filter((v) => typeof v === 'number');
   const mine = r && r.votes ? r.votes[myId()] || 0 : 0;
   const done = votes.length >= votesNeeded();
@@ -414,8 +475,8 @@ function ratingInfo(mealName) {
 }
 const starsText = (avg) => `★ ${avg.toFixed(1)} / 5.0`;
 function setRating(meal, stars) {
-  const id = ratingId(meal.name);
-  const r = state.ratings[id] || (state.ratings[id] = { votes: {} });
+  const id = meal.rid;
+  const r = state.ratings[id] || (state.ratings[id] = { votes: { ...((ratingDoc(meal) || {}).votes || {}) } });
   Object.assign(r, { name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name) });
   r.votes = { ...(r.votes || {}) };
   if (stars) r.votes[myId()] = stars; else delete r.votes[myId()];
@@ -445,7 +506,11 @@ const keyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return ne
 const fmtDay = (d, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => d.toLocaleDateString(undefined, opts);
 function weekStart(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + offset * 7); return d; }
 const allMeals = () => (state.model ? [...state.model.meals, ...(state.model.past || [])] : []);
-const mealByName = (name) => allMeals().find((x) => x.name === name) || null;
+// Old meal names that should still find a meal (used to move ratings and calendar entries saved under them).
+const OLD_NAMES = { 'd-sweet-potato-and-black-bean-quesadillas': ['5 Sweet Potato Quesadillas'] };
+const mealByName = (v) => (v && typeof v === 'string'
+  ? allMeals().find((x) => x.rid === v || x.name === v || (OLD_NAMES[x.rid] || []).includes(v)) || null : null);
+const planKey = (v) => { const meal = mealByName(v); return meal ? meal.rid : v; }; // calendar value -> meal ID
 const mealById = (id) => allMeals().find((x) => x.id === id) || null;
 function setPlan(day, mealName) { // mealName: recipe meal name, { text } for a custom entry, or null to remove
   writePlan({ [day]: mealName || null });
@@ -467,7 +532,8 @@ function movePlan(from, to) { // drag and drop: move, or swap if the target day 
 }
 function nextPlanned(mealName) { // soonest date (today or later) this meal is planned for
   const today = dayKey(new Date());
-  return Object.keys(state.plan).filter((k) => k >= today && state.plan[k] === mealName).sort()[0] || null;
+  const key = planKey(mealName);
+  return Object.keys(state.plan).filter((k) => k >= today && planKey(state.plan[k]) === key).sort()[0] || null;
 }
 
 function updateSync(fromCache) {
@@ -506,6 +572,7 @@ function setRows(rows, info) {
   state.rowsSig = sig; state.model = model;
   ls.set('recipes-cache', rows);
   state.recipeInfo = info; ls.set('recipes-info', info);
+  migrateToIds();
   if (changed) route();
 }
 let loading = null;
@@ -711,7 +778,8 @@ const customText = (v) => (v && typeof v === 'object' && v.text ? String(v.text)
 // A meal can sit on only one upcoming day (today or later). Past days don't count, so meals can be repeated.
 function plannedElsewhere(mealName, day) {
   const today = dayKey(new Date());
-  return Object.keys(state.plan).filter((k) => k !== day && k >= today && state.plan[k] === mealName).sort()[0] || null;
+  const key = planKey(mealName);
+  return Object.keys(state.plan).filter((k) => k !== day && k >= today && planKey(state.plan[k]) === key).sort()[0] || null;
 }
 async function rateDialog(meal) {
   const ri = ratingInfo(meal.name);
@@ -736,11 +804,11 @@ async function pickMeal(day) {
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
   dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
     <div class="picklist">${[...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
-      const other = plannedElsewhere(x.name, day);
-      return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      const other = plannedElsewhere(x.rid, day);
+      return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}${(m.past || []).length ? `<p class="section-label pastlabel">Past recipes</p>${m.past.map((x) => {
-      const other = plannedElsewhere(x.name, day);
-      return `<button class="pickopt past${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      const other = plannedElsewhere(x.rid, day);
+      return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
@@ -757,7 +825,7 @@ async function pickMeal(day) {
     return;
   }
   if (choice === '__none') setPlan(day, null);
-  else if (choice && choice !== current && !plannedElsewhere(choice, day)) setPlan(day, choice);
+  else if (choice && choice !== planKey(current) && !plannedElsewhere(choice, day)) setPlan(day, choice);
 }
 
 function renderShopping() {
@@ -797,6 +865,12 @@ function renderSettings() {
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
+  { // temporary: remove ratings saved under meal names once they're copied to dish IDs
+    const { safe, kept } = oldRatingsReport();
+    if (safe.length || kept.length) h += `<section class="card"><p class="section-label">Old ratings</p>
+      <p class="small">${safe.length} old rating record${safe.length === 1 ? '' : 's'} already copied to the new format${kept.length ? `, ${kept.length} kept (meal not in the spreadsheet)` : ''}. Check that your ratings look right on both phones, then remove the old copies.</p>
+      <button class="btn ghost" type="button" id="cleanratings"${safe.length ? '' : ' disabled'}>Remove old ratings</button></section>`;
+  }
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -860,6 +934,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
+  if (e.target.id === 'cleanratings') { removeOldRatings(); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
