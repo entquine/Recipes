@@ -180,13 +180,14 @@ const state = {
   authReady: false,
   dbError: '',
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
+  ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   calWeek: 0,              // calendar page: 0 = this week
 };
 const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubCfg = null, unsubPlan = null, lastSnapPending = false;
+let unsubTicks = null, unsubCfg = null, unsubPlan = null, unsubRatings = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -233,8 +234,54 @@ function startFirestore() {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) };
     if (/^#?\/?(calendar)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
   }, () => {});
+  unsubRatings = onSnapshot(collection(db, 'ratings'), (snap) => {
+    const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
+    state.ratings = r;
+    if (/^#?\/?(calendar|meal\/.*)?$/.test(location.hash)) route();
+  }, () => {});
 }
-function stopFirestore() { for (const u of [unsubTicks, unsubCfg, unsubPlan]) if (u) u(); unsubTicks = unsubCfg = unsubPlan = null; }
+function stopFirestore() { for (const u of [unsubTicks, unsubCfg, unsubPlan, unsubRatings]) if (u) u(); unsubTicks = unsubCfg = unsubPlan = unsubRatings = null; }
+
+// ---------------------------------------------------------------- ratings
+// One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
+// so the calendar can still show the rating after the recipe is removed from the sheet.
+const myId = () => (state.user ? state.user.uid : 'local');
+const votesNeeded = () => (state.firebase ? 2 : 1);
+const ratingId = (mealName) => 'm-' + slug(mealName);
+function ratingInfo(mealName) {
+  const r = state.ratings[ratingId(mealName)];
+  const votes = Object.values((r && r.votes) || {}).filter((v) => typeof v === 'number');
+  const mine = r && r.votes ? r.votes[myId()] || 0 : 0;
+  const done = votes.length >= votesNeeded();
+  const avg = votes.length ? votes.reduce((a, b) => a + b, 0) / votes.length : 0;
+  return { record: r || null, count: votes.length, mine, done, avg };
+}
+const starsText = (avg) => `★ ${avg.toFixed(1)} / 5.0`;
+function setRating(meal, stars) {
+  const id = ratingId(meal.name);
+  const r = state.ratings[id] || (state.ratings[id] = { votes: {} });
+  Object.assign(r, { name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name) });
+  r.votes = { ...(r.votes || {}) };
+  if (stars) r.votes[myId()] = stars; else delete r.votes[myId()];
+  route();
+  if (!state.firebase) { ls.set('local-ratings', state.ratings); return; }
+  setDoc(doc(state.firebase.db, 'ratings', id), {
+    name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name),
+    votes: { [myId()]: stars || deleteField() }, at: serverTimestamp(),
+  }, { merge: true }).catch((e) => toast('Could not save rating: ' + (e.code || e.message)));
+}
+function ratingCardHtml(meal) {
+  const info = ratingInfo(meal.name);
+  let status;
+  if (info.done) status = `<strong class="avg">${starsText(info.avg)}</strong> average of ${info.count} votes`;
+  else if (info.mine) status = 'Your vote is in. Waiting for the other vote.';
+  else if (info.count) status = 'The other vote is in. Add yours to see the average.';
+  else status = 'Tap the stars to rate this meal. The average shows once you have both voted.';
+  return `<section class="card rate" id="${meal.id}-rate"><p class="section-label">Rate this meal</p>
+    <div class="stars-input" role="radiogroup" aria-label="Your rating">${[1, 2, 3, 4, 5].map((n) =>
+      `<button class="star${n <= info.mine ? ' on' : ''}" data-rate="${n}" data-meal="${meal.id}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
+    <p class="small">${info.mine ? `You gave ${info.mine} star${info.mine > 1 ? 's' : ''}. Tap it again to remove your vote. ` : ''}${status}</p></section>`;
+}
 
 // ---------------------------------------------------------------- calendar store
 const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -361,14 +408,17 @@ function renderMeals() {
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
   const tonight = mealByName(state.plan[dayKey(new Date())]);
   if (tonight) h += `<a class="card tonight" href="#/meal/${tonight.id}"><span class="section-label">Tonight</span><strong>${esc(tonight.main.name)}</strong>${tonight.sides.length ? `<span class="small">with ${tonight.sides.map((d) => esc(d.name)).join(' &amp; ')}</span>` : ''}</a>`;
-  for (const meal of m.meals) {
+  const sorted = [...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done);
+  for (const meal of sorted) {
+    const ri = ratingInfo(meal.name);
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
     const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
-    h += `<a class="card meal-card" href="#/meal/${meal.id}">
+    h += `<a class="card meal-card${ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
       <div class="eyebrow">${esc(meal.title)}${(() => { const n = nextPlanned(meal.name); return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : ''; })()}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
-      <div class="meta">${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}</div>
+      <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`}</div>
+      ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
     </a>`;
   }
   view().innerHTML = h || '<p class="empty">No meals yet.</p>';
@@ -383,7 +433,7 @@ function renderMeal(id) {
   let h = '<nav class="jump"><a href="#" data-jump="' + S + '-plan">Plan</a>' +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
   h += banners();
-  h += `<div class="listhead">${progressHtml(S, meal.keys)}</div>`;
+  { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
@@ -417,6 +467,7 @@ function renderMeal(id) {
     for (const t of d.tips) h += `<div class="tip"><strong>Tip:</strong> ${esc(t)}</div>`;
     h += '</section>';
   }
+  h += ratingCardHtml(meal);
   h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
   refreshTicks();
@@ -446,7 +497,12 @@ function renderCalendar() {
       <button class="pick" data-day="${k}">${custom
         ? `<strong>${esc(custom)}</strong>`
         : name
-        ? `<strong>${esc(meal ? meal.main.name : displayMealName(name))}</strong>${meal && meal.sides.length ? `<span class="small">with ${meal.sides.map((x) => esc(x.name)).join(' &amp; ')}</span>` : ''}${meal ? '' : '<span class="small err">No longer in the recipes</span>'}`
+        ? (() => {
+          const ri = ratingInfo(name), rec = ri.record;
+          const main = meal ? meal.main.name : rec && rec.main ? rec.main : displayMealName(name);
+          const sides = meal ? meal.sides.map((x) => x.name) : rec && rec.sides ? rec.sides : [];
+          return `<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
+        })()
         : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
       ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
     </li>`;
@@ -467,9 +523,9 @@ async function pickMeal(day) {
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
   dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
-    <div class="picklist">${m.meals.map((x) => {
+    <div class="picklist">${[...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.name, day);
-      return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}</div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
@@ -590,6 +646,12 @@ document.addEventListener('click', async (e) => {
   }
   const wk = e.target.closest('[data-week]');
   if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
+  const star = e.target.closest('[data-rate]');
+  if (star) {
+    const meal = state.model && state.model.meals.find((x) => x.id === star.dataset.meal);
+    if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
+    return;
+  }
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { pickMeal(pick.dataset.day); return; }
   const item = e.target.closest('.item[data-key]');
@@ -708,6 +770,7 @@ function start() {
   } else {
     state.ticks = ls.get('local-ticks', {});
     state.plan = ls.get('local-plan', {});
+    state.ratings = ls.get('local-ratings', {});
     state.sync = 'local'; renderSync();
   }
   route();

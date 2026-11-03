@@ -218,3 +218,13 @@ dialog p { margin: 0; font-size: 18px; }
 .customrow { display: flex; gap: 8px; margin-top: 6px; }
 .customrow input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); }
 .customrow .btn { min-height: 44px; padding: 0 16px; }
+
+/* ---------- ratings ---------- */
+.stars-input { display: flex; gap: 4px; margin: 4px 0 6px; }
+.star { background: none; border: 0; font-size: 40px; line-height: 1; padding: 2px 4px; color: var(--line); cursor: pointer; }
+.star.on { color: #e3a42b; }
+.avg { color: #b77b0f; font-weight: 750; white-space: nowrap; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .avg { color: #f0b03c; } }
+.meal-card.rated h2, .meal-card.rated .sides, .meal-card.rated .eyebrow { text-decoration: line-through; text-decoration-thickness: 2px; opacity: .55; }
+.meal-card .votes { margin: 8px 0 0; }
+.listhead .rate-link { text-decoration: none; font-weight: 700; white-space: nowrap; color: #b77b0f; }
