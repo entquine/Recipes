@@ -286,3 +286,4 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .card[hidden] { display: none; }
 /* small form dialogs (note / item) sit near the top so the keyboard never covers their buttons */
 #formdlg { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px); overflow-y: auto; }
+select.dlg-input { appearance: auto; }

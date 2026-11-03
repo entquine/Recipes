@@ -322,8 +322,11 @@ function writeExtras(changes) {
   const i = {}; for (const [id, v] of Object.entries(changes)) i[id] = v || deleteField();
   setDoc(doc(state.firebase.db, 'shopping', 'extra'), { i }, { merge: true }).catch((e) => toast('Could not save item: ' + (e.code || e.message)));
 }
-function extrasListHtml() {
-  const items = Object.entries(state.extras).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+// Categories for added items: the shopping list's own sections, plus "Other".
+const shopSections = () => (state.model ? state.model.shopping.map((sec) => sec.name) : []);
+const extraSection = (x) => (shopSections().includes(x.section) ? x.section : 'Other');
+function extrasListHtml(section) {
+  const items = Object.entries(state.extras).filter(([, x]) => extraSection(x) === section).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
   if (!items.length) return '';
   return items.map(([id, x]) => itemHtml('shopping', extraKey(id),
     `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span>${
@@ -331,11 +334,8 @@ function extrasListHtml() {
         ? `<button class="delnote" data-editextra="${esc(id)}" aria-label="Edit ${esc(x.name)}">✎</button>`
         : `<button class="delnote" data-delextra="${esc(id)}" aria-label="Remove ${esc(x.name)}">×</button>`}`, 'extra')).join('');
 }
-function renderExtras() {
-  const ul = $('#extralist'); if (!ul) return;
-  ul.innerHTML = extrasListHtml();
-  $('#extrascard').hidden = !Object.keys(state.extras).length;
-  refreshTicks();
+function renderExtras() { // added items sit inside the shopping sections, so redraw the shopping list
+  if (/^#\/shopping/.test(location.hash)) route();
 }
 
 // ---------------------------------------------------------------- "+" in the top bar (shopping list)
@@ -372,13 +372,14 @@ async function editItem(id) { // id null = new item; otherwise edit your own ite
   const r = await formDialog(`<p class="picktitle">${x ? 'Edit item' : 'New item'}</p>
     <label class="field">Item<input class="dlg-input" name="name" maxlength="80" placeholder="e.g. Paper towels" value="${esc(x ? x.name : '')}" autocomplete="off"></label>
     <label class="field">Amount <span class="small">(optional)</span><input class="dlg-input" name="amount" maxlength="40" placeholder="e.g. 1 pack" value="${esc(x ? x.amount : '')}" autocomplete="off"></label>
+    <label class="field">Category<select class="dlg-input" name="section">${[...shopSections(), 'Other'].map((sec) => `<option${(x ? extraSection(x) : 'Other') === sec ? ' selected' : ''}>${esc(sec)}</option>`).join('')}</select></label>
     <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${x ? 'Save' : 'Add item'}</button></div>`);
   if (r.value === 'delete') { writeExtras({ [id]: null }); toast('Item removed'); return; }
   if (r.value !== 'save') return;
-  const name = clean(r.form.name.value, 80), amount = clean(r.form.amount.value, 40);
+  const name = clean(r.form.name.value, 80), amount = clean(r.form.amount.value, 40), section = r.form.section.value;
   if (!name) { toast('Type the item name'); return; }
-  if (x) writeExtras({ [id]: { ...x, name, amount } });
-  else writeExtras({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name, amount, email: myEmail(), at: Date.now() } });
+  if (x) writeExtras({ [id]: { ...x, name, amount, section } });
+  else writeExtras({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name, amount, section, email: myEmail(), at: Date.now() } });
   toast(x ? 'Item updated' : 'Item added');
 }
 
@@ -752,14 +753,14 @@ function renderShopping() {
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
-  h += `<section class="card extras" id="extrascard"${Object.keys(state.extras).length ? '' : ' hidden'}><p class="section-label">Added by us</p>
-    <ul class="list" id="extralist">${extrasListHtml()}</ul></section>`;
-  if (!m.shopping.length) h += '<p class="empty">No shopping list found. Add a "Shopping" tab to the spreadsheet.</p>';
   for (const sec of m.shopping) {
     h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml('shopping', x.key,
-      `<span class="body"><strong>${esc(x.item)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}${x.usedIn ? `<span class="sub">For: ${esc(x.usedIn)}</span>` : ''}</span>`)).join('') + '</ul></section>';
+      `<span class="body"><strong>${esc(x.item)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}${x.usedIn ? `<span class="sub">For: ${esc(x.usedIn)}</span>` : ''}</span>`)).join('') + extrasListHtml(sec.name) + '</ul></section>';
   }
-  if (m.shopping.length) h += '<button class="btn outline-danger" data-clear="shopping" data-label="the shopping list">Clear shopping ticks</button>';
+  const other = extrasListHtml('Other');
+  if (other) h += `<section class="card"><p class="section-label">Other</p><ul class="list">${other}</ul></section>`;
+  if (!m.shopping.length && !other) h += '<p class="empty">The shopping list is empty. Tap + to add an item.</p>';
+  if (m.shopping.length || other) h += '<button class="btn outline-danger" data-clear="shopping" data-label="the shopping list">Clear shopping ticks</button>';
   view().innerHTML = h;
   refreshTicks();
 }
