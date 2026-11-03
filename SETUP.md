@@ -99,6 +99,8 @@ Recipes live in **`recipes.xlsx`** in the GitHub repository. You don't edit it b
 
 About 2 minutes later, the phones show the change the next time the app is opened. You can also tap **Settings → Reload recipes**. With no signal, the app keeps showing the last recipes it loaded.
 
+**Past recipes:** ask Claude to *"archive"* a meal you're done with for now. It moves to **Meals → Past**, keeping its rating and calendar history. You can still open it, cook it, or plan it again from the calendar. Ask Claude to *"un-archive"* it to bring it back to the current list.
+
 What to keep in mind:
 - **Don't rename an existing meal.** Ratings and calendar entries are tied to the meal's name.
 - **Edited lines lose their tick.** Each tick is tied to the text of its line, so if a step's text changes, that step's tick resets. Nothing else is affected.

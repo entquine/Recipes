@@ -59,13 +59,20 @@ function rowsFromWorkbook(wb) {
   const find = (name) => wb.SheetNames.find((n) => n.trim().toLowerCase() === name);
   const toRows = (n) => (n ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: '', raw: false }) : []);
   const recipesName = find('recipes') || wb.SheetNames[0];
-  return { recipes: toRows(recipesName), shopping: toRows(find('shopping')) };
+  return { recipes: toRows(recipesName), shopping: toRows(find('shopping')), archive: toRows(find('archive')) };
 }
 function keyed(row) { // lower-case, trimmed column names
   const o = {}; for (const k in row) o[k.trim().toLowerCase()] = norm(row[k]); return o;
 }
 
-function buildModel({ recipes, shopping }) {
+function buildModel({ recipes, shopping, archive = [] }) {
+  const current = buildMeals(recipes);
+  const names = new Set(current.map((x) => x.name));
+  const past = buildMeals(archive).filter((x) => !names.has(x.name)); // a meal in both tabs counts as current
+  past.forEach((x) => { x.archived = true; });
+  return { meals: current, past, ...buildShopping(shopping) };
+}
+function buildMeals(recipes) {
   const meals = new Map();
   let seq = 0;
   for (const raw of recipes) {
@@ -118,7 +125,9 @@ function buildModel({ recipes, shopping }) {
     out.push(meal);
   }
   out.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-
+  return out;
+}
+function buildShopping(shopping) {
   const sections = new Map();
   const seen = new Map();
   for (const raw of shopping) {
@@ -131,7 +140,7 @@ function buildModel({ recipes, shopping }) {
   const pref = ['meat', 'produce', 'dairy', 'pantry'];
   const rank = (s) => { const i = pref.indexOf(s.toLowerCase()); return i < 0 ? 99 : i; };
   const shop = [...sections.entries()].map(([name, items], i) => ({ name, items, i })).sort((a, b) => rank(a.name) - rank(b.name) || a.i - b.i);
-  return { meals: out, shopping: shop, shopKeys: shop.flatMap((s) => s.items.map((x) => x.key)) };
+  return { shopping: shop, shopKeys: shop.flatMap((s) => s.items.map((x) => x.key)) };
 }
 
 // Find references like "(Carrot steps 2-6)" or "Main step 1" in plan text.
@@ -227,12 +236,12 @@ function startFirestore() {
   });
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) };
-    if (/^#?\/?(calendar)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
+    if (/^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
   }, () => {});
   unsubRatings = onSnapshot(collection(db, 'ratings'), (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
     state.ratings = r;
-    if (/^#?\/?(calendar|meal\/.*)?$/.test(location.hash)) route();
+    if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
   }, () => {});
 }
 function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = null; }
@@ -283,7 +292,9 @@ const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2,
 const keyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d, 12); };
 const fmtDay = (d, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => d.toLocaleDateString(undefined, opts);
 function weekStart(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + offset * 7); return d; }
-const mealByName = (name) => (state.model ? state.model.meals.find((x) => x.name === name) : null);
+const allMeals = () => (state.model ? [...state.model.meals, ...(state.model.past || [])] : []);
+const mealByName = (name) => allMeals().find((x) => x.name === name) || null;
+const mealById = (id) => allMeals().find((x) => x.id === id) || null;
 function setPlan(day, mealName) { // mealName: recipe meal name, { text } for a custom entry, or null to remove
   writePlan({ [day]: mealName || null });
 }
@@ -337,7 +348,7 @@ async function fetchRows() {
 }
 function setRows(rows, info) {
   const model = buildModel(rows);
-  if (!model.meals.length) throw new Error('No recipes found in recipes.xlsx. Is there a tab named "Recipes" with the usual columns?');
+  if (!model.meals.length && !model.past.length) throw new Error('No recipes found in recipes.xlsx. Is there a tab named "Recipes" with the usual columns?');
   const sig = JSON.stringify(rows);
   const changed = sig !== state.rowsSig;
   state.rowsSig = sig; state.model = model;
@@ -382,11 +393,44 @@ function banners() {
   return h;
 }
 
+function mealsSwitch(active) {
+  const n = state.model && state.model.past ? state.model.past.length : 0;
+  return `<nav class="seg" aria-label="Which meals">
+    <a href="#/" class="${active === 'current' ? 'on' : ''}">Current</a>
+    <a href="#/past" class="${active === 'past' ? 'on' : ''}">Past${n ? ` (${n})` : ''}</a></nav>`;
+}
+function plannedChip(meal) {
+  const n = nextPlanned(meal.name);
+  return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
+}
+function renderPast() {
+  setTitle(APP_NAME, false); setTab('meals');
+  const m = state.model;
+  if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
+  let h = banners() + mealsSwitch('past');
+  const past = [...(m.past || [])].sort((a, b) => {
+    const ra = ratingInfo(a.name), rb = ratingInfo(b.name);
+    return (rb.done ? rb.avg : -1) - (ra.done ? ra.avg : -1) || a.name.localeCompare(b.name, undefined, { numeric: true });
+  });
+  if (!past.length) h += '<p class="empty">No past recipes yet.<br><span class="small">To archive a meal, ask Claude, for example "archive the pot pie". It moves to this list with its rating, and you can still open it or plan it again.</span></p>';
+  for (const meal of past) {
+    const ri = ratingInfo(meal.name);
+    const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
+    h += `<a class="card meal-card" href="#/meal/${meal.id}">
+      <div class="eyebrow">${esc(meal.title)}${plannedChip(meal)}</div>
+      <h2>${esc(meal.main.name)}</h2>
+      ${sides ? `<p class="sides">with ${sides}</p>` : ''}
+      <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `<span class="small">${ri.count ? 'Partly rated' : 'Not rated'}</span>`}</div>
+    </a>`;
+  }
+  view().innerHTML = h;
+}
+
 function renderMeals() {
   setTitle(APP_NAME, false); setTab('meals');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
-  let h = banners();
+  let h = banners() + mealsSwitch('current');
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
@@ -401,7 +445,7 @@ function renderMeals() {
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
     const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
     h += `<a class="card meal-card${ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
-      <div class="eyebrow">${esc(meal.title)}${(() => { const n = nextPlanned(meal.name); return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : ''; })()}</div>
+      <div class="eyebrow">${esc(meal.title)}${plannedChip(meal)}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`}</div>
@@ -413,13 +457,14 @@ function renderMeals() {
 }
 
 function renderMeal(id) {
-  const meal = state.model && state.model.meals.find((x) => x.id === id);
+  const meal = mealById(id);
   if (!meal) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   setTitle(meal.title, true); setTab('meals');
   const S = meal.id;
   let h = '<nav class="jump"><a href="#" data-jump="' + S + '-plan">Plan</a>' +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
   h += banners();
+  if (meal.archived) h += '<div class="banner">This is a past recipe. You can still cook it, tick it and plan it. To bring it back to the current list, ask Claude to un-archive it.</div>';
   { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
 
   // ---- Plan first
@@ -530,7 +575,10 @@ async function pickMeal(day) {
     <div class="picklist">${[...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.name, day);
       return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
-    }).join('')}</div>
+    }).join('')}${(m.past || []).length ? `<p class="section-label pastlabel">Past recipes</p>${m.past.map((x) => {
+      const other = plannedElsewhere(x.name, day);
+      return `<button class="pickopt past${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+    }).join('')}` : ''}</div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
       <div class="customrow"><input type="text" id="customtext" maxlength="80" placeholder="e.g. Chipotle + Leftovers" value="${esc(currentCustom)}" autocomplete="off"><button class="btn" value="__custom" id="customsave">Save</button></div>
@@ -576,7 +624,7 @@ function renderSettings() {
 
   h += `<section class="card"><p class="section-label">Recipes</p>
     <p>Source: <strong>recipes.xlsx</strong> in the GitHub repository<br>
-    <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' meals' : 'none'}</span></p>
+    <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' current meals, ' + (state.model.past || []).length + ' past' : 'none'}</span></p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="reload">Reload recipes</button>
     <p class="small">Recipes reload every time the app opens. To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
@@ -620,7 +668,7 @@ function refreshTicks() {
   });
   document.querySelectorAll('[data-progress]').forEach((el) => {
     const scope = el.dataset.progress, m = state.model; if (!m) return;
-    const keys = scope === 'shopping' ? m.shopKeys : (m.meals.find((x) => x.id === scope) || {}).keys || [];
+    const keys = scope === 'shopping' ? m.shopKeys : (mealById(scope) || {}).keys || [];
     const done = countDone(scope, keys);
     el.querySelector('b').style.width = keys.length ? (100 * done / keys.length) + '%' : 0;
     el.querySelector('.pct').textContent = `${done} / ${keys.length}`;
@@ -644,7 +692,7 @@ document.addEventListener('click', async (e) => {
   if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
   const star = e.target.closest('[data-rate]');
   if (star) {
-    const meal = state.model && state.model.meals.find((x) => x.id === star.dataset.meal);
+    const meal = mealById(star.dataset.meal);
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
@@ -803,6 +851,7 @@ function route() {
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
   else if (page === 'calendar') renderCalendar();
+  else if (page === 'past') renderPast();
   else if (page === 'settings') renderSettings();
   else renderMeals();
   if (keepScroll) scrollTo(0, y); else scrollTo(0, 0);

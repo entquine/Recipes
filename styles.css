@@ -241,3 +241,10 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .day .ratebtn { flex: none; align-self: center; margin-right: 8px; padding: 6px 10px; border-radius: 999px; border: 1.5px solid #e3a42b; background: transparent; color: #b77b0f; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
 .day .ratebtn.voted { background: #e3a42b; color: #fff; border-color: #e3a42b; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .day .ratebtn:not(.voted) { color: #f0b03c; } }
+
+/* ---------- current / past switch ---------- */
+.seg { display: flex; background: var(--surface-2); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+.seg a { flex: 1; text-align: center; padding: 9px 0; border-radius: 9px; text-decoration: none; color: var(--muted); font-weight: 650; }
+.seg a.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.pastlabel { margin: 10px 0 2px; }
+.pickopt.past { background: transparent; border: 1.5px dashed var(--line); }

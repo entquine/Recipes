@@ -31,6 +31,13 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 - Keep amounts and Plan times as **text** (e.g. `0:27`, not a spreadsheet time value).
 - Ticks, calendar entries and ratings are tied to names and text. Renaming a Meal resets its ticks, and editing a step's text resets that step's tick. Ratings and calendar entries are keyed on the Meal name, so **don't rename an existing Meal** unless asked.
 
+### Tab "Archive" (past recipes)
+Same columns as **Recipes**. Meals here appear in the app under **Meals → Past**: they keep their ratings and calendar history, can still be opened and cooked, and can be planned again from the calendar.
+- **Archive a meal** ("archive the pot pie"): move all of that meal's rows from Recipes to Archive, unchanged. Keep the exact Meal name, because ratings and calendar history are tied to it. Then remove its ingredients from the Shopping tab (or trim the amount and "Used in" text for items that other current meals still use).
+- **Un-archive a meal**: move its rows back to Recipes, and add its ingredients back to Shopping.
+- A Meal must be in only one of the two tabs. The checker reports an error if it's in both.
+- Meals are never archived automatically. Only archive when the owner asks.
+
 ### Tab "Shopping"
 Columns: `Item`, `Amount`, `Section` (`Meat`, `Produce`, `Dairy`, `Pantry`), `Used in`. One row per item. When adding meals, add their ingredients here too, merging with items that are already listed (update the amount and the "Used in" text).
 

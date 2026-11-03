@@ -19,16 +19,33 @@ def main(path):
     names = {n.strip().lower(): n for n in wb.sheetnames}
     if "recipes" not in names:
         print('ERROR: no tab named "Recipes"'); sys.exit(1)
-    ws = wb[names["recipes"]]
+    meals = check_meals(wb[names["recipes"]], "Recipes", errors, warnings)
+    if "archive" in names:
+        print("Archive (past recipes):")
+        past = check_meals(wb[names["archive"]], "Archive", errors, warnings)
+        for both in sorted(set(meals) & set(past)):
+            errors.append(f"Meal {both!r} is in both Recipes and Archive. Move its rows to one tab only")
+    else:
+        warnings.append('No "Archive" tab (past recipes). Add one with the same columns as Recipes when archiving a meal')
+    shopping_check(wb, names, errors, warnings)
+    for w in warnings:
+        print("warning:", w)
+    for e in errors:
+        print("ERROR:", e)
+    print(f"{len(meals)} current meals checked: {'OK' if not errors else str(len(errors)) + ' error(s)'}")
+    sys.exit(1 if errors else 0)
+
+
+def check_meals(ws, tab, errors, warnings):
     header = [str(c.value or "").strip() for c in ws[1]]
     if header[: len(RECIPE_COLS)] != RECIPE_COLS:
-        errors.append(f"Recipes columns must be {RECIPE_COLS}, found {header}")
+        errors.append(f"{tab} columns must be {RECIPE_COLS}, found {header}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
         recipe, typ, meal, section, group, order, amount, text = (list(row) + [None] * 8)[:8]
         if not any(row):
             continue
-        where = f"Recipes row {i}"
+        where = f"{tab} row {i}"
         if not recipe or not section:
             errors.append(f"{where}: Recipe and Section are required"); continue
         if str(section).strip().lower() not in SECTIONS:
@@ -60,6 +77,10 @@ def main(path):
         if not re.match(r"^\d+ ", meal):
             warnings.append(f"Meal {meal!r}: start the name with a number (e.g. '5 Salmon Night') to set its place in the list")
         print(f"- {meal}: " + "; ".join(f"{n} ({d['type']}, {d['ings']} ingredients, {d['steps']} steps)" for n, d in dishes.items()))
+    return meals
+
+
+def shopping_check(wb, names, errors, warnings):
     if "shopping" in names:
         sh = wb[names["shopping"]]
         sheader = [str(c.value or "").strip() for c in sh[1]]
@@ -68,12 +89,6 @@ def main(path):
         print(f"Shopping list: {sum(1 for r in sh.iter_rows(min_row=2, values_only=True) if r and r[0])} items")
     else:
         warnings.append('No "Shopping" tab')
-    for w in warnings:
-        print("warning:", w)
-    for e in errors:
-        print("ERROR:", e)
-    print(f"{len(meals)} meals checked: {'OK' if not errors else str(len(errors)) + ' error(s)'}")
-    sys.exit(1 if errors else 0)
 
 
 if __name__ == "__main__":
