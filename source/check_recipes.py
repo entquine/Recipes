@@ -10,7 +10,7 @@ import openpyxl
 
 SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip"}
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
-SHOP_COLS = ["Item", "Amount", "Section", "Used in"]
+SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
 
 
@@ -117,7 +117,16 @@ def shopping_check(wb, names, errors, warnings):
         sheader = [str(c.value or "").strip() for c in sh[1]]
         if sheader[: len(SHOP_COLS)] != SHOP_COLS:
             errors.append(f"Shopping columns must be {SHOP_COLS}, found {sheader}")
-        print(f"Shopping list: {sum(1 for r in sh.iter_rows(min_row=2, values_only=True) if r and r[0])} items")
+        lists = {str(r[4]).strip() for r in sh.iter_rows(min_row=2, values_only=True) if r and r[0] and len(r) > 4 and r[4] is not None}
+        blank = sum(1 for r in sh.iter_rows(min_row=2, values_only=True) if r and r[0] and (len(r) < 5 or r[4] is None or not str(r[4]).strip()))
+        if blank:
+            errors.append(f"Shopping: {blank} item(s) have no List value. Every row needs the list's date")
+        if len(lists) > 1:
+            errors.append(f"Shopping: all rows must have the same List value, found {sorted(lists)}")
+        for l in lists:
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}(-\d+)?", l):
+                errors.append(f"Shopping: List {l!r} should be a date like 2026-11-09 (add -2 for a second list on the same day)")
+        print(f"Shopping list: {sum(1 for r in sh.iter_rows(min_row=2, values_only=True) if r and r[0])} items, list {', '.join(sorted(lists)) or '(none)'}")
     else:
         warnings.append('No "Shopping" tab')
 

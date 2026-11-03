@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
+  collection, doc, onSnapshot, setDoc, deleteDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const APP_NAME = "What's Cooking with Brian";
@@ -132,9 +132,11 @@ function buildMeals(recipes) {
 }
 function buildShopping(shopping) {
   const sections = new Map();
+  let list = '';
   const seen = new Map();
   for (const raw of shopping) {
     const r = keyed(raw); if (!r.item) continue;
+    if (!list && r.list) list = r.list;
     const sec = r.section || 'Other';
     if (!sections.has(sec)) sections.set(sec, []);
     const base = `shop|${r.item}`; const n = (seen.get(base) || 0) + 1; seen.set(base, n);
@@ -143,7 +145,7 @@ function buildShopping(shopping) {
   const pref = ['meat', 'produce', 'dairy', 'pantry'];
   const rank = (s) => { const i = pref.indexOf(s.toLowerCase()); return i < 0 ? 99 : i; };
   const shop = [...sections.entries()].map(([name, items], i) => ({ name, items, i })).sort((a, b) => rank(a.name) - rank(b.name) || a.i - b.i);
-  return { shopping: shop, shopKeys: shop.flatMap((s) => s.items.map((x) => x.key)) };
+  return { shopping: shop, shopKeys: shop.flatMap((s) => s.items.map((x) => x.key)), shopList: list };
 }
 
 // Find references like "(Carrot steps 2-6)" or "Main step 1" in plan text.
@@ -202,7 +204,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -218,6 +220,9 @@ function setTick(scope, key, value) {
   setDoc(doc(db, 'ticks', scope), { k: { [key]: value ? true : deleteField() }, at: serverTimestamp() }, { merge: true })
     .catch((e) => { console.error(e); toast('Could not save tick: ' + (e.code || e.message)); });
 }
+// Shopping ticks are saved per list (the Shopping tab's List date), so a new weekly list starts unticked.
+const SHOP = () => (state.model && state.model.shopList && !('shopping' in state.ticks) ? 'shopping-' + state.model.shopList : 'shopping'); // old record until moved
+const isShopScope = (scope) => scope === 'shopping' || scope.startsWith('shopping-');
 async function clearScope(scope) {
   if (!state.firebase) { state.ticks[scope] = {}; ls.set('local-ticks', state.ticks); refreshTicks(); return; }
   state.ticks[scope] = {}; refreshTicks();
@@ -233,6 +238,7 @@ function startFirestore() {
     state.ticks = ticks; state.dbError = '';
     lastSnapPending = snap.metadata.hasPendingWrites;
     updateSync(snap.metadata.fromCache);
+    if (!snap.metadata.fromCache) { ticksLoaded = true; tidyOldLists(); }
     refreshTicks();
   }, (err) => {
     console.error(err);
@@ -268,6 +274,7 @@ function startFirestore() {
   }, () => {});
   unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), (snap) => {
     state.extras = { ...((snap.exists() && snap.data().i) || {}) };
+    if (!snap.metadata.fromCache) { extrasLoaded = true; tidyOldLists(); }
     renderExtras();
   }, () => {});
 }
@@ -304,7 +311,7 @@ function notesListHtml() {
   const notes = Object.entries(state.notes).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
   if (!notes.length) return '';
   // notes tick like shopping items (stored with the shopping ticks, not counted in the shopping progress)
-  return notes.map(([id, x]) => itemHtml('shopping', 'n-' + id,
+  return notes.map(([id, x]) => itemHtml(SHOP(), 'n-' + id,
     `<span class="body"><span class="notetext">${esc(x.text)}</span>
     <span class="sub">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></span>${(x.email || '').toLowerCase() === myEmail()
       ? `<button class="delnote" data-editnote="${esc(id)}" aria-label="Edit note">✎</button>`
@@ -334,7 +341,7 @@ const extraSection = (x) => (shopSections().includes(x.section) ? x.section : 'O
 function extrasListHtml(section) {
   const items = Object.entries(state.extras).filter(([, x]) => extraSection(x) === section).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
   if (!items.length) return '';
-  return items.map(([id, x]) => itemHtml('shopping', extraKey(id),
+  return items.map(([id, x]) => itemHtml(SHOP(), extraKey(id),
     `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span>${
       (x.email || '').toLowerCase() === myEmail()
         ? `<button class="delnote" data-editextra="${esc(id)}" aria-label="Edit ${esc(x.name)}">✎</button>`
@@ -521,6 +528,7 @@ async function loadRecipes() {
   loading = (async () => {
     try {
       setRows(await fetchRows(), { at: Date.now(), error: '' });
+      state.recipesFresh = true; tidyOldLists();
     } catch (e) {
       // keep showing the last recipes that loaded (they're saved on the phone)
       console.warn('Recipe load failed', e);
@@ -530,6 +538,48 @@ async function loadRecipes() {
     } finally { loading = null; }
   })();
   return loading;
+}
+
+// ---------------------------------------------------------------- weekly shopping list turnover
+// When a new list (newer List date) arrives: items added in the app that were ticked on the old list are
+// removed (bought), unticked ones carry over, and the old list's ticks are deleted. Only lists OLDER than the
+// one this phone has loaded are touched, so a phone that hasn't loaded the new list can't wipe its ticks.
+// Runs only with freshly loaded recipes and ticks.
+const tidied = new Set();
+function tidyOldLists() {
+  const cur = state.model && state.model.shopList;
+  if (!cur || !state.recipesFresh || (state.firebase && !(ticksLoaded && extrasLoaded))) return;
+  for (const id of Object.keys(state.ticks)) {
+    const m = id.match(/^shopping-(.+)$/);
+    if (!m || !(m[1] < cur) || tidied.has(id)) continue;
+    tidied.add(id);
+    const ticked = state.ticks[id] || {};
+    const bought = Object.keys(state.extras).filter((x) => ticked[extraKey(x)]);
+    if (bought.length) writeExtras(Object.fromEntries(bought.map((x) => [x, null])));
+    deleteTicks(id);
+  }
+}
+function deleteTicks(id) {
+  delete state.ticks[id];
+  if (!state.firebase) { ls.set('local-ticks', state.ticks); return; }
+  deleteDoc(doc(state.firebase.db, 'ticks', id)).catch((e) => console.warn('could not delete ticks', id, e));
+}
+// One-time move (temporary): ticks saved before lists had dates live in ticks/shopping. Copy them to this
+// week's list and delete the old record; also delete tick records for meals no longer in the spreadsheet.
+function staleMealTicks() { const ids = new Set(allMeals().map((x) => x.id)); return Object.keys(state.ticks).filter((id) => id.startsWith('m-') && !ids.has(id)); }
+const needsShopMove = () => !!(state.model && state.model.shopList && 'shopping' in state.ticks);
+async function moveShoppingTicks() {
+  if (!needsShopMove()) { toast('Nothing to move'); return; }
+  const old = state.ticks.shopping || {}, to = 'shopping-' + state.model.shopList, stale = staleMealTicks();
+  if (!(await confirmDialog(`Move ${Object.keys(old).length} shopping tick${Object.keys(old).length === 1 ? '' : 's'} to this week's list (${state.model.shopList})${stale.length ? ` and remove ${stale.length} tick record${stale.length === 1 ? '' : 's'} for meals no longer in the spreadsheet` : ''}?`, 'Move'))) return;
+  const merged = { ...old, ...(state.ticks[to] || {}) };
+  state.ticks[to] = merged;
+  if (!state.firebase) ls.set('local-ticks', state.ticks);
+  else await setDoc(doc(state.firebase.db, 'ticks', to), { k: merged, at: serverTimestamp() }, { merge: true });
+  deleteTicks('shopping');
+  stale.forEach(deleteTicks);
+  toast('Shopping ticks moved');
+  route();
 }
 
 // ---------------------------------------------------------------- views
@@ -791,15 +841,15 @@ function renderShopping() {
   let h = banners();
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
-  h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
+  h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>`;
   for (const sec of m.shopping) {
-    h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml('shopping', x.key,
+    h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml(SHOP(), x.key,
       `<span class="body"><strong>${esc(x.item)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}${x.usedIn ? `<span class="sub">For: ${esc(x.usedIn)}</span>` : ''}</span>`)).join('') + extrasListHtml(sec.name) + '</ul></section>';
   }
   const other = extrasListHtml('Other');
   if (other) h += `<section class="card"><p class="section-label">Other</p><ul class="list">${other}</ul></section>`;
   if (!m.shopping.length && !other) h += '<p class="empty">The shopping list is empty. Tap + to add an item.</p>';
-  if (m.shopping.length || other) h += '<button class="btn outline-danger" data-clear="shopping" data-label="the shopping list">Clear shopping ticks</button>';
+  if (m.shopping.length || other) h += `<button class="btn outline-danger" data-clear="${SHOP()}" data-label="the shopping list">Clear shopping ticks</button>`;
   view().innerHTML = h;
   refreshTicks();
 }
@@ -821,6 +871,9 @@ function renderSettings() {
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
+  if (needsShopMove()) h += `<section class="card"><p class="section-label">Shopping list upgrade</p>
+    <p class="small">One-time step: moves your current shopping ticks to this week's list (${esc(state.model.shopList)}), so future weekly lists start unticked.</p>
+    <button class="btn ghost" type="button" id="moveshop">Move shopping ticks</button></section>`;
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -848,14 +901,14 @@ function refreshTicks() {
   // shopping list only: ticked items move to the bottom of their section, unticked ones keep their order
   document.querySelectorAll('ul.list').forEach((ul) => {
     const items = [...ul.children].filter((li) => li.dataset.key);
-    if (!items.length || items[0].dataset.scope !== 'shopping') return;
+    if (!items.length || !isShopScope(items[0].dataset.scope)) return;
     items.forEach((li, i) => { if (li.dataset.i == null) li.dataset.i = i; });
     const want = [...items].sort((a, b) => a.classList.contains('done') - b.classList.contains('done') || a.dataset.i - b.dataset.i);
     if (want.some((li, i) => li !== items[i])) want.forEach((li) => ul.appendChild(li));
   });
   document.querySelectorAll('[data-progress]').forEach((el) => {
     const scope = el.dataset.progress, m = state.model; if (!m) return;
-    const keys = scope === 'shopping' ? [...m.shopKeys, ...extraKeys()] : (mealById(scope) || {}).keys || [];
+    const keys = isShopScope(scope) ? [...m.shopKeys, ...extraKeys()] : (mealById(scope) || {}).keys || [];
     const done = countDone(scope, keys);
     el.querySelector('b').style.width = keys.length ? (100 * done / keys.length) + '%' : 0;
     el.querySelector('.pct').textContent = `${done} / ${keys.length}`;
@@ -884,6 +937,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
+  if (e.target.id === 'moveshop') { moveShoppingTicks(); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');

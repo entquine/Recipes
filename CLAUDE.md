@@ -52,13 +52,19 @@ Same columns as **Recipes**, but each entry is a **single dish**: one Main, or o
 - Nothing is archived automatically. Only archive when the owner asks.
 
 ### Tab "Shopping"
-Columns: `Item`, `Amount`, `Section` (`Meat`, `Produce`, `Dairy`, `Pantry`), `Used in`. One row per item. When adding meals, add their ingredients here too, merging with items that are already listed (update the amount and the "Used in" text).
+Columns: `Item`, `Amount`, `Section` (`Meat`, `Produce`, `Dairy`, `Pantry`), `Used in`, `List`. One row per item. When adding meals, add their ingredients here too, merging with items that are already listed (update the amount and the "Used in" text).
+
+**`List` = the list's date, the same on every row** (e.g. `2026-11-09`). It decides when the shopping list starts fresh:
+- **Replacing the list for a new week** (a new shop): set a **new, later date** on every row. In the app, everything starts unticked again (even items with the same name and amount as last week), items added in the app that were ticked are removed as bought, unticked ones carry over, and last week's ticks are deleted.
+- **Fixing or adding to the current list mid-week**: keep the **same** date, so existing ticks stay.
+- A second new list on the same day: add `-2` (e.g. `2026-11-09-2`). Dates must only ever go forward.
+- The checker reports a missing, mixed or malformed `List`.
 
 ## Changing the app itself
 - Readable source: `source/app.js`, `source/sw.template.js`. Root `styles.css`, `index.html`, `manifest.webmanifest` and `config.js` are edited directly.
 - Build: `cd source && npm install && node build.mjs`. This writes the bundled `app.js` and `sw.js` in the root. Commit both, plus the source changes. Don't commit `node_modules`.
 - `config.js` holds the Firebase web config (public by design; security comes from the Firestore rules in `source/firestore.rules`).
-- Shared data lives in Firestore: `ticks/*`, `calendar/plan` (days hold a main dish ID or `{text}`), `ratings/<main dish ID>`, `notes/shopping` (shopping-list notes), `shopping/extra` (items added to the shopping list in the app: name, amount, section, author email), `profiles/<uid>` (each person's name and email). Notes and added items store the author's email; the app shows the matching name from `profiles`, so names update everywhere when changed. (`config/app` held an old Google Sheet link and is no longer read.)
+- Shared data lives in Firestore: `ticks/*` (`ticks/m-<meal>` per meal, `ticks/shopping-<List date>` for the current shopping list, including notes and added items), `calendar/plan` (days hold a main dish ID or `{text}`), `ratings/<main dish ID>`, `notes/shopping` (shopping-list notes), `shopping/extra` (items added to the shopping list in the app: name, amount, section, author email), `profiles/<uid>` (each person's name and email). Notes and added items store the author's email; the app shows the matching name from `profiles`, so names update everywhere when changed. (`config/app` held an old Google Sheet link and is no longer read.)
 - Recipes come only from `recipes.xlsx` in this repository. There is deliberately no other recipe source (the old Google Sheet option was removed).
 - **Free-plan check for anything that syncs.** The project is on Firebase's free Spark plan (50,000 reads, 20,000 writes, 20,000 deletes per day; 1 GB stored). Whenever a change adds or changes Firestore data or listeners, estimate reads per app open and per change for two people on a heavy day, and tell the owner how far that is from the limits. Prefer one document (with a map inside) over many documents for small shared lists, since each document a listener loads costs a read on every app open. As of the shopping notes and added items, a heavy day is about 1,300 reads and 150 writes, and each rated meal adds about 1 read per app open.
 - After pushing app changes, tell the owner the new version code (shown at the bottom of Settings, from `sw.js`) and to tap **Settings → Check for updates**.
