@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Only these two accounts can read or change anything.
+    // Replace the two addresses with yours (lower-case).
+    function isUs() {
+      return request.auth != null
+        && request.auth.token.email.lower() in ['you@example.com', 'wife@example.com'];
+    }
+    match /{document=**} {
+      allow read, write: if isUs();
+    }
+  }
+}
