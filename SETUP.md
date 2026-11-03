@@ -8,7 +8,7 @@ About 30 minutes, on a computer, once. You need no code skills. You only copy an
 |---|---|---|---|
 | Shared ticks and the two logins | **Firebase** (Google) | Free "Spark" plan. No credit card. | Built-in offline support: ticks made with no signal are stored on the phone and sent when signal returns. Free projects stay up when nobody uses them. (Supabase's free projects pause after a week of no use, which is bad for an app you use a few times a week.) |
 | The app itself | **GitHub Pages** | Free | You upload files in a web browser, so you don't need to install any tools. The address stays the same. Firebase Hosting would also work, but it needs a command-line tool on your computer. |
-| Your recipes | **Google Sheets** | Free | You edit the recipes like a spreadsheet, and both phones get the changes. |
+| Your recipes | **`recipes.xlsx` in the GitHub repository** | Free | Claude edits and publishes it for you, and both phones get the changes the next time the app opens. GitHub keeps every past version. |
 
 **How you sign in:** each of you has your own email and password, which you create yourself in Firebase. Nobody else can sign up. The database rules let **only your two email addresses** read or change ticks, so anyone else who finds the app address sees only a sign-in screen. You sign in once per phone and stay signed in.
 
@@ -89,25 +89,19 @@ Test it: tick something on one phone. It should appear on the other within a sec
 
 > If an older version still shows after you change something on GitHub, close the app and open it again. Updates arrive on the second open.
 
-## Step 6. Edit recipes in Google Sheets (recommended)
+## Step 6. Adding or changing recipes
 
-1. Go to **https://drive.google.com**, click **New → File upload**, and choose `recipe_app_data.xlsx`.
-2. Open it, then click **File → Save as Google Sheets**. This step is important, because Google can't publish an Excel file. Use the new Google Sheets copy from now on.
-3. Click **File → Share → Publish to web**. Choose **Entire Document** and **Microsoft Excel (.xlsx)**, then click **Publish** and **OK**. Copy the link it shows. The link contains `/d/e/`.
-4. In the app, open **Settings** and paste the link into **Google Sheet link**, then tap **Save link**. The link is saved for **both** phones.
+Recipes live in **`recipes.xlsx`** in the GitHub repository. You don't edit it by hand. Instead:
 
-From then on, edit the Google Sheet as usual. The app checks for changes each time you open it, and you can also tap **Reload recipes** in Settings. Google takes up to about 5 minutes to publish an edit.
+1. Start a **Claude Code** session at **claude.ai/code** and select the **entquine/recipes** repository.
+2. Say what you want, for example *"Add a salmon meal with roasted asparagus and rice"*, or attach a recipe spreadsheet and say *"merge these recipes in"*.
+3. Claude follows the rules in `CLAUDE.md`: it adds to the existing recipes, checks the file, and publishes it.
 
-*Publishing makes the recipes readable by anyone who has that long, unguessable link. Your ticks are still private.*
+About 2 minutes later, the phones show the change the next time the app is opened. You can also tap **Settings → Reload recipes**. With no signal, the app keeps showing the last recipes it loaded.
 
-**If the app says it couldn't load the sheet:** it keeps showing the last recipes it loaded, so cooking is never blocked. Try a different link instead: in the sheet, click **Share → General access → Anyone with the link (Viewer)**, then paste that normal sheet link into the app.
-
-**Rules for editing the sheet:**
-- Keep the tab names **Recipes** and **Shopping** and the column headings as they are.
-- **New meal:** add rows with a new value in **Meal**. The leading number (for example `5 Salmon Night`) sets the order in the list and is hidden in the app.
-- In the Plan text, references like `(Carrot steps 2-6)`, `(Main step 3)` or `(Side step 1)` turn into colored links that jump to the right step. For this to work, the word before "step" must be **Main**, **Side**, or a word from the dish's name.
-- Plan times look like `0:27`, or use `Before` for preheating.
-- Each tick is tied to the text of its line. If you edit a line's text, that line's tick resets. Nothing else is affected.
+What to keep in mind:
+- **Don't rename an existing meal.** Ratings and calendar entries are tied to the meal's name.
+- **Edited lines lose their tick.** Each tick is tied to the text of its line, so if a step's text changes, that step's tick resets. Nothing else is affected.
 
 ---
 

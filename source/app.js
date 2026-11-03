@@ -175,7 +175,6 @@ const state = {
   ticks: {},               // scopeId -> { key: true }
   sync: 'none',            // ok | pending | offline | local | none | error
   user: null,
-  sheetUrl: '',
   firebase: null,          // { auth, db } when configured
   authReady: false,
   dbError: '',
@@ -187,7 +186,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubCfg = null, unsubPlan = null, unsubRatings = null, lastSnapPending = false;
+let unsubTicks = null, unsubPlan = null, unsubRatings = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -226,10 +225,6 @@ function startFirestore() {
       : 'Sync error: ' + (err.code || err.message);
     state.sync = 'error'; renderSync(); route();
   });
-  unsubCfg = onSnapshot(doc(db, 'config', 'app'), (snap) => {
-    const url = (snap.exists() && snap.data().sheetUrl) || '';
-    if (url !== state.sheetUrl) { state.sheetUrl = url; ls.set('sheet-url', url); loadRecipes(); }
-  }, () => {});
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) };
     if (/^#?\/?(calendar)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
@@ -240,7 +235,7 @@ function startFirestore() {
     if (/^#?\/?(calendar|meal\/.*)?$/.test(location.hash)) route();
   }, () => {});
 }
-function stopFirestore() { for (const u of [unsubTicks, unsubCfg, unsubPlan, unsubRatings]) if (u) u(); unsubTicks = unsubCfg = unsubPlan = unsubRatings = null; }
+function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = null; }
 
 // ---------------------------------------------------------------- ratings
 // One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
@@ -331,36 +326,18 @@ addEventListener('online', () => updateSync(false));
 addEventListener('offline', () => updateSync(true));
 
 // ---------------------------------------------------------------- recipe loading
-function sheetSources(url) {
-  const pub = url.match(/\/spreadsheets\/d\/e\/([\w-]+)/);
-  if (pub) return { kind: 'xlsx', url: `https://docs.google.com/spreadsheets/d/e/${pub[1]}/pub?output=xlsx` };
-  const id = url.match(/\/spreadsheets\/d\/([\w-]{20,})/);
-  if (id) {
-    const base = `https://docs.google.com/spreadsheets/d/${id[1]}/gviz/tq?tqx=out:csv&headers=1&sheet=`;
-    return { kind: 'csv', recipes: base + 'Recipes', shopping: base + 'Shopping' };
-  }
-  return null;
-}
 async function fetchOk(url, type) {
   const r = await fetch(url, { cache: 'no-store' });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   return type === 'buf' ? r.arrayBuffer() : r.text();
 }
-async function fetchRows(src) {
-  if (src === 'bundled') return rowsFromWorkbook(XLSX.read(await fetchOk('recipes.xlsx', 'buf'), { type: 'array' }));
-  if (src.kind === 'xlsx') return rowsFromWorkbook(XLSX.read(await fetchOk(src.url, 'buf'), { type: 'array' }));
-  const csv = async (u) => {
-    const text = await fetchOk(u, 'text');
-    if (/^\s*</.test(text)) throw new Error('Google returned a web page instead of data. Is the sheet shared as "Anyone with the link"?');
-    const wb = XLSX.read(text, { type: 'string', raw: true });
-    return XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: '', raw: false });
-  };
-  const [recipes, shopping] = await Promise.all([csv(src.recipes), csv(src.shopping).catch(() => [])]);
-  return { recipes, shopping };
+// Recipes come only from recipes.xlsx in the GitHub repository (see CLAUDE.md).
+async function fetchRows() {
+  return rowsFromWorkbook(XLSX.read(await fetchOk('recipes.xlsx', 'buf'), { type: 'array' }));
 }
 function setRows(rows, info) {
   const model = buildModel(rows);
-  if (!model.meals.length) throw new Error('No recipes found. Is there a tab named "Recipes" with the usual columns?');
+  if (!model.meals.length) throw new Error('No recipes found in recipes.xlsx. Is there a tab named "Recipes" with the usual columns?');
   const sig = JSON.stringify(rows);
   const changed = sig !== state.rowsSig;
   state.rowsSig = sig; state.model = model;
@@ -372,18 +349,14 @@ let loading = null;
 async function loadRecipes() {
   if (loading) return loading;
   loading = (async () => {
-    const url = state.sheetUrl;
-    const src = url ? sheetSources(url) : 'bundled';
     try {
-      if (!src) throw new Error('That does not look like a Google Sheets link.');
-      setRows(await fetchRows(src), { source: url ? 'sheet' : 'bundled', at: Date.now(), error: '' });
+      setRows(await fetchRows(), { at: Date.now(), error: '' });
     } catch (e) {
+      // keep showing the last recipes that loaded (they're saved on the phone)
       console.warn('Recipe load failed', e);
-      const info = { ...(state.recipeInfo || {}), error: (url ? 'Could not load the Google Sheet: ' : 'Could not load recipes: ') + e.message };
+      const info = { ...(state.recipeInfo || {}), error: 'Could not load the latest recipes: ' + e.message };
       state.recipeInfo = info; ls.set('recipes-info', info);
-      if (!state.model) { // nothing on screen yet: fall back to the built-in file
-        try { setRows(await fetchRows('bundled'), { source: 'bundled', at: Date.now(), error: info.error }); } catch { route(); }
-      } else if (location.hash.startsWith('#/settings')) route();
+      if (!state.model || location.hash.startsWith('#/settings')) route();
     } finally { loading = null; }
   })();
   return loading;
@@ -602,19 +575,11 @@ function renderSettings() {
   h += '</section>';
 
   h += `<section class="card"><p class="section-label">Recipes</p>
-    <p>Source: <strong>${info.source === 'sheet' ? 'Google Sheet' : 'Built-in file (recipes.xlsx)'}</strong><br>
+    <p>Source: <strong>recipes.xlsx</strong> in the GitHub repository<br>
     <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' meals' : 'none'}</span></p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
-    <form id="sheetform">
-      <label class="field">Google Sheet link${state.firebase ? ' (shared with both phones)' : ''}
-        <input type="url" id="sheeturl" placeholder="https://docs.google.com/spreadsheets/…" value="${esc(state.sheetUrl)}">
-      </label>
-      <div class="row-btns" style="justify-content:flex-start;margin-top:0">
-        <button class="btn" type="submit">Save link</button>
-        <button class="btn ghost" type="button" id="reload">Reload recipes</button>
-      </div>
-      <p class="small">Leave the link empty to use the built-in recipes.xlsx file.</p>
-    </form></section>`;
+    <button class="btn ghost" type="button" id="reload">Reload recipes</button>
+    <p class="small">Recipes reload every time the app opens. To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
 
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
@@ -735,15 +700,6 @@ document.addEventListener('submit', async (e) => {
       renderLogin(msg);
     }
   }
-  if (e.target.id === 'sheetform') {
-    e.preventDefault();
-    const url = $('#sheeturl').value.trim();
-    if (url && !sheetSources(url)) { toast('That is not a Google Sheets link'); return; }
-    state.sheetUrl = url; ls.set('sheet-url', url);
-    if (state.firebase) setDoc(doc(state.firebase.db, 'config', 'app'), { sheetUrl: url }, { merge: true }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
-    toast('Saved. Loading recipes…');
-    await loadRecipes(); route();
-  }
 });
 document.addEventListener('change', (e) => { if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); } });
 
@@ -858,7 +814,7 @@ addEventListener('hashchange', route);
 
 // ---------------------------------------------------------------- start
 function start() {
-  state.sheetUrl = ls.get('sheet-url', '');
+  try { localStorage.removeItem('sheet-url'); } catch { /* old setting, no longer used */ }
   const cached = ls.get('recipes-cache', null);
   if (cached) { try { state.model = buildModel(cached); state.rowsSig = JSON.stringify(cached); } catch { /* ignore bad cache */ } }
 
