@@ -430,27 +430,18 @@ function migrateToIds() {
   }
   if (Object.keys(days).length) writePlan(days);
 }
-function oldRatingsReport() { // which old name-based ratings can be safely removed
-  const safe = [], kept = [];
-  for (const [id, r] of Object.entries(state.ratings)) {
-    if (!id.startsWith('m-')) continue;
-    const meal = allMeals().find((x) => oldRatingIds(x).includes(id));
-    const cur = meal && state.ratings[meal.rid];
-    const copied = cur && Object.keys((r && r.votes) || {}).every((u) => cur.votes && cur.votes[u] != null);
-    if (copied || !Object.keys((r && r.votes) || {}).length) safe.push(id); else kept.push(id);
-  }
-  return { safe, kept };
-}
+const oldRatingKeys = () => Object.keys(state.ratings).filter((id) => id.startsWith('m-')); // saved under a meal name
 async function removeOldRatings() {
-  const { safe, kept } = oldRatingsReport();
-  if (!safe.length) { toast(kept.length ? 'Nothing safe to remove yet' : 'No old ratings left'); return; }
-  if (!(await confirmDialog(`Remove ${safe.length} old rating record${safe.length > 1 ? 's' : ''}? Every rating has already been copied to the new format, so nothing you see changes.${kept.length ? ` ${kept.length} will be kept because their meal isn't in the spreadsheet.` : ''}`, 'Remove'))) return;
-  for (const id of safe) {
+  migrateToIds(); // copy any last votes to the dish IDs first
+  const old = oldRatingKeys();
+  if (!old.length) { toast('No old ratings left'); return; }
+  if (!(await confirmDialog(`Remove all ${old.length} old name-based rating record${old.length > 1 ? 's' : ''}? Ratings for meals in the spreadsheet were already copied to the new format.`, 'Remove'))) return;
+  for (const id of old) {
     delete state.ratings[id];
     if (state.firebase) deleteDoc(doc(state.firebase.db, 'ratings', id)).catch((e) => toast('Could not remove: ' + (e.code || e.message)));
   }
   if (!state.firebase) ls.set('local-ratings', state.ratings);
-  toast(`Removed ${safe.length} old rating record${safe.length > 1 ? 's' : ''}`);
+  toast(`Removed ${old.length} old rating record${old.length > 1 ? 's' : ''}`);
   route();
 }
 
@@ -866,10 +857,10 @@ function renderSettings() {
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
   { // temporary: remove ratings saved under meal names once they're copied to dish IDs
-    const { safe, kept } = oldRatingsReport();
-    if (safe.length || kept.length) h += `<section class="card"><p class="section-label">Old ratings</p>
-      <p class="small">${safe.length} old rating record${safe.length === 1 ? '' : 's'} already copied to the new format${kept.length ? `, ${kept.length} kept (meal not in the spreadsheet)` : ''}. Check that your ratings look right on both phones, then remove the old copies.</p>
-      <button class="btn ghost" type="button" id="cleanratings"${safe.length ? '' : ' disabled'}>Remove old ratings</button></section>`;
+    const n = oldRatingKeys().length;
+    if (n) h += `<section class="card"><p class="section-label">Old ratings</p>
+      <p class="small">${n} old name-based rating record${n === 1 ? '' : 's'}. Your ratings have been copied to the new format; check they look right, then remove the old copies.</p>
+      <button class="btn ghost" type="button" id="cleanratings">Remove old ratings</button></section>`;
   }
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
