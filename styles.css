@@ -212,3 +212,5 @@ dialog p { margin: 0; font-size: 18px; }
 .card.tonight strong { font-size: 19px; }
 .planned { float: right; text-transform: none; letter-spacing: 0; color: var(--accent); font-weight: 650; }
 .tabs a { font-size: 12px; }
+.pickopt:disabled { opacity: .5; cursor: default; }
+.pickopt .taken { color: var(--accent); font-weight: 650; }

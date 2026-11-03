@@ -450,18 +450,26 @@ function renderCalendar() {
   h += '</ul><p class="small" style="text-align:center">Tap a day to choose or change its meal. Both phones see the same calendar.</p>';
   view().innerHTML = h;
 }
+// A meal can sit on only one upcoming day (today or later). Past days don't count, so meals can be repeated.
+function plannedElsewhere(mealName, day) {
+  const today = dayKey(new Date());
+  return Object.keys(state.plan).filter((k) => k !== day && k >= today && state.plan[k] === mealName).sort()[0] || null;
+}
 async function pickMeal(day) {
   const m = state.model; if (!m) return;
   const current = state.plan[day];
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
   dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
-    <div class="picklist">${m.meals.map((x) => `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}</button>`).join('')}</div>
+    <div class="picklist">${m.meals.map((x) => {
+      const other = plannedElsewhere(x.name, day);
+      return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+    }).join('')}</div>
     <div class="row-btns">${current ? '<button class="btn outline-danger" value="__none" style="width:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button></div></form>`;
   dlg.returnValue = '';
   const choice = await new Promise((resolve) => { dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }); dlg.showModal(); });
   if (choice === '__none') setPlan(day, null);
-  else if (choice && choice !== current) setPlan(day, choice);
+  else if (choice && choice !== current && !plannedElsewhere(choice, day)) setPlan(day, choice);
 }
 
 function renderShopping() {
