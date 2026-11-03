@@ -301,16 +301,18 @@ function addNote(text) {
 function notesListHtml() {
   const notes = Object.entries(state.notes).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
   if (!notes.length) return '';
-  return notes.map(([id, x]) => `<li class="note"><div><span class="notetext">${esc(x.text)}</span>
-    <span class="small">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></div>
-    ${(x.email || '').toLowerCase() === myEmail()
+  // notes tick like shopping items (stored with the shopping ticks, not counted in the shopping progress)
+  return notes.map(([id, x]) => itemHtml('shopping', 'n-' + id,
+    `<span class="body"><span class="notetext">${esc(x.text)}</span>
+    <span class="sub">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></span>${(x.email || '').toLowerCase() === myEmail()
       ? `<button class="delnote" data-editnote="${esc(id)}" aria-label="Edit note">✎</button>`
-      : `<button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button>`}</li>`).join('');
+      : `<button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button>`}`, 'extra note')).join('');
 }
 function renderNotes() {
   const ul = $('#notelist'); if (!ul) return;
   ul.innerHTML = notesListHtml();
   $('#notescard').hidden = !Object.keys(state.notes).length;
+  refreshTicks();
 }
 
 // ---------------------------------------------------------------- items added to the shopping list
@@ -764,7 +766,7 @@ function renderShopping() {
   if (!m) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   let h = banners();
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
-    <ul id="notelist" class="notelist">${notesListHtml()}</ul></section>`;
+    <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
   for (const sec of m.shopping) {
     h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml('shopping', x.key,

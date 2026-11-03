@@ -287,3 +287,7 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 /* small form dialogs (note / item) sit near the top so the keyboard never covers their buttons */
 #formdlg { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px); overflow-y: auto; }
 select.dlg-input { appearance: auto; }
+.item.note .notetext { font-weight: 600; }
+.item.note .sub { display: block; }
+.notelist .item.note { display: grid; gap: 0 4px; padding: 10px 0; border-top: 0; border-bottom: 1px solid var(--line); }
+.notelist .item.note:last-child { border-bottom: 0; }
