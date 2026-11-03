@@ -593,8 +593,19 @@ function renderPast() {
     </div>`;
   }
   view().innerHTML = h;
+  fitSides();
 }
 
+// Shrink each "with …" sides line just enough to fit on one line (between 12.5px and 13.5px); wraps if still too long.
+function fitSides() {
+  document.querySelectorAll('.meal-card .sides').forEach((el) => {
+    el.style.fontSize = ''; el.style.whiteSpace = 'nowrap';
+    const base = parseFloat(getComputedStyle(el).fontSize), need = base * el.clientWidth / el.scrollWidth;
+    el.style.whiteSpace = '';
+    if (need < base) el.style.fontSize = Math.max(12.5, Math.floor(need * 10) / 10) + 'px';
+  });
+}
+addEventListener('resize', fitSides);
 function mealCardHtml(meal, tonight) {
   const ri = ratingInfo(meal.name);
   const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
@@ -626,6 +637,7 @@ function renderMeals() {
     .sort((a, b) => a.r[0] - b.r[0] || a.r[1].localeCompare(b.r[1]) || a.i - b.i).map((x) => x.meal);
   for (const meal of sorted) h += mealCardHtml(meal, false);
   view().innerHTML = h || '<p class="empty">No meals yet.</p>';
+  fitSides();
   refreshTicks();
 }
 

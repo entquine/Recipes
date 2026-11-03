@@ -294,3 +294,4 @@ select.dlg-input { appearance: auto; }
 .notelist .item.note:last-child { border-bottom: 0; }
 .meal-card.tonight-card { border: 2px solid var(--accent); }
 .tonight-label { color: var(--accent); font-weight: 750; }
+.meal-card .sides { font-size: 13.5px; line-height: 1.35; }
