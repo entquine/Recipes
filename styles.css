@@ -249,3 +249,14 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .pastlabel { margin: 10px 0 2px; }
 .pickopt.past { background: transparent; border: 1.5px dashed var(--line); }
 .kind { display: inline-block; font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; margin-bottom: 2px; align-self: flex-start; }
+
+/* ---------- past screen: filter and quick rating ---------- */
+.filters { display: flex; gap: 8px; margin: -4px 0 14px; }
+.filter { border: 1.5px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 7px 14px; font-weight: 650; cursor: pointer; }
+.filter span { color: var(--muted); font-weight: 600; margin-left: 2px; }
+.filter.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.filter.on span { color: inherit; opacity: .7; }
+.past-card .cardlink { display: block; color: inherit; text-decoration: none; }
+.past-card .meta { justify-content: space-between; margin-top: 8px; }
+.past-card .ratebtn, .day .ratebtn { flex: none; padding: 6px 12px; border-radius: 999px; border: 1.5px solid #e3a42b; background: transparent; color: #b77b0f; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.past-card .ratebtn.voted { background: #e3a42b; color: #fff; }

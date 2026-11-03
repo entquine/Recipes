@@ -409,20 +409,30 @@ function renderPast() {
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners() + mealsSwitch('past');
-  const past = [...(m.past || [])].sort((a, b) => {
+  const filter = ls.get('past-filter', 'all'); // all | Main | Side
+  const all = m.past || [];
+  const count = (k) => all.filter((x) => x.kind === k).length;
+  if (all.length) h += `<nav class="filters" aria-label="Show">${[['all', 'All', all.length], ['Main', 'Mains', count('Main')], ['Side', 'Sides', count('Side')]]
+    .map(([v, label, n]) => `<button class="filter${filter === v ? ' on' : ''}" data-pastfilter="${v}">${label} <span>${n}</span></button>`).join('')}</nav>`;
+  const past = all.filter((x) => filter === 'all' || x.kind === filter).sort((a, b) => {
     const ra = ratingInfo(a.name), rb = ratingInfo(b.name);
     return (rb.done ? rb.avg : -1) - (ra.done ? ra.avg : -1) || a.name.localeCompare(b.name, undefined, { numeric: true });
   });
-  if (!past.length) h += '<p class="empty">No past recipes yet.<br><span class="small">To archive a meal, ask Claude, for example "archive the pot pie". It moves to this list with its rating, and you can still open it or plan it again.</span></p>';
+  if (all.length && !past.length) h += `<p class="empty">No past ${filter === 'Side' ? 'sides' : 'mains'} yet.</p>`;
+  if (!all.length) h += '<p class="empty">No past recipes yet.<br><span class="small">To archive a meal, ask Claude, for example "archive the pot pie". It moves to this list with its rating, and you can still open it or plan it again.</span></p>';
   for (const meal of past) {
     const ri = ratingInfo(meal.name);
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
-    h += `<a class="card meal-card" href="#/meal/${meal.id}">
-      <div class="eyebrow">${kindBadge(meal)}${plannedChip(meal)}</div>
-      <h2>${esc(meal.main.name)}</h2>
-      ${sides ? `<p class="sides">with ${sides}</p>` : ''}
-      <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `<span class="small">${ri.count ? 'Partly rated' : 'Not rated'}</span>`}</div>
-    </a>`;
+    const status = ri.done ? `<span class="avg">${starsText(ri.avg)}</span>`
+      : `<span class="small">${ri.mine ? 'Waiting for the other vote' : ri.count ? 'The other vote is in' : 'Not rated'}</span>`;
+    h += `<div class="card meal-card past-card">
+      <a class="cardlink" href="#/meal/${meal.id}">
+        <div class="eyebrow">${kindBadge(meal)}${plannedChip(meal)}</div>
+        <h2>${esc(meal.main.name)}</h2>
+        ${sides ? `<p class="sides">with ${sides}</p>` : ''}
+      </a>
+      <div class="meta">${status}<button class="ratebtn${ri.mine ? ' voted' : ''}" data-ratemeal="${meal.id}" aria-label="Rate ${esc(meal.main.name)}">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button></div>
+    </div>`;
   }
   view().innerHTML = h;
 }
@@ -696,6 +706,10 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
+  const pf = e.target.closest('[data-pastfilter]');
+  if (pf) { ls.set('past-filter', pf.dataset.pastfilter); route(); return; }
+  const rm = e.target.closest('[data-ratemeal]');
+  if (rm) { const meal = mealById(rm.dataset.ratemeal); if (meal) rateDialog(meal); return; }
   const rb = e.target.closest('[data-rateday]');
   if (rb) { const meal = mealByName(state.plan[rb.dataset.rateday]); if (meal) rateDialog(meal); return; }
   const pick = e.target.closest('.pick[data-day]');
