@@ -756,7 +756,7 @@ async function updateWakeLock() {
     else if (!want && wakeLock) { await wakeLock.release(); wakeLock = null; }
   } catch { wakeLock = null; }
 }
-document.addEventListener('visibilitychange', () => { updateWakeLock(); if (document.visibilityState === 'visible' && state.sheetUrl) loadRecipes(); });
+document.addEventListener('visibilitychange', () => { updateWakeLock(); if (document.visibilityState === 'visible') loadRecipes(); });
 
 // ---------------------------------------------------------------- calendar drag and drop
 // Press and hold a planned day (~0.35 s), then drag it onto another day. Works with touch and mouse.
