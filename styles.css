@@ -284,3 +284,5 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 #formdlg .field { margin: 10px 0; }
 #formdlg .row-btns { flex-wrap: wrap; }
 .card[hidden] { display: none; }
+/* small form dialogs (note / item) sit near the top so the keyboard never covers their buttons */
+#formdlg { margin: calc(12px + env(safe-area-inset-top)) auto auto; max-height: calc(100dvh - 24px); overflow-y: auto; }
