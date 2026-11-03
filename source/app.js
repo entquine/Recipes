@@ -622,18 +622,17 @@ function renderSettings() {
   else if (state.user) h += `<p>Signed in as <strong>${esc(state.user.email)}</strong>.</p><p class="small">Status: ${esc($('#sync').textContent)}</p><button class="btn ghost" id="signout">Sign out</button>`;
   h += '</section>';
 
+  h += `<section class="card"><p class="section-label">While cooking</p>
+    <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
+  h += `<section class="card"><p class="section-label">App updates</p>
+    <p class="small">After uploading a new version to GitHub, wait 2 minutes, then tap this.</p>
+    <button class="btn ghost" type="button" id="update">Check for app update</button></section>`;
   h += `<section class="card"><p class="section-label">Recipes</p>
     <p>Source: <strong>recipes.xlsx</strong> in the GitHub repository<br>
     <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' current meals, ' + (state.model.past || []).length + ' past' : 'none'}</span></p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="reload">Reload recipes</button>
     <p class="small">Recipes reload every time the app opens. To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
-
-  h += `<section class="card"><p class="section-label">While cooking</p>
-    <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
-  h += `<section class="card"><p class="section-label">App updates</p>
-    <p class="small">After uploading a new version to GitHub, wait 2 minutes, then tap this.</p>
-    <button class="btn ghost" type="button" id="update">Check for app update</button></section>`;
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
