@@ -908,7 +908,7 @@ function refreshTicks() {
 
 // Shown under the shopping counter when every item (not notes) is ticked. A new one is picked each time.
 const DONE_MESSAGES = [
-  "It's in the bag 😊", 'Great job!', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
+  "It's in the bag 🛍️", 'Groceries: handled 🥕', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
   "That's a wrap 🛒", 'Fridge, prepare yourself 😄', 'List conquered 💪', 'All set. Time to cook 🧑‍🍳', 'Look at you go ✨',
 ];
 function showDoneMessage(complete) {
