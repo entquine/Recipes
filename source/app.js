@@ -467,10 +467,10 @@ function refreshTicks() {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
   });
-  // ticked items move to the bottom of their list, unticked ones keep their original order
+  // shopping list only: ticked items move to the bottom of their section, unticked ones keep their order
   document.querySelectorAll('ul.list').forEach((ul) => {
     const items = [...ul.children].filter((li) => li.dataset.key);
-    if (!items.length) return;
+    if (!items.length || items[0].dataset.scope !== 'shopping') return;
     items.forEach((li, i) => { if (li.dataset.i == null) li.dataset.i = i; });
     const want = [...items].sort((a, b) => a.classList.contains('done') - b.classList.contains('done') || a.dataset.i - b.dataset.i);
     if (want.some((li, i) => li !== items[i])) want.forEach((li) => ul.appendChild(li));
