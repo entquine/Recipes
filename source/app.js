@@ -221,7 +221,7 @@ function setTick(scope, key, value) {
     .catch((e) => { console.error(e); toast('Could not save tick: ' + (e.code || e.message)); });
 }
 // Shopping ticks are saved per list (the Shopping tab's List date), so a new weekly list starts unticked.
-const SHOP = () => (state.model && state.model.shopList && !('shopping' in state.ticks) ? 'shopping-' + state.model.shopList : 'shopping'); // old record until moved
+const SHOP = () => (state.model && state.model.shopList ? 'shopping-' + state.model.shopList : 'shopping');
 const isShopScope = (scope) => scope === 'shopping' || scope.startsWith('shopping-');
 async function clearScope(scope) {
   if (!state.firebase) { state.ticks[scope] = {}; ls.set('local-ticks', state.ticks); refreshTicks(); return; }
@@ -550,7 +550,7 @@ function tidyOldLists() {
   const cur = state.model && state.model.shopList;
   if (!cur || !state.recipesFresh || (state.firebase && !(ticksLoaded && extrasLoaded))) return;
   for (const id of Object.keys(state.ticks)) {
-    const m = id.match(/^shopping-(.+)$/);
+    const m = id === 'shopping' ? [id, ''] : id.match(/^shopping-(.+)$/); // 'shopping' = record from before lists had dates
     if (!m || !(m[1] < cur) || tidied.has(id)) continue;
     tidied.add(id);
     const ticked = state.ticks[id] || {};
@@ -563,23 +563,6 @@ function deleteTicks(id) {
   delete state.ticks[id];
   if (!state.firebase) { ls.set('local-ticks', state.ticks); return; }
   deleteDoc(doc(state.firebase.db, 'ticks', id)).catch((e) => console.warn('could not delete ticks', id, e));
-}
-// One-time move (temporary): ticks saved before lists had dates live in ticks/shopping. Copy them to this
-// week's list and delete the old record; also delete tick records for meals no longer in the spreadsheet.
-function staleMealTicks() { const ids = new Set(allMeals().map((x) => x.id)); return Object.keys(state.ticks).filter((id) => id.startsWith('m-') && !ids.has(id)); }
-const needsShopMove = () => !!(state.model && state.model.shopList && 'shopping' in state.ticks);
-async function moveShoppingTicks() {
-  if (!needsShopMove()) { toast('Nothing to move'); return; }
-  const old = state.ticks.shopping || {}, to = 'shopping-' + state.model.shopList, stale = staleMealTicks();
-  if (!(await confirmDialog(`Move ${Object.keys(old).length} shopping tick${Object.keys(old).length === 1 ? '' : 's'} to this week's list (${state.model.shopList})${stale.length ? ` and remove ${stale.length} tick record${stale.length === 1 ? '' : 's'} for meals no longer in the spreadsheet` : ''}?`, 'Move'))) return;
-  const merged = { ...old, ...(state.ticks[to] || {}) };
-  state.ticks[to] = merged;
-  if (!state.firebase) ls.set('local-ticks', state.ticks);
-  else await setDoc(doc(state.firebase.db, 'ticks', to), { k: merged, at: serverTimestamp() }, { merge: true });
-  deleteTicks('shopping');
-  stale.forEach(deleteTicks);
-  toast('Shopping ticks moved');
-  route();
 }
 
 // ---------------------------------------------------------------- views
@@ -871,9 +854,6 @@ function renderSettings() {
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
-  if (needsShopMove()) h += `<section class="card"><p class="section-label">Shopping list upgrade</p>
-    <p class="small">One-time step: moves your current shopping ticks to this week's list (${esc(state.model.shopList)}), so future weekly lists start unticked.</p>
-    <button class="btn ghost" type="button" id="moveshop">Move shopping ticks</button></section>`;
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -937,7 +917,6 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
-  if (e.target.id === 'moveshop') { moveShoppingTicks(); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
