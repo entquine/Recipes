@@ -290,18 +290,26 @@ function writeNotes(changes) {
   const n = {}; for (const [id, v] of Object.entries(changes)) n[id] = v || deleteField();
   setDoc(doc(state.firebase.db, 'notes', 'shopping'), { n }, { merge: true }).catch((e) => toast('Could not save note: ' + (e.code || e.message)));
 }
+const NOTE_LIMIT = 3; // notes per person
+const myNoteCount = () => Object.values(state.notes).filter((x) => (x.email || '').toLowerCase() === myEmail()).length;
 function addNote(text) {
+  if (myNoteCount() >= NOTE_LIMIT) { toast(`You already have ${NOTE_LIMIT} notes. Delete one to add another.`); return false; }
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   writeNotes({ [id]: { text, email: myEmail(), at: Date.now() } });
+  return true;
 }
 function notesListHtml() {
   const notes = Object.entries(state.notes).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
-  if (!notes.length) return '<li class="nonote small">No notes yet.</li>';
+  if (!notes.length) return '';
   return notes.map(([id, x]) => `<li class="note"><div><span class="notetext">${esc(x.text)}</span>
     <span class="small">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></div>
     <button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button></li>`).join('');
 }
-function renderNotes() { const ul = $('#notelist'); if (ul) ul.innerHTML = notesListHtml(); }
+function renderNotes() {
+  const ul = $('#notelist'); if (!ul) return;
+  ul.innerHTML = notesListHtml();
+  $('#notescard').hidden = !Object.keys(state.notes).length;
+}
 
 // ---------------------------------------------------------------- items added to the shopping list
 // Stored in Firestore shopping/extra as { i: { id: { name, amount, email, at } } }. Ticked like any other item.
@@ -318,12 +326,60 @@ function extrasListHtml() {
   const items = Object.entries(state.extras).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
   if (!items.length) return '';
   return items.map(([id, x]) => itemHtml('shopping', extraKey(id),
-    `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span><button class="delnote" data-delextra="${esc(id)}" aria-label="Remove ${esc(x.name)}">×</button>`, 'extra')).join('');
+    `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span>${
+      (x.email || '').toLowerCase() === myEmail()
+        ? `<button class="delnote" data-editextra="${esc(id)}" aria-label="Edit ${esc(x.name)}">✎</button>`
+        : `<button class="delnote" data-delextra="${esc(id)}" aria-label="Remove ${esc(x.name)}">×</button>`}`, 'extra')).join('');
 }
 function renderExtras() {
   const ul = $('#extralist'); if (!ul) return;
   ul.innerHTML = extrasListHtml();
+  $('#extrascard').hidden = !Object.keys(state.extras).length;
   refreshTicks();
+}
+
+// ---------------------------------------------------------------- "+" in the top bar (shopping list)
+function formDialog(html) { // shows a small form dialog; resolves with the submit button's value and the form
+  let dlg = $('#formdlg');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'formdlg'; document.body.appendChild(dlg); }
+  dlg.innerHTML = `<form method="dialog">${html}</form>`;
+  dlg.returnValue = '';
+  // Enter in a text box saves (otherwise the first button, Cancel or Remove, would be used)
+  dlg.querySelectorAll('input').forEach((inp) => inp.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') { ev.preventDefault(); const save = dlg.querySelector('button[value="save"]'); if (save) save.click(); }
+  }));
+  return new Promise((resolve) => { dlg.addEventListener('close', () => resolve({ value: dlg.returnValue, form: dlg.querySelector('form') }), { once: true }); dlg.showModal(); });
+}
+const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
+async function addMenu() {
+  const full = myNoteCount() >= NOTE_LIMIT;
+  const r = await formDialog(`<p class="picktitle">Add to the shopping list</p>
+    <div class="picklist">
+      <button class="pickopt" value="item"><strong>Item</strong><span class="small">Something to buy, with an amount</span></button>
+      <button class="pickopt" value="note"${full ? ' disabled' : ''}><strong>Note</strong><span class="small">${full ? `You have ${NOTE_LIMIT} notes. Delete one to add another.` : `A note for both of you (up to ${NOTE_LIMIT} each)`}</span></button>
+    </div><div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  if (r.value === 'item') editItem(null);
+  else if (r.value === 'note') {
+    const n = await formDialog(`<p class="picktitle">New note</p>
+      <input class="dlg-input" name="text" maxlength="200" placeholder="e.g. Coupon in the glovebox" autocomplete="off">
+      <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Add note</button></div>`);
+    const text = clean(n.form.text.value, 200);
+    if (n.value === 'save' && text && addNote(text)) toast('Note added');
+  }
+}
+async function editItem(id) { // id null = new item; otherwise edit your own item
+  const x = id ? state.extras[id] : null;
+  const r = await formDialog(`<p class="picktitle">${x ? 'Edit item' : 'New item'}</p>
+    <label class="field">Item<input class="dlg-input" name="name" maxlength="80" placeholder="e.g. Paper towels" value="${esc(x ? x.name : '')}" autocomplete="off"></label>
+    <label class="field">Amount <span class="small">(optional)</span><input class="dlg-input" name="amount" maxlength="40" placeholder="e.g. 1 pack" value="${esc(x ? x.amount : '')}" autocomplete="off"></label>
+    <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${x ? 'Save' : 'Add item'}</button></div>`);
+  if (r.value === 'delete') { writeExtras({ [id]: null }); toast('Item removed'); return; }
+  if (r.value !== 'save') return;
+  const name = clean(r.form.name.value, 80), amount = clean(r.form.amount.value, 40);
+  if (!name) { toast('Type the item name'); return; }
+  if (x) writeExtras({ [id]: { ...x, name, amount } });
+  else writeExtras({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name, amount, email: myEmail(), at: Date.now() } });
+  toast(x ? 'Item updated' : 'Item added');
 }
 
 // ---------------------------------------------------------------- ratings
@@ -693,12 +749,10 @@ function renderShopping() {
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   let h = banners();
-  h += `<section class="card notes"><p class="section-label">Notes</p>
-    <form id="noteform" class="customrow"><input type="text" id="notetext" maxlength="200" placeholder="Add a note for both of you" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+  h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
-  h += `<section class="card extras"><p class="section-label">Added by us</p>
-    <form id="extraform" class="extraform"><input type="text" id="extraname" maxlength="80" placeholder="Item" autocomplete="off" required><input type="text" id="extraamount" maxlength="40" placeholder="Amount" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+  h += `<section class="card extras" id="extrascard"${Object.keys(state.extras).length ? '' : ' hidden'}><p class="section-label">Added by us</p>
     <ul class="list" id="extralist">${extrasListHtml()}</ul></section>`;
   if (!m.shopping.length) h += '<p class="empty">No shopping list found. Add a "Shopping" tab to the spreadsheet.</p>';
   for (const sec of m.shopping) {
@@ -789,6 +843,9 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
+  if (e.target.closest('#addbtn')) { addMenu(); return; }
+  const ex = e.target.closest('[data-editextra]');
+  if (ex) { editItem(ex.dataset.editextra); return; }
   const dx = e.target.closest('[data-delextra]');
   if (dx) { const x = state.extras[dx.dataset.delextra]; if (x && await confirmDialog(`Remove "${x.name}" from the shopping list for both of you?`, 'Remove')) writeExtras({ [dx.dataset.delextra]: null }); return; }
   const dn = e.target.closest('[data-delnote]');
@@ -843,21 +900,6 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target.matches('.item[data-key]')) { e.preventDefault(); e.target.click(); }
 });
 document.addEventListener('submit', async (e) => {
-  if (e.target.id === 'extraform') {
-    e.preventDefault();
-    const name = $('#extraname').value.replace(/\s+/g, ' ').trim(), amount = $('#extraamount').value.replace(/\s+/g, ' ').trim();
-    if (!name) return;
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-    writeExtras({ [id]: { name, amount, email: myEmail(), at: Date.now() } });
-    $('#extraname').value = ''; $('#extraamount').value = ''; $('#extraname').focus();
-    return;
-  }
-  if (e.target.id === 'noteform') {
-    e.preventDefault();
-    const inp = $('#notetext'); const text = inp.value.replace(/\s+/g, ' ').trim();
-    if (text) { addNote(text); inp.value = ''; }
-    return;
-  }
   if (e.target.id === 'nameform') {
     e.preventDefault();
     const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -979,6 +1021,7 @@ function route() {
   const [page, arg] = hash.split('/');
   const keepScroll = hash === lastRoute;
   const y = scrollY;
+  $('#addbtn').hidden = page !== 'shopping';
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
   else if (page === 'calendar') renderCalendar();

@@ -278,3 +278,9 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .extraform .btn { min-height: 44px; padding: 0 16px; }
 .item.extra { grid-template-columns: 44px 1fr 40px; }
 .item.extra .delnote { align-self: center; }
+.topadd { flex: none; width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(255,255,255,.2); color: inherit; font-size: 28px; line-height: 1; font-weight: 500; display: flex; align-items: center; justify-content: center; padding: 0 0 3px; cursor: pointer; }
+.topadd[hidden] { display: none; }
+.dlg-input { display: block; width: 100%; margin-top: 6px; padding: 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); font-weight: 400; }
+#formdlg .field { margin: 10px 0; }
+#formdlg .row-btns { flex-wrap: wrap; }
+.card[hidden] { display: none; }
