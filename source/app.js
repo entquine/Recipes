@@ -595,6 +595,20 @@ function renderPast() {
   view().innerHTML = h;
 }
 
+function mealCardHtml(meal, tonight) {
+  const ri = ratingInfo(meal.name);
+  const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
+  const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
+  const timeAndProgress = `${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
+  return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
+      <div class="eyebrow">${tonight ? '<span class="tonight-label">Tonight</span>' : `${esc(meal.title)}${plannedChip(meal)}`}</div>
+      <h2>${esc(meal.main.name)}</h2>
+      ${sides ? `<p class="sides">with ${sides}</p>` : ''}
+      <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : timeAndProgress}</div>
+      ${tonight && ri.done ? `<p class="small votes"><span class="avg">${starsText(ri.avg)}</span> last time</p>` : ''}
+      ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
+    </a>`;
+}
 function renderMeals() {
   setTitle(APP_NAME, false); setTab('meals');
   const m = state.model;
@@ -603,24 +617,14 @@ function renderMeals() {
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
+  // Tonight's meal gets the full card at the top (time, progress, rating) and isn't repeated below.
   const tonight = mealByName(state.plan[dayKey(new Date())]);
-  if (tonight) h += `<a class="card tonight" href="#/meal/${tonight.id}"><span class="section-label">Tonight</span><strong>${esc(tonight.main.name)}</strong>${tonight.sides.length ? `<span class="small">with ${tonight.sides.map((d) => esc(d.name)).join(' &amp; ')}</span>` : ''}</a>`;
+  if (tonight) h += mealCardHtml(tonight, true);
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
   const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };
-  const sorted = m.meals.map((meal, i) => ({ meal, i, r: rank(meal) }))
+  const sorted = m.meals.filter((meal) => meal !== tonight).map((meal, i) => ({ meal, i, r: rank(meal) }))
     .sort((a, b) => a.r[0] - b.r[0] || a.r[1].localeCompare(b.r[1]) || a.i - b.i).map((x) => x.meal);
-  for (const meal of sorted) {
-    const ri = ratingInfo(meal.name);
-    const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
-    const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
-    h += `<a class="card meal-card${ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
-      <div class="eyebrow">${esc(meal.title)}${plannedChip(meal)}</div>
-      <h2>${esc(meal.main.name)}</h2>
-      ${sides ? `<p class="sides">with ${sides}</p>` : ''}
-      <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`}</div>
-      ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
-    </a>`;
-  }
+  for (const meal of sorted) h += mealCardHtml(meal, false);
   view().innerHTML = h || '<p class="empty">No meals yet.</p>';
   refreshTicks();
 }

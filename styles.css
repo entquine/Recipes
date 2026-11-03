@@ -292,3 +292,5 @@ select.dlg-input { appearance: auto; }
 .item.note .sub { display: block; }
 .notelist .item.note { display: grid; gap: 0 4px; padding: 10px 0; border-top: 0; border-bottom: 1px solid var(--line); }
 .notelist .item.note:last-child { border-bottom: 0; }
+.meal-card.tonight-card { border: 2px solid var(--accent); }
+.tonight-label { color: var(--accent); font-weight: 750; }
