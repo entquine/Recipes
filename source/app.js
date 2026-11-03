@@ -303,7 +303,9 @@ function notesListHtml() {
   if (!notes.length) return '';
   return notes.map(([id, x]) => `<li class="note"><div><span class="notetext">${esc(x.text)}</span>
     <span class="small">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></div>
-    <button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button></li>`).join('');
+    ${(x.email || '').toLowerCase() === myEmail()
+      ? `<button class="delnote" data-editnote="${esc(id)}" aria-label="Edit note">✎</button>`
+      : `<button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button>`}</li>`).join('');
 }
 function renderNotes() {
   const ul = $('#notelist'); if (!ul) return;
@@ -366,6 +368,17 @@ async function addMenu() {
     const text = clean(n.form.text.value, 200);
     if (n.value === 'save' && text && addNote(text)) toast('Note added');
   }
+}
+async function editNote(id) { // your own notes: change the text or delete
+  const x = state.notes[id]; if (!x) return;
+  const r = await formDialog(`<p class="picktitle">Edit note</p>
+    <input class="dlg-input" name="text" maxlength="200" value="${esc(x.text)}" autocomplete="off">
+    <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  if (r.value === 'delete') { writeNotes({ [id]: null }); toast('Note deleted'); return; }
+  if (r.value !== 'save') return;
+  const text = clean(r.form.text.value, 200);
+  if (!text) { toast('Type the note, or tap Delete'); return; }
+  if (text !== x.text) { writeNotes({ [id]: { ...x, text } }); toast('Note updated'); }
 }
 async function editItem(id) { // id null = new item; otherwise edit your own item
   const x = id ? state.extras[id] : null;
@@ -845,6 +858,8 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
+  const en = e.target.closest('[data-editnote]');
+  if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
   if (ex) { editItem(ex.dataset.editextra); return; }
   const dx = e.target.closest('[data-delextra]');
