@@ -143,7 +143,7 @@ function buildShopping(shopping) {
     sections.get(sec).push({ item: r.item, amount: r.amount, usedIn: r['used in'], key: hash(n > 1 ? `${base}#${n}` : base) });
   }
   const pref = ['meat', 'produce', 'dairy', 'pantry'];
-  const rank = (s) => { const i = pref.indexOf(s.toLowerCase()); return i < 0 ? 99 : i; };
+  const rank = (s) => { if (s.toLowerCase() === 'other') return -1; const i = pref.indexOf(s.toLowerCase()); return i < 0 ? 99 : i; }; // Other first
   const shop = [...sections.entries()].map(([name, items], i) => ({ name, items, i })).sort((a, b) => rank(a.name) - rank(b.name) || a.i - b.i);
   return { shopping: shop, shopKeys: shop.flatMap((s) => s.items.map((x) => x.key)), shopList: list };
 }
@@ -825,12 +825,13 @@ function renderShopping() {
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>`;
+  // "Other" goes first. Its own card holds items added in the app as Other, unless the spreadsheet also has an Other section.
+  const other = m.shopping.some((sec) => sec.name === 'Other') ? '' : extrasListHtml('Other');
+  if (other) h += `<section class="card"><p class="section-label">Other</p><ul class="list">${other}</ul></section>`;
   for (const sec of m.shopping) {
     h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml(SHOP(), x.key,
       `<span class="body"><strong>${esc(x.item)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}${x.usedIn ? `<span class="sub">For: ${esc(x.usedIn)}</span>` : ''}</span>`)).join('') + extrasListHtml(sec.name) + '</ul></section>';
   }
-  const other = extrasListHtml('Other');
-  if (other) h += `<section class="card"><p class="section-label">Other</p><ul class="list">${other}</ul></section>`;
   if (!m.shopping.length && !other) h += '<p class="empty">The shopping list is empty. Tap + to add an item.</p>';
   if (m.shopping.length || other) h += `<button class="btn outline-danger" data-clear="${SHOP()}" data-label="the shopping list">Clear shopping ticks</button>`;
   view().innerHTML = h;
