@@ -51,7 +51,7 @@ a { color: var(--accent); }
   padding: calc(8px + env(safe-area-inset-top)) 12px 8px 16px;
   background: var(--accent); color: var(--accent-ink); min-height: 56px;
 }
-.topbar h1 { flex: 1; margin: 0; font-size: 20px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar h1 { flex: 1; margin: 0; font-size: clamp(16px, 4.6vw, 20px); font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .back { background: none; border: 0; color: inherit; padding: 8px; margin-left: -10px; display: flex; border-radius: 50%; }
 .back[hidden] { display: none; }
 .sync { display: flex; align-items: center; gap: 6px; font-size: 13px; background: rgba(0,0,0,.18); padding: 4px 10px; border-radius: 999px; white-space: nowrap; }

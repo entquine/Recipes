@@ -1,4 +1,4 @@
-// Dinner Recipes – shared cooking checklist PWA.
+// Dinner Recipes (installs as "What's Cooking with Brian") – shared cooking checklist PWA.
 // Source file. The build step bundles this into ../app.js (see build.mjs).
 
 import XLSX from 'xlsx/dist/xlsx.mini.min.js';
@@ -11,6 +11,8 @@ import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
   collection, doc, onSnapshot, setDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
+
+const APP_NAME = 'Dinner'; // home-screen name is set in manifest.webmanifest
 
 // ---------------------------------------------------------------- helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -309,7 +311,7 @@ async function loadRecipes() {
 const view = () => $('#view');
 function setTitle(text, back) {
   $('#title').textContent = text; $('#back').hidden = !back;
-  document.title = text === 'Dinner' ? 'Dinner Recipes' : `${text} · Dinner`;
+  document.title = text === APP_NAME ? 'Dinner Recipes' : `${text} · Dinner`;
 }
 function setTab(name) {
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
@@ -326,7 +328,7 @@ function banners() {
 }
 
 function renderMeals() {
-  setTitle('Dinner', false); setTab('meals');
+  setTitle(APP_NAME, false); setTab('meals');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners();
@@ -443,7 +445,7 @@ function renderSettings() {
 }
 
 function renderLogin(err = '') {
-  setTitle('Dinner', false);
+  setTitle(APP_NAME, false);
   $('#tabs').hidden = true;
   view().innerHTML = `<section class="card login"><h2>Sign in</h2>
     <p class="small">Use the email and password you set up in Firebase (SETUP.md step 2). You only do this once per phone.</p>
