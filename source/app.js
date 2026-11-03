@@ -627,7 +627,6 @@ function renderShopping() {
 function renderSettings() {
   setTitle('Settings', false); setTab('settings');
   const info = state.recipeInfo || {};
-  const when = info.at ? new Date(info.at).toLocaleString() : 'never';
   let h = banners();
   h += '<section class="card"><p class="section-label">Sharing</p>';
   if (!state.firebase) h += '<p>Not set up yet. Ticks are saved on this phone only. Follow SETUP.md steps 2–5 to share ticks between phones.</p>';
@@ -637,13 +636,9 @@ function renderSettings() {
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>
-    <p class="small">Loads the latest recipes and, if there is a new version of the app, installs it. Recipes also refresh every time the app opens.</p>
-    <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
-  h += `<section class="card"><p class="section-label">Recipes</p>
-    <p>Source: <strong>recipes.xlsx</strong> in the GitHub repository<br>
-    <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' current meals, ' + (state.model.past || []).length + ' past' : 'none'}</span></p>
+    <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
-    <p class="small">To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
+    <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -727,7 +722,7 @@ document.addEventListener('click', async (e) => {
     toast('Checking for updates…');
     const before = state.rowsSig;
     await loadRecipes();
-    const recipeMsg = state.recipeInfo && state.recipeInfo.error ? 'Could not load recipes (see Settings)' : state.rowsSig !== before ? 'Recipes updated' : 'Recipes up to date';
+    const recipeMsg = state.recipeInfo && state.recipeInfo.error ? 'Could not load recipes' : state.rowsSig !== before ? 'Recipes updated' : 'Recipes up to date';
     if (location.hash.startsWith('#/settings')) route();
     try {
       const r = await fetch('sw.js', { cache: 'no-store' });
