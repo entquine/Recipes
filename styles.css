@@ -178,3 +178,9 @@ dialog p { margin: 0; font-size: 18px; }
 
 .login { max-width: 420px; margin: 30px auto; }
 .login h2 { margin-top: 0; }
+
+/* ingredients: plain list, no ticks */
+.list.ings .ing { padding: 9px 0 9px 2px; border-bottom: 1px solid var(--line); }
+.list.ings .ing:last-child { border-bottom: 0; }
+.startorder li[data-jump] { cursor: pointer; }
+.list.ings .amt { font-weight: 700; }

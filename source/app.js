@@ -111,7 +111,7 @@ function buildModel({ recipes, shopping }) {
     meal.sides = dishes.filter((d) => d !== meal.main);
     const mins = meal.plan.map((p) => p.min).filter((m) => m != null);
     meal.totalMin = mins.length ? Math.max(...mins) : null;
-    meal.keys = [...meal.plan.map((p) => p.key), ...dishes.flatMap((d) => [...d.groups.flatMap((g) => g.items.map((x) => x.key)), ...d.steps.map((s) => s.key)])];
+    meal.keys = dishes.flatMap((d) => d.steps.map((s) => s.key));
     computeStarts(meal);
     out.push(meal);
   }
@@ -356,23 +356,15 @@ function renderMeal(id) {
   h += `<div class="listhead">${progressHtml(S, meal.keys)}</div>`;
 
   // ---- Plan first
-  if (meal.plan.length || meal.planTotal || meal.planFirst) {
+  if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
     h += `<section class="card plan" id="${S}-plan"><p class="section-label">The plan</p><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2>`;
     if (meal.planFirst) h += `<div class="startfirst"><strong>⚠ Start first</strong>${esc(meal.planFirst)}</div>`;
     if (meal.starts.length > 1) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
       h += '<p class="section-label">Start order</p><ol class="startorder">' + meal.starts.map((s, i) => {
         const early = i === 0 && s.dish !== meal.main && mainStart != null && s.min < mainStart;
-        return `<li class="chip-${s.dish.color}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
+        return `<li class="chip-${s.dish.color}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
       }).join('') + '</ol>';
-    }
-    if (meal.plan.length) {
-      h += '<div class="timeline-head"><span>When</span><span>What to do</span></div><ul class="list">';
-      for (const p of meal.plan) {
-        const before = p.min == null;
-        h += itemHtml(S, p.key, `<span class="when${before ? ' before' : ''}">${esc(p.when)}</span><span class="body">${linkRefs(p.text, meal)}</span>`, 'time-row');
-      }
-      h += '</ul>';
     }
     h += '</section>';
   }
@@ -384,8 +376,8 @@ function renderMeal(id) {
       h += '<h3>Ingredients</h3>';
       for (const g of d.groups) {
         if (g.name) h += `<h4>${esc(g.name)}</h4>`;
-        h += '<ul class="list">' + g.items.map((it) => itemHtml(S, it.key,
-          `<span class="body">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</span>`)).join('') + '</ul>';
+        h += '<ul class="list ings">' + g.items.map((it) =>
+          `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('') + '</ul>';
       }
     }
     if (d.steps.length) {
@@ -469,6 +461,14 @@ function refreshTicks() {
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
+  });
+  // ticked items move to the bottom of their list, unticked ones keep their original order
+  document.querySelectorAll('ul.list').forEach((ul) => {
+    const items = [...ul.children].filter((li) => li.dataset.key);
+    if (!items.length) return;
+    items.forEach((li, i) => { if (li.dataset.i == null) li.dataset.i = i; });
+    const want = [...items].sort((a, b) => a.classList.contains('done') - b.classList.contains('done') || a.dataset.i - b.dataset.i);
+    if (want.some((li, i) => li !== items[i])) want.forEach((li) => ul.appendChild(li));
   });
   document.querySelectorAll('[data-progress]').forEach((el) => {
     const scope = el.dataset.progress, m = state.model; if (!m) return;
