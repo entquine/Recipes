@@ -9,7 +9,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, onSnapshot, setDoc, deleteDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
+  collection, doc, onSnapshot, setDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const APP_NAME = "What's Cooking with Brian";
@@ -243,13 +243,11 @@ function startFirestore() {
   });
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) };
-    if (!snap.metadata.fromCache) { loaded.plan = true; migrateToIds(); }
     if (/^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
   }, () => {});
   unsubRatings = onSnapshot(collection(db, 'ratings'), (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
     state.ratings = r;
-    if (!snap.metadata.fromCache) { loaded.ratings = true; migrateToIds(); }
     if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
   }, () => {});
   unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), (snap) => {
@@ -402,59 +400,14 @@ async function editItem(id) { // id null = new item; otherwise edit your own ite
   toast(x ? 'Item updated' : 'Item added');
 }
 
-// ---------------------------------------------------------------- moving to dish IDs (one-time)
-// Ratings used to be stored under the meal name (ratings/m-<name>), and calendar days held meal names.
-// Both now use the main dish's ID. This copies old ratings to the ID and rewrites calendar days.
-// It runs whenever both phones have loaded the data, does nothing once everything is moved,
-// and never deletes anything. Old copies are removed later with Settings > Remove old ratings.
-const loaded = { ratings: false, plan: false };
-function migrateToIds() {
-  if (!state.model || (state.firebase && !(loaded.ratings && loaded.plan))) return;
-  for (const meal of allMeals()) {
-    const old = oldRatingIds(meal).map((k) => state.ratings[k]).filter(Boolean);
-    if (!old.length) continue;
-    const cur = state.ratings[meal.rid];
-    const votes = { ...Object.assign({}, ...old.map((o) => o.votes || {})), ...((cur && cur.votes) || {}) }; // newer (ID) votes win
-    const missing = Object.keys(votes).some((u) => !cur || !cur.votes || cur.votes[u] == null);
-    if (!missing) continue;
-    const rec = { name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name), votes };
-    state.ratings[meal.rid] = rec;
-    if (!state.firebase) ls.set('local-ratings', state.ratings);
-    else setDoc(doc(state.firebase.db, 'ratings', meal.rid), { ...rec, movedFrom: oldRatingIds(meal), at: serverTimestamp() }, { merge: true })
-      .catch((e) => console.warn('rating move failed', e));
-  }
-  const days = {};
-  for (const [day, v] of Object.entries(state.plan)) {
-    const meal = typeof v === 'string' ? mealByName(v) : null;
-    if (meal && v !== meal.rid) days[day] = meal.rid;
-  }
-  if (Object.keys(days).length) writePlan(days);
-}
-const oldRatingKeys = () => Object.keys(state.ratings).filter((id) => id.startsWith('m-')); // saved under a meal name
-async function removeOldRatings() {
-  migrateToIds(); // copy any last votes to the dish IDs first
-  const old = oldRatingKeys();
-  if (!old.length) { toast('No old ratings left'); return; }
-  if (!(await confirmDialog(`Remove all ${old.length} old name-based rating record${old.length > 1 ? 's' : ''}? Ratings for meals in the spreadsheet were already copied to the new format.`, 'Remove'))) return;
-  for (const id of old) {
-    delete state.ratings[id];
-    if (state.firebase) deleteDoc(doc(state.firebase.db, 'ratings', id)).catch((e) => toast('Could not remove: ' + (e.code || e.message)));
-  }
-  if (!state.firebase) ls.set('local-ratings', state.ratings);
-  toast(`Removed ${old.length} old rating record${old.length > 1 ? 's' : ''}`);
-  route();
-}
-
 // ---------------------------------------------------------------- ratings
 // One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
 // so the calendar can still show the rating after the recipe is removed from the sheet.
 const myId = () => (state.user ? state.user.uid : 'local');
 const votesNeeded = () => (state.firebase ? 2 : 1);
-const oldRatingIds = (meal) => [meal.name, ...(OLD_NAMES[meal.rid] || [])].map((n) => 'm-' + slug(n)); // name-based keys used before IDs
-function ratingDoc(key) { // key: meal ID, meal name, or calendar value
+function ratingDoc(key) { // key: meal ID, meal name, or calendar value; ratings are stored under the main dish's ID
   const meal = mealByName(key);
-  if (!meal) return state.ratings[key] || state.ratings['m-' + slug(String(key))] || null;
-  return state.ratings[meal.rid] || oldRatingIds(meal).map((k) => state.ratings[k]).find(Boolean) || null; // old key until moved
+  return (meal ? state.ratings[meal.rid] : state.ratings[key]) || null;
 }
 function ratingInfo(key) {
   const r = ratingDoc(key);
@@ -497,10 +450,7 @@ const keyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return ne
 const fmtDay = (d, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => d.toLocaleDateString(undefined, opts);
 function weekStart(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + offset * 7); return d; }
 const allMeals = () => (state.model ? [...state.model.meals, ...(state.model.past || [])] : []);
-// Old meal names that should still find a meal (used to move ratings and calendar entries saved under them).
-const OLD_NAMES = { 'd-sweet-potato-and-black-bean-quesadillas': ['5 Sweet Potato Quesadillas'] };
-const mealByName = (v) => (v && typeof v === 'string'
-  ? allMeals().find((x) => x.rid === v || x.name === v || (OLD_NAMES[x.rid] || []).includes(v)) || null : null);
+const mealByName = (v) => (v && typeof v === 'string' ? allMeals().find((x) => x.rid === v || x.name === v) || null : null); // by ID (or name)
 const planKey = (v) => { const meal = mealByName(v); return meal ? meal.rid : v; }; // calendar value -> meal ID
 const mealById = (id) => allMeals().find((x) => x.id === id) || null;
 function setPlan(day, mealName) { // mealName: recipe meal name, { text } for a custom entry, or null to remove
@@ -563,7 +513,6 @@ function setRows(rows, info) {
   state.rowsSig = sig; state.model = model;
   ls.set('recipes-cache', rows);
   state.recipeInfo = info; ls.set('recipes-info', info);
-  migrateToIds();
   if (changed) route();
 }
 let loading = null;
@@ -856,12 +805,6 @@ function renderSettings() {
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
-  { // temporary: remove ratings saved under meal names once they're copied to dish IDs
-    const n = oldRatingKeys().length;
-    if (n) h += `<section class="card"><p class="section-label">Old ratings</p>
-      <p class="small">${n} old name-based rating record${n === 1 ? '' : 's'}. Your ratings have been copied to the new format; check they look right, then remove the old copies.</p>
-      <button class="btn ghost" type="button" id="cleanratings">Remove old ratings</button></section>`;
-  }
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -925,7 +868,6 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
-  if (e.target.id === 'cleanratings') { removeOldRatings(); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
