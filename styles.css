@@ -248,3 +248,4 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .seg a.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
 .pastlabel { margin: 10px 0 2px; }
 .pickopt.past { background: transparent; border: 1.5px dashed var(--line); }
+.kind { display: inline-block; font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; margin-bottom: 2px; align-self: flex-start; }

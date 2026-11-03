@@ -31,13 +31,17 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 - Keep amounts and Plan times as **text** (e.g. `0:27`, not a spreadsheet time value).
 - Ticks, calendar entries and ratings are tied to names and text. Renaming a Meal resets its ticks, and editing a step's text resets that step's tick. Ratings and calendar entries are keyed on the Meal name, so **don't rename an existing Meal** unless asked.
 
-### Tab "Archive" (past recipes)
-Same columns as **Recipes**. Meals here appear in the app under **Meals → Past**: they keep their ratings and calendar history, can still be opened and cooked, and can be planned again from the calendar.
-- **Archive a meal** ("archive the pot pie"): move all of that meal's rows from Recipes to Archive, unchanged. Keep the exact Meal name, because ratings and calendar history are tied to it. Then remove its ingredients from the Shopping tab (or trim the amount and "Used in" text for items that other current meals still use).
-- **Un-archive a meal**: move its rows back to Recipes, and add its ingredients back to Shopping.
-- A Meal must be in only one of the two tabs. The checker reports an error if it's in both.
-- The leading number in a Meal name only orders the **Current** list. When archiving, keep the name exactly as it is, number included. A recipe added straight to Archive doesn't need a number.
-- Meals are never archived automatically. Only archive when the owner asks.
+### Tab "Archive" (past recipes): one entry per dish
+Same columns as **Recipes**, but each entry is a **single dish**: one Main, or one Side on its own. The entry's **Meal** value is its key, shown in the app under **Meals → Past** with a Main or Side label (from **Type**). Past entries keep their ratings and calendar history, open as full recipes, and can be planned again from the calendar.
+- **Archive a current meal** ("archive the pot pie") splits it into one entry per dish:
+  - The **Main** keeps the original **Meal** name exactly, leading number included (e.g. `2 Chicken Pot Pie`), so its ratings and calendar history carry over. Keep its Makes / Plan total / Plan first / Plan rows, but **rewrite the Plan rows to drop the sides**: remove any `Side step` references and any steps, times or "start first" notes that only concern a side. Renumber the Plan `Order` if rows are removed.
+  - Each **Side** becomes its own entry with **Meal = the dish's own name** (e.g. `Roasted Broccoli`) and no number. A Side keeps its Makes, Ingredient, Step and Tip rows, and has **no Plan rows**.
+  - Then remove the meal's ingredients from the Shopping tab (or trim the amount and "Used in" text for items that other current meals still use).
+- **Un-archive a dish**: move its rows back to **Recipes** and re-pair it with its meal. A Main gets its original Meal name back (it never lost it). A Side takes the Meal name of the main it's served with, and that Main's Plan rows are updated to include the side again (`Side step` references, timing, "start first" if the side takes longer). Add the ingredients back to Shopping.
+- A Meal name must be in only one of the two tabs. The checker reports an error if it's in both.
+- The checker enforces: each Archive entry holds exactly one dish; a Side has no Plan rows. It warns if an archived Main's Plan text still mentions a side step.
+- The leading number in a Meal name only orders the **Current** list. A dish added straight to Archive doesn't need a number.
+- Nothing is archived automatically. Only archive when the owner asks.
 
 ### Tab "Shopping"
 Columns: `Item`, `Amount`, `Section` (`Meat`, `Produce`, `Dairy`, `Pantry`), `Used in`. One row per item. When adding meals, add their ingredients here too, merging with items that are already listed (update the amount and the "Used in" text).

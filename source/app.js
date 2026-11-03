@@ -118,6 +118,7 @@ function buildMeals(recipes) {
     meal.plan.forEach((p) => { p.key = uniq(`plan|${p.when}|${p.text}`); p.min = toMinutes(p.when); });
     meal.main = dishes.find((d) => d.type === 'Main') || dishes[0];
     meal.sides = dishes.filter((d) => d !== meal.main);
+    meal.kind = meal.main.type; // 'Main' or 'Side' (past entries are one dish each)
     const mins = meal.plan.map((p) => p.min).filter((m) => m != null);
     meal.totalMin = mins.length ? Math.max(...mins) : null;
     meal.keys = dishes.flatMap((d) => d.steps.map((s) => s.key));
@@ -398,6 +399,7 @@ function mealsSwitch(active) {
     <a href="#/" class="${active === 'current' ? 'on' : ''}">Current</a>
     <a href="#/past" class="${active === 'past' ? 'on' : ''}">Past</a></nav>`;
 }
+const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : 0}">${meal.kind === 'Side' ? 'Side' : 'Main'}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
@@ -416,7 +418,7 @@ function renderPast() {
     const ri = ratingInfo(meal.name);
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
     h += `<a class="card meal-card" href="#/meal/${meal.id}">
-      <div class="eyebrow">${esc(meal.title)}${plannedChip(meal)}</div>
+      <div class="eyebrow">${kindBadge(meal)}${plannedChip(meal)}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       <div class="meta">${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : `<span class="small">${ri.count ? 'Partly rated' : 'Not rated'}</span>`}</div>
@@ -460,7 +462,8 @@ function renderMeal(id) {
   if (!meal) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   setTitle(meal.title, true); setTab('meals');
   const S = meal.id;
-  let h = '<nav class="jump"><a href="#" data-jump="' + S + '-plan">Plan</a>' +
+  const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
+  let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This is a past recipe. You can still cook it, tick it and plan it. To bring it back to the current list, ask Claude to un-archive it.</div>';
@@ -532,7 +535,7 @@ function renderCalendar() {
           const ri = ratingInfo(name), rec = ri.record;
           const main = meal ? meal.main.name : rec && rec.main ? rec.main : displayMealName(name);
           const sides = meal ? meal.sides.map((x) => x.name) : rec && rec.sides ? rec.sides : [];
-          return `<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
+          return `${meal && meal.kind === 'Side' ? kindBadge(meal) : ''}<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
         })()
         : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
       ${meal && k <= today ? (() => { const ri = ratingInfo(meal.name); return `<button class="ratebtn${ri.mine ? ' voted' : ''}" data-rateday="${k}" aria-label="Rate this meal">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button>`; })() : ''}
@@ -576,7 +579,7 @@ async function pickMeal(day) {
       return `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}${(m.past || []).length ? `<p class="section-label pastlabel">Past recipes</p>${m.past.map((x) => {
       const other = plannedElsewhere(x.name, day);
-      return `<button class="pickopt past${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt past${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
