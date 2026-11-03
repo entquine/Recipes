@@ -228,3 +228,13 @@ dialog p { margin: 0; font-size: 18px; }
 .meal-card.rated h2, .meal-card.rated .sides, .meal-card.rated .eyebrow { text-decoration: line-through; text-decoration-thickness: 2px; opacity: .55; }
 .meal-card .votes { margin: 8px 0 0; }
 .listhead .rate-link { text-decoration: none; font-weight: 700; white-space: nowrap; color: #b77b0f; }
+
+/* ---------- calendar drag and drop ---------- */
+.day .pick { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 100; pointer-events: none; display: flex; flex-direction: column; gap: 2px;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.28); opacity: .95; text-align: left; }
+.day.dragging { opacity: .35; }
+.day.drop-target { outline: 3px dashed var(--accent); outline-offset: 2px; }
+.weeknav [data-week].drop-target { background: var(--accent); color: var(--accent-ink); }
+body.is-dragging { user-select: none; -webkit-user-select: none; }
+.drag-holder { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; overflow: hidden; }

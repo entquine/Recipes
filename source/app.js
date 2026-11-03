@@ -290,11 +290,22 @@ const fmtDay = (d, opts = { weekday: 'short', month: 'short', day: 'numeric' }) 
 function weekStart(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + offset * 7); return d; }
 const mealByName = (name) => (state.model ? state.model.meals.find((x) => x.name === name) : null);
 function setPlan(day, mealName) { // mealName: recipe meal name, { text } for a custom entry, or null to remove
-  if (mealName) state.plan[day] = mealName; else delete state.plan[day];
+  writePlan({ [day]: mealName || null });
+}
+function writePlan(changes) { // { 'YYYY-MM-DD': value or null }, saved together
+  const d = {};
+  for (const [day, v] of Object.entries(changes)) {
+    if (v) state.plan[day] = v; else delete state.plan[day];
+    d[day] = v || deleteField();
+  }
   route();
   if (!state.firebase) { ls.set('local-plan', state.plan); return; }
-  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { d: { [day]: mealName || deleteField() }, at: serverTimestamp() }, { merge: true })
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { d, at: serverTimestamp() }, { merge: true })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+function movePlan(from, to) { // drag and drop: move, or swap if the target day already has something
+  if (from === to || !state.plan[from]) return;
+  writePlan({ [to]: state.plan[from], [from]: state.plan[to] || null });
 }
 function nextPlanned(mealName) { // soonest date (today or later) this meal is planned for
   const today = dayKey(new Date());
@@ -408,7 +419,10 @@ function renderMeals() {
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
   const tonight = mealByName(state.plan[dayKey(new Date())]);
   if (tonight) h += `<a class="card tonight" href="#/meal/${tonight.id}"><span class="section-label">Tonight</span><strong>${esc(tonight.main.name)}</strong>${tonight.sides.length ? `<span class="small">with ${tonight.sides.map((d) => esc(d.name)).join(' &amp; ')}</span>` : ''}</a>`;
-  const sorted = [...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done);
+  // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
+  const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };
+  const sorted = m.meals.map((meal, i) => ({ meal, i, r: rank(meal) }))
+    .sort((a, b) => a.r[0] - b.r[0] || a.r[1].localeCompare(b.r[1]) || a.i - b.i).map((x) => x.meal);
   for (const meal of sorted) {
     const ri = ratingInfo(meal.name);
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
@@ -507,7 +521,7 @@ function renderCalendar() {
       ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
     </li>`;
   }
-  h += '</ul><p class="small" style="text-align:center">Tap a day to choose or change its meal. Both phones see the same calendar.</p>';
+  h += '</ul><p class="small" style="text-align:center">Tap a day to choose or change its meal. Press and hold a meal to drag it to another day. Both phones see the same calendar.</p>';
   view().innerHTML = h;
 }
 // A plan entry is either a recipe meal name (string) or a custom note ({ text: 'Chipotle + Leftovers' }).
@@ -653,7 +667,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   const pick = e.target.closest('.pick[data-day]');
-  if (pick) { pickMeal(pick.dataset.day); return; }
+  if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
   const item = e.target.closest('.item[data-key]');
   if (item) { setTick(item.dataset.scope, item.dataset.key, !item.classList.contains('done')); return; }
   const clr = e.target.closest('[data-clear]');
@@ -724,6 +738,82 @@ async function updateWakeLock() {
   } catch { wakeLock = null; }
 }
 document.addEventListener('visibilitychange', () => { updateWakeLock(); if (document.visibilityState === 'visible' && state.sheetUrl) loadRecipes(); });
+
+// ---------------------------------------------------------------- calendar drag and drop
+// Press and hold a planned day (~0.35 s), then drag it onto another day. Works with touch and mouse.
+let drag = null, suppressClick = false;
+function dragCleanup() {
+  if (!drag) return;
+  clearTimeout(drag.timer); clearTimeout(drag.weekTimer);
+  if (drag.ghost) drag.ghost.remove();
+  if (drag.held) drag.held.remove();
+  document.querySelectorAll('.day.drop-target, .day.dragging, [data-week].drop-target').forEach((el) => el.classList.remove('drop-target', 'dragging'));
+  document.body.classList.remove('is-dragging');
+  drag = null;
+}
+function dragStart() {
+  const src = document.querySelector(`.pick[data-day="${drag.from}"]`);
+  if (!src) { dragCleanup(); return; }
+  drag.active = true;
+  const r = src.getBoundingClientRect();
+  const g = src.cloneNode(true); g.className = 'drag-ghost'; g.style.width = r.width + 'px';
+  drag.dx = drag.x - r.left; drag.dy = drag.y - r.top;
+  document.body.appendChild(g); drag.ghost = g; dragMoveGhost();
+  src.closest('.day').classList.add('dragging'); document.body.classList.add('is-dragging');
+  // The finger's touch stays tied to this element. Keep a hidden copy of it in the page for the whole drag,
+  // so redrawing the calendar (changing week, or an update from the other phone) doesn't drop the drag.
+  const holder = document.createElement('div'); holder.className = 'drag-holder';
+  const placeholder = src.cloneNode(true); src.replaceWith(placeholder);
+  holder.appendChild(src); document.body.appendChild(holder); drag.held = holder;
+  if (navigator.vibrate) navigator.vibrate(25);
+}
+function dragMoveGhost() { drag.ghost.style.transform = `translate(${drag.x - drag.dx}px, ${drag.y - drag.dy}px)`; }
+function dragTargetAt(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el ? el.closest('.day, .weeknav [data-week]') : null;
+}
+document.addEventListener('pointerdown', (e) => {
+  const pick = e.target.closest('.day .pick');
+  if (!pick || !state.plan[pick.dataset.day] || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  dragCleanup();
+  drag = { from: pick.dataset.day, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, active: false };
+  drag.timer = setTimeout(dragStart, 350);
+});
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (!drag.active) { if (Math.hypot(drag.x - drag.x0, drag.y - drag.y0) > 10) dragCleanup(); return; } // it's a scroll
+  dragMoveGhost();
+  const t = dragTargetAt(drag.x, drag.y);
+  document.querySelectorAll('.drop-target').forEach((el) => el !== t && el.classList.remove('drop-target'));
+  if (t && !t.classList.contains('drop-target')) {
+    t.classList.add('drop-target');
+    clearTimeout(drag.weekTimer);
+    if (t.dataset.week) drag.weekTimer = setTimeout(() => { // hover on ‹ › to change week
+      drag.paged = true;
+      state.calWeek += Number(t.dataset.week); route(); document.body.classList.add('is-dragging');
+      const from = document.querySelector(`.day .pick[data-day="${drag.from}"]`); if (from) from.closest('.day').classList.add('dragging');
+    }, drag.paged ? 900 : 600);
+  } else if (!t) clearTimeout(drag.weekTimer);
+  // scroll the page when dragging near the top or bottom edge
+  const edge = 90;
+  if (drag.y < edge + 60) scrollBy(0, -12); else if (drag.y > innerHeight - edge - 70) scrollBy(0, 12);
+});
+document.addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (drag.active) {
+    const t = dragTargetAt(drag.x, drag.y);
+    const to = t && t.classList.contains('day') ? t.querySelector('.pick').dataset.day : null;
+    const from = drag.from;
+    suppressClick = true; setTimeout(() => { suppressClick = false; }, 400);
+    dragCleanup();
+    if (to && to !== from) { movePlan(from, to); toast('Moved'); }
+  } else dragCleanup();
+});
+document.addEventListener('pointercancel', () => { if (drag && !drag.active) dragCleanup(); });
+// once a drag has started, stop the page from scrolling under the finger
+document.addEventListener('touchmove', (e) => { if (drag && drag.active) e.preventDefault(); }, { passive: false });
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('.day .pick')) e.preventDefault(); });
 
 // ---------------------------------------------------------------- router
 let lastRoute = '', navCount = 0;
