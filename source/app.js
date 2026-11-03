@@ -191,14 +191,16 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
-  myName: '',              // name shown on notes (Settings); falls back to the email
+  myName: '',              // this person's name (Settings)
+  names: {},               // email (lower-case) -> name, from Firestore profiles/*; used to label notes and added items
+  extras: {},              // items added to the shopping list in the app: id -> { name, amount, email, at }
   calWeek: 0,              // calendar page: 0 = this week
 };
 const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, lastSnapPending = false;
+let unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -250,16 +252,37 @@ function startFirestore() {
     state.notes = { ...((snap.exists() && snap.data().n) || {}) };
     renderNotes();
   }, () => {});
-  unsubProfile = onSnapshot(doc(db, 'profiles', state.user.uid), (snap) => {
-    state.myName = (snap.exists() && snap.data().name) || '';
+  // everyone's names, so notes and added items show the latest name for each email
+  unsubProfile = onSnapshot(collection(db, 'profiles'), (snap) => {
+    const names = {};
+    snap.forEach((d) => {
+      const x = d.data();
+      if (x.email && x.name) names[String(x.email).toLowerCase()] = x.name;
+      if (d.id === state.user.uid) state.myName = x.name || '';
+    });
+    state.names = names;
     const inp = $('#myname'); if (inp && document.activeElement !== inp) inp.value = state.myName;
+    renderNotes(); renderExtras();
+  }, () => {});
+  unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), (snap) => {
+    state.extras = { ...((snap.exists() && snap.data().i) || {}) };
+    renderExtras();
   }, () => {});
 }
-function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = null; }
+function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = null; }
 
 // ---------------------------------------------------------------- shopping notes
-// Shared notes at the top of the shopping list, stored in Firestore notes/shopping as { n: { id: { text, by, at } } }.
-const myDisplayName = () => state.myName || (state.user && state.user.email) || 'Me';
+// Shared notes at the top of the shopping list, stored in Firestore notes/shopping as { n: { id: { text, email, at } } }.
+// Notes and added items store who wrote them by email; the name shown is looked up live from profiles,
+// so setting or changing a name in Settings relabels everything that person wrote.
+const myEmail = () => (state.user && state.user.email ? state.user.email.toLowerCase() : 'local');
+function nameFor(email, fallback) {
+  if (!email) return fallback || '';
+  const e = String(email).toLowerCase();
+  if (e === 'local') return state.myName || 'Me';
+  return state.names[e] || (e === myEmail() && state.myName) || email;
+}
+const fmtWhen = (at) => (at ? new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '');
 function writeNotes(changes) {
   for (const [id, v] of Object.entries(changes)) { if (v) state.notes[id] = v; else delete state.notes[id]; }
   renderNotes();
@@ -269,16 +292,39 @@ function writeNotes(changes) {
 }
 function addNote(text) {
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-  writeNotes({ [id]: { text, by: myDisplayName(), at: Date.now() } });
+  writeNotes({ [id]: { text, email: myEmail(), at: Date.now() } });
 }
 function notesListHtml() {
   const notes = Object.entries(state.notes).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
   if (!notes.length) return '<li class="nonote small">No notes yet.</li>';
   return notes.map(([id, x]) => `<li class="note"><div><span class="notetext">${esc(x.text)}</span>
-    <span class="small">${esc(x.by || '')}${x.at ? ` · ${esc(new Date(x.at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }))}` : ''}</span></div>
+    <span class="small">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></div>
     <button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button></li>`).join('');
 }
 function renderNotes() { const ul = $('#notelist'); if (ul) ul.innerHTML = notesListHtml(); }
+
+// ---------------------------------------------------------------- items added to the shopping list
+// Stored in Firestore shopping/extra as { i: { id: { name, amount, email, at } } }. Ticked like any other item.
+const extraKey = (id) => 'x-' + id;
+const extraKeys = () => Object.keys(state.extras).map(extraKey);
+function writeExtras(changes) {
+  for (const [id, v] of Object.entries(changes)) { if (v) state.extras[id] = v; else delete state.extras[id]; }
+  renderExtras();
+  if (!state.firebase) { ls.set('local-extras', state.extras); return; }
+  const i = {}; for (const [id, v] of Object.entries(changes)) i[id] = v || deleteField();
+  setDoc(doc(state.firebase.db, 'shopping', 'extra'), { i }, { merge: true }).catch((e) => toast('Could not save item: ' + (e.code || e.message)));
+}
+function extrasListHtml() {
+  const items = Object.entries(state.extras).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+  if (!items.length) return '';
+  return items.map(([id, x]) => itemHtml('shopping', extraKey(id),
+    `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span><button class="delnote" data-delextra="${esc(id)}" aria-label="Remove ${esc(x.name)}">×</button>`, 'extra')).join('');
+}
+function renderExtras() {
+  const ul = $('#extralist'); if (!ul) return;
+  ul.innerHTML = extrasListHtml();
+  refreshTicks();
+}
 
 // ---------------------------------------------------------------- ratings
 // One record per meal in Firestore (ratings/<meal id>). It keeps the meal's names too,
@@ -651,6 +697,9 @@ function renderShopping() {
     <form id="noteform" class="customrow"><input type="text" id="notetext" maxlength="200" placeholder="Add a note for both of you" autocomplete="off"><button class="btn" type="submit">Add</button></form>
     <ul id="notelist" class="notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml('shopping', m.shopKeys)}</div>`;
+  h += `<section class="card extras"><p class="section-label">Added by us</p>
+    <form id="extraform" class="extraform"><input type="text" id="extraname" maxlength="80" placeholder="Item" autocomplete="off" required><input type="text" id="extraamount" maxlength="40" placeholder="Amount" autocomplete="off"><button class="btn" type="submit">Add</button></form>
+    <ul class="list" id="extralist">${extrasListHtml()}</ul></section>`;
   if (!m.shopping.length) h += '<p class="empty">No shopping list found. Add a "Shopping" tab to the spreadsheet.</p>';
   for (const sec of m.shopping) {
     h += `<section class="card"><p class="section-label">${esc(sec.name)}</p><ul class="list">` + sec.items.map((x) => itemHtml('shopping', x.key,
@@ -668,7 +717,7 @@ function renderSettings() {
   h += '<section class="card"><p class="section-label">Sharing</p>';
   if (!state.firebase) h += '<p>Not set up yet. Ticks are saved on this phone only. Follow SETUP.md steps 2–5 to share ticks between phones.</p>';
   else if (state.user) h += `<p>Signed in as <strong>${esc(state.user.email)}</strong>.</p><p class="small">Status: ${esc($('#sync').textContent)}</p><button class="btn ghost" id="signout">Sign out</button>`;
-  h += `<form id="nameform"><label class="field">Your name <span class="small">(shown on your notes)</span>
+  h += `<form id="nameform"><label class="field">Your name <span class="small">(shown on your notes and added items)</span>
     <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
@@ -712,7 +761,7 @@ function refreshTicks() {
   });
   document.querySelectorAll('[data-progress]').forEach((el) => {
     const scope = el.dataset.progress, m = state.model; if (!m) return;
-    const keys = scope === 'shopping' ? m.shopKeys : (mealById(scope) || {}).keys || [];
+    const keys = scope === 'shopping' ? [...m.shopKeys, ...extraKeys()] : (mealById(scope) || {}).keys || [];
     const done = countDone(scope, keys);
     el.querySelector('b').style.width = keys.length ? (100 * done / keys.length) + '%' : 0;
     el.querySelector('.pct').textContent = `${done} / ${keys.length}`;
@@ -740,6 +789,8 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
+  const dx = e.target.closest('[data-delextra]');
+  if (dx) { const x = state.extras[dx.dataset.delextra]; if (x && await confirmDialog(`Remove "${x.name}" from the shopping list for both of you?`, 'Remove')) writeExtras({ [dx.dataset.delextra]: null }); return; }
   const dn = e.target.closest('[data-delnote]');
   if (dn) { if (await confirmDialog('Delete this note for both of you?', 'Delete')) writeNotes({ [dn.dataset.delnote]: null }); return; }
   const pf = e.target.closest('[data-pastfilter]');
@@ -750,6 +801,7 @@ document.addEventListener('click', async (e) => {
   if (rb) { const meal = mealByName(state.plan[rb.dataset.rateday]); if (meal) rateDialog(meal); return; }
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
+  if (e.target.closest('.delnote')) return;
   const item = e.target.closest('.item[data-key]');
   if (item) { setTick(item.dataset.scope, item.dataset.key, !item.classList.contains('done')); return; }
   const clr = e.target.closest('[data-clear]');
@@ -791,6 +843,15 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target.matches('.item[data-key]')) { e.preventDefault(); e.target.click(); }
 });
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'extraform') {
+    e.preventDefault();
+    const name = $('#extraname').value.replace(/\s+/g, ' ').trim(), amount = $('#extraamount').value.replace(/\s+/g, ' ').trim();
+    if (!name) return;
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    writeExtras({ [id]: { name, amount, email: myEmail(), at: Date.now() } });
+    $('#extraname').value = ''; $('#extraamount').value = ''; $('#extraname').focus();
+    return;
+  }
   if (e.target.id === 'noteform') {
     e.preventDefault();
     const inp = $('#notetext'); const text = inp.value.replace(/\s+/g, ' ').trim();
@@ -801,9 +862,11 @@ document.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
     state.myName = name;
+    if (state.user) { if (name) state.names[myEmail()] = name; else delete state.names[myEmail()]; }
+    renderNotes(); renderExtras();
     if (state.firebase && state.user) setDoc(doc(state.firebase.db, 'profiles', state.user.uid), { name, email: state.user.email }, { merge: true }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
     else ls.set('local-name', name);
-    toast(name ? `Saved. Your notes will show "${name}"` : 'Saved. Your notes will show your email');
+    toast(name ? `Saved. Your notes and items will show "${name}"` : 'Saved. Your notes and items will show your email');
     return;
   }
   if (e.target.id === 'loginform') {
@@ -955,6 +1018,7 @@ function start() {
     state.ratings = ls.get('local-ratings', {});
     state.notes = ls.get('local-notes', {});
     state.myName = ls.get('local-name', '');
+    state.extras = ls.get('local-extras', {});
     state.sync = 'local'; renderSync();
   }
   route();

@@ -271,3 +271,10 @@ body.is-dragging { user-select: none; -webkit-user-select: none; }
 .nonote { padding: 4px 0; }
 #nameform .customrow { margin-top: 6px; }
 #nameform .customrow input { font-weight: 400; }
+.extraform { display: flex; gap: 8px; margin: 4px 0 6px; }
+.extraform input { min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); }
+.extraform #extraname { flex: 2; }
+.extraform #extraamount { flex: 1; }
+.extraform .btn { min-height: 44px; padding: 0 16px; }
+.item.extra { grid-template-columns: 44px 1fr 40px; }
+.item.extra .delnote { align-self: center; }
