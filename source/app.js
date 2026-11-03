@@ -623,15 +623,14 @@ function renderSettings() {
 
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
-  h += `<section class="card"><p class="section-label">App updates</p>
-    <p class="small">After uploading a new version to GitHub, wait 2 minutes, then tap this.</p>
-    <button class="btn ghost" type="button" id="update">Check for app update</button></section>`;
+  h += `<section class="card"><p class="section-label">Updates</p>
+    <p class="small">Loads the latest recipes and, if there is a new version of the app, installs it. Recipes also refresh every time the app opens.</p>
+    <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
   h += `<section class="card"><p class="section-label">Recipes</p>
     <p>Source: <strong>recipes.xlsx</strong> in the GitHub repository<br>
     <span class="small">Last loaded: ${esc(when)} · ${state.model ? state.model.meals.length + ' current meals, ' + (state.model.past || []).length + ' past' : 'none'}</span></p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
-    <button class="btn ghost" type="button" id="reload">Reload recipes</button>
-    <p class="small">Recipes reload every time the app opens. To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
+    <p class="small">To add or change recipes, ask Claude in a session connected to the GitHub repository.</p></section>`;
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -707,22 +706,25 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#back')) { if (navCount > 1) history.back(); else location.hash = '#/'; return; }
   if (e.target.id === 'signout') { stopFirestore(); await signOut(state.firebase.auth); return; }
-  if (e.target.id === 'reload') { toast('Loading recipes…'); await loadRecipes(); toast(state.recipeInfo && state.recipeInfo.error ? 'Could not load, see the message' : 'Recipes loaded'); route(); return; }
   if (e.target.id === 'update') {
-    toast('Checking for an update…');
+    toast('Checking for updates…');
+    const before = state.rowsSig;
+    await loadRecipes();
+    const recipeMsg = state.recipeInfo && state.recipeInfo.error ? 'Could not load recipes (see Settings)' : state.rowsSig !== before ? 'Recipes updated' : 'Recipes up to date';
+    if (location.hash.startsWith('#/settings')) route();
     try {
       const r = await fetch('sw.js', { cache: 'no-store' });
       const v = ((await r.text()).match(/VERSION = '([^']+)'/) || [])[1];
       if (!v) throw new Error('no version found');
-      if (v === window.APP_VERSION) { toast('You have the latest version (' + v + ')'); return; }
+      if (v === window.APP_VERSION) { toast(`${recipeMsg} · app is the latest version (${v})`, 3500); return; }
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) {
         await reg.update();
         const sw = reg.installing || reg.waiting;
         if (sw && sw.state !== 'activated') await new Promise((res) => { sw.addEventListener('statechange', () => sw.state === 'activated' && res()); setTimeout(res, 15000); });
       }
-      toast('Updating to ' + v + '…'); setTimeout(() => location.reload(), 600);
-    } catch (err) { toast('Could not check: ' + err.message); }
+      toast(`${recipeMsg} · updating app to ${v}…`); setTimeout(() => location.reload(), 900);
+    } catch (err) { toast(`${recipeMsg} · could not check the app: ${err.message}`, 3500); }
     return;
   }
   if (e.target.id === 'forgot') {
