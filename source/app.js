@@ -440,6 +440,9 @@ function renderSettings() {
 
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
+  h += `<section class="card"><p class="section-label">App updates</p>
+    <p class="small">After uploading a new version to GitHub, wait 2 minutes, then tap this.</p>
+    <button class="btn ghost" type="button" id="update">Check for app update</button></section>`;
   h += `<p class="small" style="text-align:center">Dinner Recipes · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
@@ -504,6 +507,23 @@ document.addEventListener('click', async (e) => {
   if (e.target.closest('#back')) { if (navCount > 1) history.back(); else location.hash = '#/'; return; }
   if (e.target.id === 'signout') { stopFirestore(); await signOut(state.firebase.auth); return; }
   if (e.target.id === 'reload') { toast('Loading recipes…'); await loadRecipes(); toast(state.recipeInfo && state.recipeInfo.error ? 'Could not load, see the message' : 'Recipes loaded'); route(); return; }
+  if (e.target.id === 'update') {
+    toast('Checking for an update…');
+    try {
+      const r = await fetch('sw.js', { cache: 'no-store' });
+      const v = ((await r.text()).match(/VERSION = '([^']+)'/) || [])[1];
+      if (!v) throw new Error('no version found');
+      if (v === window.APP_VERSION) { toast('You have the latest version (' + v + ')'); return; }
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.update();
+        const sw = reg.installing || reg.waiting;
+        if (sw && sw.state !== 'activated') await new Promise((res) => { sw.addEventListener('statechange', () => sw.state === 'activated' && res()); setTimeout(res, 15000); });
+      }
+      toast('Updating to ' + v + '…'); setTimeout(() => location.reload(), 600);
+    } catch (err) { toast('Could not check: ' + err.message); }
+    return;
+  }
   if (e.target.id === 'forgot') {
     e.preventDefault();
     const email = $('#email').value.trim();

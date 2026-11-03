@@ -15,6 +15,7 @@ const files = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifes
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-maskable-512.png'];
 const h = createHash('sha256');
 for (const f of files.slice(1)) h.update(readFileSync(join(root, f)));
+h.update(readFileSync(join(here, 'sw.template.js')));
 const version = h.digest('hex').slice(0, 10);
 const app = readFileSync(join(root, 'app.js'), 'utf8');
 writeFileSync(join(root, 'app.js'), `window.APP_VERSION=${JSON.stringify(version)};\n` + app);

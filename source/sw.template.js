@@ -4,7 +4,7 @@ const CACHE = 'dinner-' + VERSION;
 const FILES = __FILES__;
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(FILES.map((f) => new Request(f, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', (e) => {
   e.waitUntil(caches.keys()
@@ -16,10 +16,11 @@ self.addEventListener('fetch', (e) => {
   const req = e.request;
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('/sw.js')) return; // always ask the network for the latest version
   const key = req.mode === 'navigate' ? './' : req;
   e.respondWith(caches.open(CACHE).then(async (cache) => {
     const cached = await cache.match(key, { ignoreSearch: true });
-    const fresh = fetch(req).then((res) => {
+    const fresh = fetch(req, { cache: 'no-cache' }).then((res) => {
       if (res.ok) cache.put(key, res.clone());
       return res;
     }).catch(() => cached);
