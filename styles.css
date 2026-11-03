@@ -184,3 +184,31 @@ dialog p { margin: 0; font-size: 18px; }
 .list.ings .ing:last-child { border-bottom: 0; }
 .startorder li[data-jump] { cursor: pointer; }
 .list.ings .amt { font-weight: 700; }
+
+/* ---------- calendar ---------- */
+.weeknav { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.weeknav > div { flex: 1; text-align: center; display: flex; flex-direction: column; }
+.weeknav .btn { min-width: 52px; padding: 0; font-size: 26px; line-height: 1; }
+.linkbtn { background: none; border: 0; color: var(--accent); font-size: 14px; padding: 2px; text-decoration: underline; }
+.days { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.day { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.day.today { border: 2px solid var(--accent); }
+.day.past { opacity: .6; }
+.day .date { width: 62px; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; background: var(--surface-2); padding: 10px 0; }
+.day .date span { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.day .date b { font-size: 22px; }
+.day.today .date { background: var(--accent); color: var(--accent-ink); }
+.day.today .date span { color: inherit; }
+.day .pick { flex: 1; text-align: left; background: none; border: 0; padding: 12px 14px; min-height: 64px; display: flex; flex-direction: column; justify-content: center; gap: 2px; cursor: pointer; }
+.day .pick strong { font-size: 17px; line-height: 1.3; }
+.day .addmeal { color: var(--accent); font-weight: 650; }
+.day .open { display: flex; align-items: center; padding: 0 16px; font-size: 28px; text-decoration: none; color: var(--muted); border-left: 1px solid var(--line); }
+.picktitle { font-weight: 700; margin-bottom: 10px !important; }
+.picklist { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
+.pickopt { text-align: left; background: var(--surface-2); border: 2px solid transparent; border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+.pickopt.sel { border-color: var(--accent); }
+.card.tonight { display: flex; flex-direction: column; gap: 2px; text-decoration: none; color: inherit; border: 2px solid var(--accent); }
+.card.tonight .section-label { color: var(--accent); }
+.card.tonight strong { font-size: 19px; }
+.planned { float: right; text-transform: none; letter-spacing: 0; color: var(--accent); font-weight: 650; }
+.tabs a { font-size: 12px; }

@@ -179,12 +179,14 @@ const state = {
   firebase: null,          // { auth, db } when configured
   authReady: false,
   dbError: '',
+  plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
+  calWeek: 0,              // calendar page: 0 = this week
 };
 const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubTicks = null, unsubCfg = null, lastSnapPending = false;
+let unsubTicks = null, unsubCfg = null, unsubPlan = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -227,8 +229,30 @@ function startFirestore() {
     const url = (snap.exists() && snap.data().sheetUrl) || '';
     if (url !== state.sheetUrl) { state.sheetUrl = url; ls.set('sheet-url', url); loadRecipes(); }
   }, () => {});
+  unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
+    state.plan = { ...((snap.exists() && snap.data().d) || {}) };
+    if (/^#?\/?(calendar)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
+  }, () => {});
 }
-function stopFirestore() { if (unsubTicks) unsubTicks(); if (unsubCfg) unsubCfg(); unsubTicks = unsubCfg = null; }
+function stopFirestore() { for (const u of [unsubTicks, unsubCfg, unsubPlan]) if (u) u(); unsubTicks = unsubCfg = unsubPlan = null; }
+
+// ---------------------------------------------------------------- calendar store
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const keyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d, 12); };
+const fmtDay = (d, opts = { weekday: 'short', month: 'short', day: 'numeric' }) => d.toLocaleDateString(undefined, opts);
+function weekStart(offset) { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - d.getDay() + offset * 7); return d; }
+const mealByName = (name) => (state.model ? state.model.meals.find((x) => x.name === name) : null);
+function setPlan(day, mealName) {
+  if (mealName) state.plan[day] = mealName; else delete state.plan[day];
+  route();
+  if (!state.firebase) { ls.set('local-plan', state.plan); return; }
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { d: { [day]: mealName || deleteField() }, at: serverTimestamp() }, { merge: true })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+function nextPlanned(mealName) { // soonest date (today or later) this meal is planned for
+  const today = dayKey(new Date());
+  return Object.keys(state.plan).filter((k) => k >= today && state.plan[k] === mealName).sort()[0] || null;
+}
 
 function updateSync(fromCache) {
   if (!state.firebase) state.sync = 'local';
@@ -333,11 +357,13 @@ function renderMeals() {
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
+  const tonight = mealByName(state.plan[dayKey(new Date())]);
+  if (tonight) h += `<a class="card tonight" href="#/meal/${tonight.id}"><span class="section-label">Tonight</span><strong>${esc(tonight.main.name)}</strong>${tonight.sides.length ? `<span class="small">with ${tonight.sides.map((d) => esc(d.name)).join(' &amp; ')}</span>` : ''}</a>`;
   for (const meal of m.meals) {
     const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
     const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
     h += `<a class="card meal-card" href="#/meal/${meal.id}">
-      <div class="eyebrow">${esc(meal.title)}</div>
+      <div class="eyebrow">${esc(meal.title)}${(() => { const n = nextPlanned(meal.name); return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : ''; })()}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       <div class="meta">${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}</div>
@@ -396,6 +422,46 @@ function renderMeal(id) {
 function shortName(d) { // short label for the jump bar
   const n = d.name.replace(/\s+with\s+.*$/i, '');
   return n.length > 26 ? n.slice(0, 24) + '…' : n;
+}
+
+function renderCalendar() {
+  setTitle('Calendar', false); setTab('calendar');
+  const start = weekStart(state.calWeek), end = new Date(start); end.setDate(end.getDate() + 6);
+  const today = dayKey(new Date());
+  const label = state.calWeek === 0 ? 'This week' : state.calWeek === 1 ? 'Next week' : state.calWeek === -1 ? 'Last week' : '';
+  let h = banners();
+  h += `<div class="weeknav">
+    <button class="btn ghost" data-week="-1" aria-label="Previous week">‹</button>
+    <div><strong>${esc(fmtDay(start, { month: 'short', day: 'numeric' }))} – ${esc(fmtDay(end, { month: 'short', day: 'numeric' }))}</strong>${label ? `<span class="small">${label}</span>` : '<button class="linkbtn" data-week="0">Back to this week</button>'}</div>
+    <button class="btn ghost" data-week="1" aria-label="Next week">›</button></div>`;
+  h += '<ul class="days">';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(start); d.setDate(d.getDate() + i);
+    const k = dayKey(d), name = state.plan[k], meal = name ? mealByName(name) : null;
+    const past = k < today;
+    h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}">
+      <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b></div>
+      <button class="pick" data-day="${k}">${name
+        ? `<strong>${esc(meal ? meal.main.name : displayMealName(name))}</strong>${meal && meal.sides.length ? `<span class="small">with ${meal.sides.map((x) => esc(x.name)).join(' &amp; ')}</span>` : ''}${meal ? '' : '<span class="small err">No longer in the recipes</span>'}`
+        : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
+      ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
+    </li>`;
+  }
+  h += '</ul><p class="small" style="text-align:center">Tap a day to choose or change its meal. Both phones see the same calendar.</p>';
+  view().innerHTML = h;
+}
+async function pickMeal(day) {
+  const m = state.model; if (!m) return;
+  const current = state.plan[day];
+  let dlg = $('#picker');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
+  dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
+    <div class="picklist">${m.meals.map((x) => `<button class="pickopt${x.name === current ? ' sel' : ''}" value="${esc(x.name)}"><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}</button>`).join('')}</div>
+    <div class="row-btns">${current ? '<button class="btn outline-danger" value="__none" style="width:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button></div></form>`;
+  dlg.returnValue = '';
+  const choice = await new Promise((resolve) => { dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }); dlg.showModal(); });
+  if (choice === '__none') setPlan(day, null);
+  else if (choice && choice !== current) setPlan(day, choice);
 }
 
 function renderShopping() {
@@ -497,6 +563,10 @@ document.addEventListener('click', async (e) => {
     }
     return;
   }
+  const wk = e.target.closest('[data-week]');
+  if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
+  const pick = e.target.closest('.pick[data-day]');
+  if (pick) { pickMeal(pick.dataset.day); return; }
   const item = e.target.closest('.item[data-key]');
   if (item) { setTick(item.dataset.scope, item.dataset.key, !item.classList.contains('done')); return; }
   const clr = e.target.closest('[data-clear]');
@@ -580,6 +650,7 @@ function route() {
   const y = scrollY;
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
+  else if (page === 'calendar') renderCalendar();
   else if (page === 'settings') renderSettings();
   else renderMeals();
   if (keepScroll) scrollTo(0, y); else scrollTo(0, 0);
@@ -611,6 +682,7 @@ function start() {
     });
   } else {
     state.ticks = ls.get('local-ticks', {});
+    state.plan = ls.get('local-plan', {});
     state.sync = 'local'; renderSync();
   }
   route();
