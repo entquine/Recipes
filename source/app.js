@@ -824,7 +824,9 @@ function renderShopping() {
   let h = banners();
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
-  h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>`;
+  h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>
+    <p class="donemsg" id="donemsg" hidden></p>
+    <label class="switch hidetoggle"><span>Hide ticked items</span><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}></label>`;
   // "Other" goes first. Its own card holds items added in the app as Other, unless the spreadsheet also has an Other section.
   const other = m.shopping.some((sec) => sec.name === 'Other') ? '' : extrasListHtml('Other');
   if (other) h += `<section class="card"><p class="section-label">Other</p><ul class="list">${other}</ul></section>`;
@@ -893,7 +895,27 @@ function refreshTicks() {
     const done = countDone(scope, keys);
     el.querySelector('b').style.width = keys.length ? (100 * done / keys.length) + '%' : 0;
     el.querySelector('.pct').textContent = `${done} / ${keys.length}`;
+    if (isShopScope(scope)) showDoneMessage(keys.length > 0 && done === keys.length);
   });
+  // shopping list: optionally hide ticked items (this phone only), and any card left with nothing showing
+  const hide = !!$('#hideticked') && ls.get('hide-ticked', false);
+  document.body.classList.toggle('hide-ticked', hide);
+  if ($('#hideticked')) document.querySelectorAll('main section.card').forEach((card) => {
+    const items = card.querySelectorAll('.item[data-key]');
+    card.classList.toggle('all-ticked', items.length > 0 && [...items].every((x) => x.classList.contains('done')));
+  });
+}
+
+// Shown under the shopping counter when every item (not notes) is ticked. A new one is picked each time.
+const DONE_MESSAGES = [
+  "It's in the bag 😊", 'Great job!', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
+  "That's a wrap 🛒", 'Fridge, prepare yourself 😄', 'List conquered 💪', 'All set. Time to cook 🧑‍🍳', 'Look at you go ✨',
+];
+function showDoneMessage(complete) {
+  const el = $('#donemsg'); if (!el) return;
+  if (!complete) { el.hidden = true; el.textContent = ''; return; }
+  if (!el.textContent) el.textContent = DONE_MESSAGES[Math.floor(Math.random() * DONE_MESSAGES.length)];
+  el.hidden = false;
 }
 
 // ---------------------------------------------------------------- events
@@ -998,7 +1020,10 @@ document.addEventListener('submit', async (e) => {
     }
   }
 });
-document.addEventListener('change', (e) => { if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); } });
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); }
+  if (e.target.id === 'hideticked') { ls.set('hide-ticked', e.target.checked); refreshTicks(); }
+});
 
 // keep screen on while a meal is open
 let wakeLock = null;
