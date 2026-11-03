@@ -1,4 +1,4 @@
-# Dinner Recipes: setup guide
+# What's Cooking with Brian: setup guide
 
 About 30 minutes, on a computer, once. You need no code skills. You only copy and paste.
 

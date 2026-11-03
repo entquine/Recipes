@@ -1,4 +1,4 @@
-// Dinner Recipes (installs as "What's Cooking with Brian") – shared cooking checklist PWA.
+// What's Cooking with Brian – shared cooking checklist PWA.
 // Source file. The build step bundles this into ../app.js (see build.mjs).
 
 import XLSX from 'xlsx/dist/xlsx.mini.min.js';
@@ -12,7 +12,7 @@ import {
   collection, doc, onSnapshot, setDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
-const APP_NAME = 'Dinner'; // home-screen name is set in manifest.webmanifest
+const APP_NAME = "What's Cooking with Brian";
 
 // ---------------------------------------------------------------- helpers
 const $ = (s, r = document) => r.querySelector(s);
@@ -311,7 +311,7 @@ async function loadRecipes() {
 const view = () => $('#view');
 function setTitle(text, back) {
   $('#title').textContent = text; $('#back').hidden = !back;
-  document.title = text === APP_NAME ? 'Dinner Recipes' : `${text} · Dinner`;
+  document.title = text === APP_NAME ? APP_NAME : `${text} · ${APP_NAME}`;
 }
 function setTab(name) {
   document.querySelectorAll('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === name));
@@ -443,7 +443,7 @@ function renderSettings() {
   h += `<section class="card"><p class="section-label">App updates</p>
     <p class="small">After uploading a new version to GitHub, wait 2 minutes, then tap this.</p>
     <button class="btn ghost" type="button" id="update">Check for app update</button></section>`;
-  h += `<p class="small" style="text-align:center">Dinner Recipes · version ${esc(window.APP_VERSION || 'dev')}</p>`;
+  h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
 

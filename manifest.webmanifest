@@ -1,6 +1,6 @@
 {
   "name": "What's Cooking with Brian",
-  "short_name": "What's Cooking",
+  "short_name": "What's Cooking with Brian",
   "description": "Our shared recipes and shopping list",
   "start_url": "./",
   "scope": "./",
