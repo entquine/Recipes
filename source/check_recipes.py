@@ -74,7 +74,7 @@ def check_meals(ws, tab, errors, warnings):
             errors.append(f"Meal {meal!r}: needs exactly one Main, found {len(mains)}")
         if not 0 <= len(sides) <= 2:
             warnings.append(f"Meal {meal!r}: usually one or two sides, found {len(sides)}")
-        if not re.match(r"^\d+ ", meal):
+        if tab == "Recipes" and not re.match(r"^\d+ ", meal):
             warnings.append(f"Meal {meal!r}: start the name with a number (e.g. '5 Salmon Night') to set its place in the list")
         print(f"- {meal}: " + "; ".join(f"{n} ({d['type']}, {d['ings']} ingredients, {d['steps']} steps)" for n, d in dishes.items()))
     return meals

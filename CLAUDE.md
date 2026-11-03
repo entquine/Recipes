@@ -36,6 +36,7 @@ Same columns as **Recipes**. Meals here appear in the app under **Meals → Past
 - **Archive a meal** ("archive the pot pie"): move all of that meal's rows from Recipes to Archive, unchanged. Keep the exact Meal name, because ratings and calendar history are tied to it. Then remove its ingredients from the Shopping tab (or trim the amount and "Used in" text for items that other current meals still use).
 - **Un-archive a meal**: move its rows back to Recipes, and add its ingredients back to Shopping.
 - A Meal must be in only one of the two tabs. The checker reports an error if it's in both.
+- The leading number in a Meal name only orders the **Current** list. When archiving, keep the name exactly as it is, number included. A recipe added straight to Archive doesn't need a number.
 - Meals are never archived automatically. Only archive when the owner asks.
 
 ### Tab "Shopping"
