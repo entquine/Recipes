@@ -97,7 +97,7 @@ Recipes live in **`recipes.xlsx`** in the GitHub repository. You don't edit it b
 2. Say what you want, for example *"Add a salmon meal with roasted asparagus and rice"*, or attach a recipe spreadsheet and say *"merge these recipes in"*.
 3. Claude follows the rules in `CLAUDE.md`: it adds to the existing recipes, checks the file, and publishes it.
 
-About 2 minutes later, the phones show the change the next time the app is opened. You can also tap **Settings → Reload recipes**. With no signal, the app keeps showing the last recipes it loaded.
+About 2 minutes later, the phones show the change the next time the app is opened. You can also tap **Settings → Check for updates**. With no signal, the app keeps showing the last recipes it loaded.
 
 **Past recipes:** ask Claude to *"archive"* a meal you're done with for now. It moves to **Meals → Past**, keeping its rating and calendar history. You can still open it, cook it, or plan it again from the calendar. Ask Claude to *"un-archive"* it to bring it back to the current list.
 

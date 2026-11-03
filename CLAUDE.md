@@ -48,4 +48,4 @@ Columns: `Item`, `Amount`, `Section` (`Meat`, `Produce`, `Dairy`, `Pantry`), `Us
 - `config.js` holds the Firebase web config (public by design; security comes from the Firestore rules in `source/firestore.rules`).
 - Shared data lives in Firestore: `ticks/*`, `calendar/plan`, `ratings/*`. (`config/app` held an old Google Sheet link and is no longer read.)
 - Recipes come only from `recipes.xlsx` in this repository. There is deliberately no other recipe source (the old Google Sheet option was removed).
-- After pushing app changes, tell the owner the new version code (shown at the bottom of Settings, from `sw.js`) and to tap **Settings → Check for app update**.
+- After pushing app changes, tell the owner the new version code (shown at the bottom of Settings, from `sw.js`) and to tap **Settings → Check for updates**.
