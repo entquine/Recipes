@@ -518,6 +518,7 @@ function renderCalendar() {
           return `<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
         })()
         : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
+      ${meal && k <= today ? (() => { const ri = ratingInfo(meal.name); return `<button class="ratebtn${ri.mine ? ' voted' : ''}" data-rateday="${k}" aria-label="Rate this meal">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button>`; })() : ''}
       ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
     </li>`;
   }
@@ -530,6 +531,22 @@ const customText = (v) => (v && typeof v === 'object' && v.text ? String(v.text)
 function plannedElsewhere(mealName, day) {
   const today = dayKey(new Date());
   return Object.keys(state.plan).filter((k) => k !== day && k >= today && state.plan[k] === mealName).sort()[0] || null;
+}
+async function rateDialog(meal) {
+  const ri = ratingInfo(meal.name);
+  let dlg = $('#ratedlg');
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'ratedlg'; document.body.appendChild(dlg); }
+  const status = ri.done ? `<strong class="avg">${starsText(ri.avg)}</strong> average of ${ri.count} votes`
+    : ri.count && !ri.mine ? 'The other vote is in. Add yours to see the average.'
+    : ri.mine ? 'Waiting for the other vote.' : 'The average shows once you have both voted.';
+  dlg.innerHTML = `<form method="dialog"><p class="picktitle">Rate ${esc(meal.main.name)}</p>
+    <div class="stars-input">${[1, 2, 3, 4, 5].map((n) => `<button class="star${n <= ri.mine ? ' on' : ''}" value="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
+    <p class="small">${status}</p>
+    <div class="row-btns">${ri.mine ? '<button class="btn outline-danger" value="clear" style="width:auto">Remove my vote</button>' : ''}<button class="btn ghost" value="">Close</button></div></form>`;
+  dlg.returnValue = '';
+  const v = await new Promise((resolve) => { dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }); dlg.showModal(); });
+  if (v === 'clear') setRating(meal, null);
+  else if (/^[1-5]$/.test(v)) { setRating(meal, Number(v)); toast(`You gave ${v} star${v > 1 ? 's' : ''}`); }
 }
 async function pickMeal(day) {
   const m = state.model; if (!m) return;
@@ -666,6 +683,8 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
+  const rb = e.target.closest('[data-rateday]');
+  if (rb) { const meal = mealByName(state.plan[rb.dataset.rateday]); if (meal) rateDialog(meal); return; }
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
   const item = e.target.closest('.item[data-key]');

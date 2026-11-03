@@ -238,3 +238,6 @@ dialog p { margin: 0; font-size: 18px; }
 .weeknav [data-week].drop-target { background: var(--accent); color: var(--accent-ink); }
 body.is-dragging { user-select: none; -webkit-user-select: none; }
 .drag-holder { position: fixed; left: -9999px; top: 0; width: 1px; height: 1px; overflow: hidden; }
+.day .ratebtn { flex: none; align-self: center; margin-right: 8px; padding: 6px 10px; border-radius: 999px; border: 1.5px solid #e3a42b; background: transparent; color: #b77b0f; font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.day .ratebtn.voted { background: #e3a42b; color: #fff; border-color: #e3a42b; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .day .ratebtn:not(.voted) { color: #f0b03c; } }
