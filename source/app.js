@@ -394,10 +394,9 @@ function banners() {
 }
 
 function mealsSwitch(active) {
-  const n = state.model && state.model.past ? state.model.past.length : 0;
   return `<nav class="seg" aria-label="Which meals">
     <a href="#/" class="${active === 'current' ? 'on' : ''}">Current</a>
-    <a href="#/past" class="${active === 'past' ? 'on' : ''}">Past${n ? ` (${n})` : ''}</a></nav>`;
+    <a href="#/past" class="${active === 'past' ? 'on' : ''}">Past</a></nav>`;
 }
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
