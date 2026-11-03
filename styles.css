@@ -214,3 +214,7 @@ dialog p { margin: 0; font-size: 18px; }
 .tabs a { font-size: 12px; }
 .pickopt:disabled { opacity: .5; cursor: default; }
 .pickopt .taken { color: var(--accent); font-weight: 650; }
+.custom { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.customrow { display: flex; gap: 8px; margin-top: 6px; }
+.customrow input { flex: 1; min-width: 0; padding: 10px 12px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--bg); }
+.customrow .btn { min-height: 44px; padding: 0 16px; }
