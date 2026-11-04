@@ -232,7 +232,7 @@ async function clearScope(scope) {
 function startFirestore() {
   const { db } = state.firebase;
   stopFirestore();
-  unsubTicks = onSnapshot(collection(db, 'ticks'), { includeMetadataChanges: true }, (snap) => {
+  unsubTicks = onSnapshot(collection(db, 'ticks'), { includeMetadataChanges: true }, safely('ticks', (snap) => {
     const ticks = {};
     snap.forEach((d) => { ticks[d.id] = { ...(d.data().k || {}) }; });
     state.ticks = ticks; state.dbError = '';
@@ -240,43 +240,62 @@ function startFirestore() {
     updateSync(snap.metadata.fromCache);
     if (!snap.metadata.fromCache) { ticksLoaded = true; tidyOldLists(); }
     refreshTicks();
-  }, (err) => {
+  }), (err) => {
     console.error(err);
     state.dbError = err.code === 'permission-denied'
       ? 'This account is not allowed to read the shared ticks. Check the two email addresses in the Firestore rules (SETUP.md step 4).'
       : 'Sync error: ' + (err.code || err.message);
     state.sync = 'error'; renderSync(); route();
   });
-  unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), (snap) => {
-    state.plan = { ...((snap.exists() && snap.data().d) || {}) };
+  unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), safely('calendar', (snap) => {
+    state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
     if (/^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
-  }, () => {});
-  unsubRatings = onSnapshot(collection(db, 'ratings'), (snap) => {
+  }), (err) => listenerFailed('calendar', err));
+  unsubRatings = onSnapshot(collection(db, 'ratings'), safely('ratings', (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
-    state.ratings = r;
+    state.ratings = r; syncLoaded('ratings', snap);
     if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
-  }, () => {});
-  unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), (snap) => {
-    state.notes = { ...((snap.exists() && snap.data().n) || {}) };
+  }), (err) => listenerFailed('ratings', err));
+  unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), safely('notes', (snap) => {
+    state.notes = { ...((snap.exists() && snap.data().n) || {}) }; syncLoaded('notes', snap);
     renderNotes();
-  }, () => {});
+  }), (err) => listenerFailed('notes', err));
   // everyone's names, so notes and added items show the latest name for each email
-  unsubProfile = onSnapshot(collection(db, 'profiles'), (snap) => {
+  unsubProfile = onSnapshot(collection(db, 'profiles'), safely('names', (snap) => {
     const names = {};
     snap.forEach((d) => {
       const x = d.data();
       if (x.email && x.name) names[String(x.email).toLowerCase()] = x.name;
       if (d.id === state.user.uid) state.myName = x.name || '';
     });
-    state.names = names;
+    state.names = names; syncLoaded('names', snap);
     const inp = $('#myname'); if (inp && document.activeElement !== inp) inp.value = state.myName;
     renderNotes(); renderExtras();
-  }, () => {});
-  unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), (snap) => {
-    state.extras = { ...((snap.exists() && snap.data().i) || {}) };
+  }), (err) => listenerFailed('names', err));
+  unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), safely('added items', (snap) => {
+    state.extras = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('added items', snap);
     if (!snap.metadata.fromCache) { extrasLoaded = true; tidyOldLists(); }
     renderExtras();
-  }, () => {});
+  }), (err) => listenerFailed('added items', err));
+}
+// Runs a snapshot handler; if it throws, the error is reported instead of silently stopping later updates.
+const safely = (what, fn) => (snap) => {
+  try { fn(snap); } catch (e) {
+    console.error('error handling', what, e);
+    syncInfo[what] = { ok: false, error: 'app error: ' + (e && e.message), at: Date.now() };
+    state.listenErr = { what, code: 'app error: ' + (e && e.message) };
+    toast(`Problem showing ${what}: ${e && e.message}`, 8000);
+  }
+};
+// Sync health: what each shared list last loaded, and any error (shown in Settings and as a banner).
+const syncInfo = {};
+function syncLoaded(what, snap) { syncInfo[what] = { ok: true, server: !snap.metadata.fromCache, at: Date.now() }; if (state.listenErr && state.listenErr.what === what) { state.listenErr = null; route(); } }
+function listenerFailed(what, err) {
+  console.error('sync failed:', what, err);
+  syncInfo[what] = { ok: false, error: err.code || err.message, at: Date.now() };
+  state.listenErr = { what, code: err.code || err.message };
+  toast(`Couldn't load ${what}: ${err.code || err.message}`, 6000);
+  route();
 }
 function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = null; }
 
@@ -582,6 +601,7 @@ const itemHtml = (scope, key, inner, extraClass = '', id = '') =>
 function banners() {
   let h = '';
   if (state.dbError) h += `<div class="banner">${esc(state.dbError)}</div>`;
+  if (state.listenErr) h += `<div class="banner">Couldn't load ${esc(state.listenErr.what)} (${esc(state.listenErr.code)}). Try closing and reopening the app; if it keeps happening, tell Claude this message.</div>`;
   return h;
 }
 
@@ -851,6 +871,13 @@ function renderSettings() {
     <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
+  if (state.firebase && state.user) {
+    const row = (what, n) => { const x = syncInfo[what]; return `<li>${esc(what)}: ${x ? (x.ok ? `${n} ${x.server ? '✓' : '(from this phone, not yet confirmed)'}` : `<span class="err">error: ${esc(x.error)}</span>`) : 'not loaded yet'}</li>`; };
+    h += `<details class="card synccheck"><summary class="section-label">Sync check</summary><ul class="small">
+      ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
+      ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
+      ${row('names', Object.keys(state.names).length + ' names')}</ul></details>`;
+  }
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>

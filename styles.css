@@ -304,3 +304,4 @@ body.hide-ticked main section.card.all-ticked { display: none; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .hidetoggle { justify-content: flex-end; gap: 10px; }
 .tip.tip-top { margin: 10px 0 4px; }
+.synccheck summary { cursor: pointer; margin: 0; } .synccheck ul { margin: 8px 0 0; padding-left: 18px; }
