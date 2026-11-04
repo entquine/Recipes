@@ -397,3 +397,22 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .ideatext { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
 .idealink { color: var(--accent); overflow-wrap: anywhere; }
 .ideasent .idea { opacity: .75; }
+
+/* ---------- colour themes (Settings → Colour; teal is the default above) ---------- */
+:root[data-color="rust"] { --accent: #b8472a; --c0: #b8472a; --c0-soft: #f8e1d9;  }
+:root[data-color="blueberry"] { --accent: #2f4f8f; --c0: #2f4f8f; --c0-soft: #dde5f4; --c2: #9a5b16; --c2-soft: #f5e7d3; }
+:root[data-color="plum"] { --accent: #7a3b6e; --c0: #7a3b6e; --c0-soft: #f1e0ec; --c3: #1f6e68; --c3-soft: #d8eeeb; }
+:root[data-color="forest"] { --accent: #2f6b3a; --c0: #2f6b3a; --c0-soft: #dcebdc; --c1: #9a6a00; --c1-soft: #f6ecd0; }
+:root[data-color="slate"] { --accent: #44525e; --c0: #44525e; --c0-soft: #e2e7ec;  }
+@media (prefers-color-scheme: dark) {
+  :root[data-color="rust"]:not([data-theme="light"]) { --accent: #e3795a; --c0: #e3795a; --c0-soft: #45281e; --head: #7a2f1c;  }
+  :root[data-color="blueberry"]:not([data-theme="light"]) { --accent: #8fa9e0; --c0: #8fa9e0; --c0-soft: #1f2a42; --head: #26406f; --c2: #e0a865; --c2-soft: #3a2a17; }
+  :root[data-color="plum"]:not([data-theme="light"]) { --accent: #d39ac6; --c0: #d39ac6; --c0-soft: #3b2236; --head: #5a2b51; --c3: #6fcbc0; --c3-soft: #1b3836; }
+  :root[data-color="forest"]:not([data-theme="light"]) { --accent: #7cc48a; --c0: #7cc48a; --c0-soft: #213825; --head: #24502c; --c1: #e3b54f; --c1-soft: #3a2f12; }
+  :root[data-color="slate"]:not([data-theme="light"]) { --accent: #a9b8c6; --c0: #a9b8c6; --c0-soft: #283038; --head: #33404b;  }
+}
+.swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+@media (min-width: 760px) { .swatches { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.swatch { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: left; min-height: 52px; }
+.swatch i { flex: none; width: 26px; height: 26px; border-radius: 50%; }
+.swatch.on { border-color: var(--text); }

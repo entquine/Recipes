@@ -23,6 +23,15 @@ const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
+// Colour themes: chosen per phone in Settings (stored on the phone only). index.html applies it before the page draws.
+const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e']];
+function applyColor() {
+  const c = ls.get('color-theme', 'teal');
+  if (c && c !== 'teal') document.documentElement.dataset.color = c; else delete document.documentElement.dataset.color;
+  const bar = document.querySelector('.topbar'), meta = document.querySelector('meta[name="theme-color"]');
+  if (bar && meta) meta.content = getComputedStyle(bar).backgroundColor; // phone status bar matches the header
+}
+try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyColor); } catch { /* old browser */ }
 function hash(str) { // cyrb53, short stable id for a line of text
   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
   for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
@@ -1368,6 +1377,9 @@ function renderSettings() {
     <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
+  const cur = ls.get('color-theme', 'teal');
+  h += `<section class="card"><p class="section-label">Colour</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div>
+    <p class="small">Just for this phone.</p></section>`;
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>
@@ -1498,6 +1510,8 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
+  const ct = e.target.closest('[data-colortheme]');
+  if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
   if (e.target.id === 'clearsent') { const n = ideaList(true); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
   const ei = e.target.closest('[data-editidea]');
@@ -1741,6 +1755,7 @@ addEventListener('hashchange', route);
 
 // ---------------------------------------------------------------- start
 function start() {
+  applyColor();
   try { localStorage.removeItem('sheet-url'); localStorage.removeItem('clock-timer'); } catch { /* old settings, no longer used */ }
   const cached = ls.get('recipes-cache', null);
   if (cached) { try { state.model = buildModel(cached); state.rowsSig = JSON.stringify(cached); } catch { /* ignore bad cache */ } }
