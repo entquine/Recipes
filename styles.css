@@ -570,3 +570,4 @@ details.plan:not([open]) > summary { margin: 0; }
 .cw-step:not(.ticked) .cw-donemark { display: none; }
 .cw-end .cookdone { margin: 0; }
 .cookfoot .btn[hidden] { display: none; }
+.cookwheel { touch-action: none; overscroll-behavior: contain; }
