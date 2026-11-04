@@ -1616,25 +1616,29 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#back')) { if (navCount > 1) history.back(); else location.hash = '#/'; return; }
   if (e.target.id === 'signout') { stopFirestore(); await signOut(state.firebase.auth); return; }
-  if (e.target.id === 'update') {
-    toast('Checking for updates…');
+  if (e.target.id === 'update') { // short messages: Updating… → Up to Date! (or Already Up to Date)
+    toast('Updating…', 20000);
     const before = state.rowsSig;
     await loadRecipes();
-    const recipeMsg = state.recipeInfo && state.recipeInfo.error ? 'Could not load recipes' : state.rowsSig !== before ? 'Recipes updated' : 'Recipes up to date';
+    const recipesFailed = !!(state.recipeInfo && state.recipeInfo.error), recipesChanged = state.rowsSig !== before;
     if (location.hash.startsWith('#/settings')) route();
     try {
       const r = await fetch('sw.js', { cache: 'no-store' });
       const v = ((await r.text()).match(/VERSION = '([^']+)'/) || [])[1];
       if (!v) throw new Error('no version found');
-      if (v === window.APP_VERSION) { toast(`${recipeMsg} · app is the latest version (${v})`, 3500); return; }
+      if (v === window.APP_VERSION) {
+        toast(recipesFailed ? 'Couldn’t update. Check your connection.' : recipesChanged ? 'Up to Date!' : 'Already Up to Date', 3000);
+        return;
+      }
       const reg = await navigator.serviceWorker.getRegistration();
       if (reg) {
         await reg.update();
         const sw = reg.installing || reg.waiting;
         if (sw && sw.state !== 'activated') await new Promise((res) => { sw.addEventListener('statechange', () => sw.state === 'activated' && res()); setTimeout(res, 15000); });
       }
-      toast(`${recipeMsg} · updating app to ${v}…`); setTimeout(() => location.reload(), 900);
-    } catch (err) { toast(`${recipeMsg} · could not check the app: ${err.message}`, 3500); }
+      ls.set('just-updated', true); // the reloaded app says "Up to Date!"
+      location.reload();
+    } catch { toast('Couldn’t update. Check your connection.', 3500); }
     return;
   }
   if (e.target.id === 'forgot') {
@@ -1803,6 +1807,7 @@ addEventListener('hashchange', route);
 // ---------------------------------------------------------------- start
 function start() {
   applyColor();
+  if (ls.get('just-updated', false)) { ls.set('just-updated', false); setTimeout(() => toast('Up to Date!', 3000), 300); }
   try { localStorage.removeItem('sheet-url'); localStorage.removeItem('clock-timer'); } catch { /* old settings, no longer used */ }
   const cached = ls.get('recipes-cache', null);
   if (cached) { try { state.model = buildModel(cached); state.rowsSig = JSON.stringify(cached); } catch { /* ignore bad cache */ } }
