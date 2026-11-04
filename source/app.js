@@ -105,7 +105,7 @@ function buildMeals(recipes) {
         if (!g) { g = { name: r.group, items: [] }; dish.groups.push(g); }
         g.items.push({ amount: r.amount, text: r.text, shop: shopInfo(r) }); break;
       }
-      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', seq }); break;
+      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       default: break;
     }
@@ -1058,13 +1058,38 @@ function renderMeals() {
   refreshTicks();
 }
 
+// Prep list: steps marked with a Prep task, gathered across the main and sides and combined by task
+// ("Mince garlic: 2 cloves · Chicken + 3 cloves · Garlic bread"). Ticking a task ticks those steps in each dish.
+function prepTasks(meal) {
+  const tasks = new Map();
+  meal.dishes.forEach((d) => d.steps.forEach((st) => {
+    if (!st.prep) return;
+    const k = st.prep.trim().toLowerCase();
+    if (!tasks.has(k)) tasks.set(k, { name: st.prep.trim(), parts: [] });
+    tasks.get(k).parts.push({ dish: d, amount: st.prepAmt, key: st.key, num: st.num });
+  }));
+  return [...tasks.values()];
+}
+function prepByDish(t) { // [[dish, [amounts]]], one entry per dish
+  const m = new Map();
+  for (const x of t.parts) { if (!m.has(x.dish)) m.set(x.dish, []); if (x.amount) m.get(x.dish).push(x.amount); }
+  return [...m.entries()];
+}
+function prepCardHtml(meal) {
+  const tasks = prepTasks(meal);
+  if (!tasks.length) return '';
+  return `<details class="card prep" open id="${meal.id}-prep"><summary class="section-label">Prep list · do these first</summary>
+    <ul class="list">${tasks.map((t) => `<li class="item preptask" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
+      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="chip-${d.color} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span></li>`).join('')}</ul></details>`;
+}
+
 function renderMeal(id) {
   const meal = mealById(id);
   if (!meal) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   setTitle(meal.title, true); setTab('meals');
   const S = meal.id;
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
-  let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') +
+  let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This is a past recipe. You can still cook it, tick it and plan it. To bring it back to the current list, ask Claude to un-archive it.</div>';
@@ -1084,7 +1109,10 @@ function renderMeal(id) {
     h += '</section>';
   }
 
-  // ---- dishes
+  h += prepCardHtml(meal);
+
+  // ---- dishes (side by side on wide screens)
+  h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     h += `<section class="card dish" id="${d.anchor}"><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">🧑‍🍳 Cook mode</button>` : ''}</div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
@@ -1102,6 +1130,7 @@ function renderMeal(id) {
     }
     h += '</section>';
   }
+  h += '</div>';
   h += ratingCardHtml(meal);
   h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
@@ -1290,6 +1319,11 @@ function refreshTicks() {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
   });
+  document.querySelectorAll('.item.preptask').forEach((el) => { // a prep task is done when all its steps are
+    const t = state.ticks[el.dataset.scope] || {};
+    const on = el.dataset.prepkeys.split(',').every((k) => t[k]);
+    el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
+  });
   // shopping list only: ticked items move to the bottom of their section, unticked ones keep their order
   document.querySelectorAll('ul.list').forEach((ul) => {
     const items = [...ul.children].filter((li) => li.dataset.key);
@@ -1383,6 +1417,8 @@ document.addEventListener('click', async (e) => {
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
   if (e.target.closest('.delnote')) return;
+  const pt = e.target.closest('.item.preptask');
+  if (pt) { const on = !pt.classList.contains('done'); pt.dataset.prepkeys.split(',').forEach((k) => setTick(pt.dataset.scope, k, on)); return; }
   const gl = e.target.closest('.item.gline');
   if (gl) { toggleLine(gl.dataset.line); return; }
   const ca2 = e.target.closest('[data-clearauto]');

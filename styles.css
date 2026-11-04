@@ -355,3 +355,29 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .cookdish.c1 { border-color: var(--c1); } .cookdish.c1 span { color: var(--c1); }
 .cookdish.c2 { border-color: var(--c2); } .cookdish.c2 span { color: var(--c2); }
 .cookdish.c3 { border-color: var(--c3); } .cookdish.c3 span { color: var(--c3); }
+
+/* ---------- prep list ---------- */
+.card.prep summary { cursor: pointer; margin: 0; }
+.prepdish { display: inline-block; font-size: 12.5px; font-weight: 700; padding: 1px 7px; border-radius: 6px; }
+
+/* ---------- wide screens: tablet and laptop ---------- */
+@media (min-width: 760px) {
+  main { max-width: 1500px; padding: 18px 24px 28px; }
+  .jump { margin: -18px -24px 14px; padding: 10px 24px; }
+  /* meal: dishes side by side, each scrolling on its own */
+  .dishes { display: grid; gap: 16px; align-items: start; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); }
+  .dishes .card.dish { margin: 0; max-height: calc(100dvh - 56px - 68px - 70px); overflow-y: auto; position: sticky; top: 126px; }
+  .card.plan, .card.prep { max-width: none; }
+  /* meals, past and shopping use the width */
+  #view:has(.meal-card) { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 0 16px; align-items: start; }
+  #view:has(.meal-card) > :not(.meal-card):not(.past-card) { grid-column: 1 / -1; }
+  #view:has(.listhead #hideticked), #view:has(#hideticked) { column-width: 360px; column-gap: 16px; }
+  #view:has(#hideticked) > .card { break-inside: avoid; display: inline-block; width: 100%; }
+  #view:has(#hideticked) > .card[hidden] { display: none; }
+  #view:has(#hideticked) > :not(.card) { column-span: all; }
+  .timerbar { left: 50%; right: auto; transform: translateX(-50%); width: min(720px, 96vw); border-radius: 12px 12px 0 0; }
+}
+@media (min-width: 1300px) {
+  .dishes.cols-2 { grid-template-columns: 1fr 1fr; }
+  .dishes.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+}

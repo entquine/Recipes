@@ -30,6 +30,8 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Shop unit | **Ingredient rows only.** The unit for Shop qty, in shopping terms: `lb`, `oz`, `cup`, `tbsp`, `tsp`, `clove`, `head`, `bunch`, `can`, `package`, `jar`, `each`. Use **one unit per Shop item** across all dishes (e.g. garlic is always `clove`) |
 | Shop section | **Ingredient rows only.** `Meat`, `Produce`, `Dairy`, `Frozen`, `Bakery`, `Pantry` or `Other`. One section per Shop item |
 | Timer | **Step rows only, optional.** A short name for the step's timer, e.g. `Cook cutlets`, `Roast potatoes`. Only on steps whose text has a duration ("3 minutes") |
+| Prep task | **Step rows only, optional.** Marks a step that's pure preparation and can be done before cooking starts (chopping, mincing, zesting, measuring a sauce). A short, generic task name, e.g. `Mince garlic`, `Chop parsley`, `Zest and juice lemon`, `Whisk teriyaki sauce`. Use the **same wording** across dishes so the app combines them |
+| Prep amount | **Step rows only, optional.** How much this step preps, e.g. `2 cloves`, `1 tbsp`, `1 lemon`. Leave blank if it doesn't apply |
 
 - Plan rows (`Plan total`, `Plan first`, `Plan`) go on the **Main** dish's rows only.
 - `Plan first` says which dish to start first. This matters when a side takes longer than the main.
@@ -57,6 +59,9 @@ Same columns as **Recipes**, but each entry is a **single dish**: one Main, or o
 - Nothing is archived automatically. Only archive when the owner asks.
 
 **Step timers:** a step whose text has a duration (e.g. "Roast 20-25 minutes", "Simmer 1 hour") gets a timer button in the app, using the first number. Write durations as digits with "minutes"/"hours" when a step involves waiting. Give every such step a short **Timer** name (what's happening, not the step number), e.g. `Cook cutlets`, `Rest steak`, `Simmer sauce`. Without one, the timer is called "<dish>: step N".
+
+### Prep list
+Steps with a **Prep task** appear in a "Prep list" at the top of the meal, gathered across the main and its sides and combined by task name, e.g. "Mince garlic: 2 cloves · Chicken + 3 cloves · Garlic bread". Ticking a prep task ticks those steps in each dish. Only mark steps that can really be done up front: not cooking steps, and not prep that has to happen mid-cook (e.g. "slice the rested steak").
 
 ### The shopping list is built from the recipes
 The app makes the shopping list itself from the **Shop** columns: every current meal (Recipes tab), plus any dish planned on the calendar for today or later (including archived ones), combined by **Shop item** and summed per **Shop unit**. Each line says which meals it's for. Ticking a line marks it bought for those meals; once a meal has been cooked (its calendar day has passed), its items come back for next time.
