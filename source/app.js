@@ -61,6 +61,16 @@ function confirmDialog(text, okLabel = 'Clear') {
     dlg.returnValue = ''; dlg.showModal();
   });
 }
+// Small line icons in the tab-bar style; they take the colour of the text around them (so they follow the theme).
+const IC = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const ICONS = {
+  cal: IC('M4.5 6.5h15v13h-15zM4.5 10.5h15M8.5 4v4M15.5 4v4'),
+  timer: IC('M12 21a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM12 10v3.5l2.5 1.5M9.5 3h5'),
+  cook: IC('M7.5 17.5h9v3h-9zM7.5 17.5v-4A4 4 0 0 1 8.4 6a4 4 0 0 1 7.2 0 4 4 0 0 1 .9 7.5v4'),
+  camera: IC('M4 8.5h3.2l1.8-2.5h6l1.8 2.5H20V19H4zM12 16.5a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z'),
+  warn: IC('M12 4 2.8 19.5h18.4zM12 10v4.2M12 17v.01'),
+  bell: IC('M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14zM10 21h4'),
+};
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // ---------------------------------------------------------------- recipe parsing
@@ -215,6 +225,7 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
+  thumbs: {},              // photos/_thumbs: dish ID -> tiny JPEG for the Recipe Book list
   photos: {},              // photos/<dish ID>: dish ID -> shrunk JPEG (data URL), or null when there's none
   madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
@@ -230,7 +241,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, unsubThumbs = null, thumbsLoaded = false, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -322,6 +333,10 @@ function startFirestore() {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
     if (changed('ideas', state.ideas) && /^#\/ideas/.test(location.hash)) route();
   }), (err) => listenerFailed('ideas', err));
+  unsubThumbs = onSnapshot(doc(db, 'photos', '_thumbs'), { includeMetadataChanges: true }, safely('photos', (snap) => {
+    state.thumbs = { ...((snap.exists() && snap.data().t) || {}) }; if (!snap.metadata.fromCache) thumbsLoaded = true;
+    if (changed('thumbs', state.thumbs) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
+  }), (err) => listenerFailed('photos', err));
   unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
     state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; syncLoaded('times made', snap);
     if (changed('times made', state.madeAdjust) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
@@ -367,7 +382,7 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -404,11 +419,23 @@ function ideaRowHtml([id, x]) {
     ${mine ? `<button class="delnote" data-editidea="${esc(id)}" aria-label="Edit idea">✎</button>` : `<button class="delnote" data-delidea="${esc(id)}" aria-label="Delete idea">×</button>`}</li>`;
 }
 const ideaDay = (at) => new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+// An idea counts as added once a recipe with that name (or containing it) is in the recipes.
+const normName = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function ideaRecipe(x) {
+  const n = normName(x.name || ''); if (n.length < 4) return null;
+  for (const meal of allMeals()) for (const d of meal.dishes) {
+    const dn = normName(d.name);
+    if (dn === n || (dn.includes(n)) || (dn.length >= 8 && n.includes(dn))) return meal;
+  }
+  return null;
+}
 function renderPlanning() {
   setTitle('Planning', false); setTab('planning');
   // keep a half-typed idea when the list redraws
   const draft = ['ideaname', 'idealink'].map((k) => { const el = $('#' + k); return el ? el.value : ''; }), typing = document.activeElement && document.activeElement.id;
-  const open = ideaList(false), sent = ideaList(true);
+  const added = Object.entries(state.ideas).filter(([, x]) => ideaRecipe(x)).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
+  const isAdded = ([, x]) => !!ideaRecipe(x);
+  const open = ideaList(false).filter((e) => !isAdded(e)), sent = ideaList(true).filter((e) => !isAdded(e));
   let h = banners() + planningSwitch('ideas');
   h += `<section class="card"><p class="section-label">New recipe idea</p>
     <form id="ideaform"><label class="field">Recipe name<input id="ideaname" class="dlg-input" maxlength="120" placeholder="e.g. Salmon teriyaki rice bowls" autocomplete="off"></label>
@@ -423,6 +450,8 @@ function renderPlanning() {
   if (sent.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">Sent to Claude (${sent.length})</summary>
     <ul class="list idealist">${sent.map(ideaRowHtml).join('')}</ul>
     <button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></details>`;
+  if (added.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">In the Recipe Book ✓ (${added.length})</summary>
+    <ul class="list idealist">${added.map(([id, x]) => { const meal = ideaRecipe(x); return ideaRowHtml([id, x]).replace('<span class="ideaname">', `<a class="ideaadded" href="#/meal/${esc(meal.id)}">Open recipe ›</a><span class="ideaname">`); }).join('')}</ul></details>`;
   view().innerHTML = h;
   ['ideaname', 'idealink'].forEach((k, n) => { if (draft[n]) $('#' + k).value = draft[n]; });
   if (typing === 'ideaname' || typing === 'idealink') $('#' + typing).focus({ preventScroll: true });
@@ -433,7 +462,7 @@ function ideasMessage(list) {
     + list.map(([, x], n) => `${n + 1}. ${ideaName(x).replace(/\n+/g, ' / ')}${x.url ? ` - ${x.url}` : ''} (from ${nameFor(x.email)})`).join('\n');
 }
 async function copyIdeas() {
-  const list = ideaList(false); if (!list.length) return;
+  const list = ideaList(false).filter(([, x]) => !ideaRecipe(x)); if (!list.length) return;
   const msg = ideasMessage(list);
   let copied = false;
   try { await navigator.clipboard.writeText(msg); copied = true; } catch { /* shown below to copy by hand */ }
@@ -469,6 +498,7 @@ function watchPhoto(key) {
   if (!state.firebase || photoUnsubs[key]) return;
   photoUnsubs[key] = onSnapshot(doc(state.firebase.db, 'photos', key), safely('photos', (snap) => {
     state.photos[key] = (snap.exists() && snap.data().img) || null; paintPhotos();
+    if (state.photos[key] && thumbsLoaded && !state.thumbs[key] && !snap.metadata.fromCache) makeThumb(state.photos[key]).then((t) => writeThumb(key, t)).catch(() => {});
   }), (err) => { console.warn('photo', key, err); });
 }
 function paintPhotos() { // fill each dish's photo slot and its Add photo button
@@ -482,6 +512,18 @@ function paintPhotos() { // fill each dish's photo slot and its Add photo button
     document.querySelectorAll(`[data-addphoto="${CSS.escape(key)}"]`).forEach((b) => { b.hidden = !!img || unknown; });
     document.querySelectorAll(`[data-hasphoto="${CSS.escape(key)}"]`).forEach((b) => { b.hidden = !img; }); // Replace / Remove in the recipe menu
   });
+}
+const bookThumbs = () => Object.keys(state.thumbs).length > 0; // show the thumbnail column once any dish has a photo
+function makeThumb(src) { // a 100 px square, centre-cropped, about 3-5 KB
+  return new Promise((res, rej) => { const im = new Image(); im.onload = () => {
+    const c = document.createElement('canvas'); c.width = c.height = 100; const m = Math.min(im.width, im.height);
+    c.getContext('2d').drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, 0, 0, 100, 100); res(c.toDataURL('image/jpeg', 0.6)); };
+  im.onerror = rej; im.src = src; });
+}
+function writeThumb(key, t) {
+  if (t) state.thumbs[key] = t; else delete state.thumbs[key];
+  if (!state.firebase) { try { ls.set('local-thumbs', state.thumbs); } catch { /* full */ } return; }
+  setDoc(doc(state.firebase.db, 'photos', '_thumbs'), { t: { [key]: t || deleteField() } }, { merge: true }).catch(() => {});
 }
 async function shrinkPhoto(file) {
   const bmp = await createImageBitmap(file); // turned the right way up from the camera's orientation
@@ -503,6 +545,7 @@ function pickPhoto(key) {
 }
 function savePhoto(key, img) {
   state.photos[key] = img; paintPhotos();
+  if (img) makeThumb(img).then((t) => writeThumb(key, t)).catch(() => {}); else writeThumb(key, null);
   if (!state.firebase) { try { ls.set('local-photos', state.photos); } catch { /* full */ } toast(img ? 'Photo saved' : 'Photo removed'); return; }
   const ref = doc(state.firebase.db, 'photos', key);
   (img ? setDoc(ref, { img, email: myEmail(), at: Date.now() }) : deleteDoc(ref))
@@ -737,6 +780,7 @@ function renderSync() {
   const el = $('#sync');
   const labels = { ok: 'Synced', pending: 'Syncing…', offline: lastSnapPending ? 'Offline · will sync' : 'Offline', local: 'This phone only', none: 'Signed out', error: 'Sync error' };
   el.className = 'sync ' + state.sync; el.lastElementChild.textContent = labels[state.sync] || '';
+  el.title = labels[state.sync] || ''; el.setAttribute('aria-label', el.title); // when synced, only the green dot shows
 }
 addEventListener('online', () => updateSync(false));
 addEventListener('offline', () => updateSync(true));
@@ -867,22 +911,22 @@ function markTimerButtons() {
     const left = run ? Math.round((run[1].ends - now) / 1000) : 0;
     btn.classList.toggle('running', !!run && left > 0);
     btn.classList.toggle('rang', !!run && left <= 0);
-    btn.textContent = !run ? `⏱ Start ${btn.dataset.mins} min timer` : left > 0 ? `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : '⏰ Done · tap to clear';
+    btn.innerHTML = !run ? `${ICONS.timer} Start ${btn.dataset.mins} min timer` : left > 0 ? `${ICONS.timer} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : `${ICONS.bell} Done · tap to clear`;
   });
   document.querySelectorAll('[data-timer][data-step]').forEach((btn) => {
     const run = runningTimerFor(btn.dataset.step);
     btn.classList.toggle('running', !!run && run[1].ends > now);
     btn.classList.toggle('rang', !!run && run[1].ends <= now);
-    if (!run) { btn.textContent = `⏱ ${btn.dataset.timer} min`; return; }
+    if (!run) { btn.innerHTML = `${ICONS.timer} ${btn.dataset.timer} min`; return; }
     const left = Math.round((run[1].ends - now) / 1000);
-    btn.textContent = left > 0 ? `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : '⏰ Done · tap to clear';
+    btn.innerHTML = left > 0 ? `${ICONS.timer} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : `${ICONS.bell} Done · tap to clear`;
   });
 }
 let audioCtx = null;
 // Sound and vibration only on the phone that started the timer; the other phone just shows it.
 function audioUnlock() { try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); if (audioCtx.state === 'suspended') audioCtx.resume(); } catch { /* no sound */ } }
 function alarm(label, mine) {
-  toast(`⏰ ${label}: time's up`, 8000);
+  toast(`Time's up: ${label}`, 8000);
   if (!mine) return;
   if (navigator.vibrate) navigator.vibrate([400, 150, 400, 150, 800]);
   try {
@@ -895,6 +939,13 @@ function alarm(label, mine) {
   } catch { /* sound not available */ }
 }
 
+// Swipe left/right in cook mode to go to the next/previous step (doesn't tick anything).
+let swipe = null;
+document.addEventListener('touchstart', (e) => { swipe = cook && e.target.closest('#cookmode .cookbody') && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!swipe || !cook) return; const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y; swipe = null;
+  if (Math.abs(dx) > 60 && Math.abs(dy) < 50) cookAction(dx < 0 ? 'next' : 'back');
+}, { passive: true });
 // Cook mode: one step at a time, big text
 let cook = null; // { meal, dish }
 function openCook(mealId, dish = 0) {
@@ -919,7 +970,7 @@ function renderCook() {
       ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>`
       : `<p class="cookcount">Step ${esc(st.num)} of ${d.steps.length}${ticks[st.key] ? ' · done' : ''}</p>
          <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
-         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">⏱ Start ${mins} min timer</button>` : ''}`}
+         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}`}
     </div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
     <div class="cookfoot"><button class="btn ghost" data-cook="back"${cook.step === 0 ? ' disabled' : ''}>‹ Back</button>
@@ -938,6 +989,7 @@ function cookAction(a) {
   }
   if (a.startsWith('dish:')) { cook.dish = +a.slice(5); cook.step = null; renderCook(); return; }
   if (a === 'back') { cook.step = Math.max(0, cook.step - 1); renderCook(); return; }
+  if (a === 'next') { if (cook.step < d.steps.length) { cook.step += 1; renderCook(); } return; } // swipe: move on without ticking
   const st = d.steps[cook.step]; if (!st) return;
   if (a === 'timer') { timerTap(timerLabel(d, st), stepMinutes(st.text), meal.id, st.key); return; }
   if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); cook.step += 1; renderCook(); }
@@ -966,7 +1018,7 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
     <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
     <p class="small menulabel">Photo</p>
     <div class="menuphoto" data-photo="${esc(id)}" data-name="${esc(dish.name)}" hidden></div>
-    <div class="menuphotobtns"><button type="button" class="photobtn" data-addphoto="${esc(id)}" hidden>📷 Add photo</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-replacephoto="${esc(id)}" hidden>Replace</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-removephoto="${esc(id)}" data-name="${esc(dish.name)}" hidden>Remove</button></div>
+    <div class="menuphotobtns"><button type="button" class="photobtn" data-addphoto="${esc(id)}" hidden>${ICONS.camera} Add photo</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-replacephoto="${esc(id)}" hidden>Replace</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-removephoto="${esc(id)}" data-name="${esc(dish.name)}" hidden>Remove</button></div>
     ${rateable ? `<p class="small menulabel">Your rating</p><div class="menustars">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-menustar="${k}" aria-label="${k} star${k > 1 ? 's' : ''}">★</button>`).join('')}</div>` : ''}
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   const f = $('#formdlg');
@@ -1088,6 +1140,7 @@ function fmtQty(q) {
   return f ? (whole ? whole + f[1] : f[1]) : String(Math.round(q * 100) / 100);
 }
 const PLURAL = { clove: 'cloves', head: 'heads', bunch: 'bunches', can: 'cans', package: 'packages', jar: 'jars', bag: 'bags', box: 'boxes', stalk: 'stalks', sprig: 'sprigs', slice: 'slices', cup: 'cups', bottle: 'bottles', loaf: 'loaves', piece: 'pieces' };
+const WHOLE_UNITS = new Set(['each', 'head', 'bunch', 'can', 'package', 'jar', 'bag', 'box', 'bottle', 'loaf', 'piece']);
 function amountText(parts) {
   const byUnit = new Map(); let loose = false;
   for (const x of parts) {
@@ -1095,6 +1148,7 @@ function amountText(parts) {
     byUnit.set(x.unit, (byUnit.get(x.unit) || 0) + x.qty);
   }
   const bits = [...byUnit.entries()].map(([u, q]) => {
+    if (WHOLE_UNITS.has(u || 'each')) q = Math.ceil(q - 0.01); // half an onion or half a package: buy a whole one
     const unit = !u || u === 'each' ? '' : q > 1 && PLURAL[u] ? PLURAL[u] : u;
     return `${fmtQty(q)}${unit ? ' ' + unit : ''}`;
   });
@@ -1187,20 +1241,20 @@ const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !
 const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : 0}">${meal.kind === 'Side' ? 'Side' : 'Main'}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
-  return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
+  return n ? `<span class="planned">${ICONS.cal} ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
 }
 // Recipe Book: every dish on its own line (mains and sides split), as a short index. A search box, then sections:
 // Planned (on the Planned list or the calendar), Made before (best rated first) and Want to try, each with Mains then Sides.
-function bookRowHtml(meal, dish) {
+function bookRowHtml(meal, dish, inPlanned) {
   const ri = dish === meal.main ? ratingInfo(meal.name) : { done: false };
   const n = madeCount(meal, dish), next = nextPlanned(meal.name);
   const words = [dish.name, ...dish.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text))].join(' ').toLowerCase();
-  const meta = [n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
-    next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
+  const meta = [dish !== meal.main ? `with ${esc(meal.main.name)}` : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : inPlanned ? '' : 'Not made yet',
+    next ? `${ICONS.cal} ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
   const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
-  const di = meal.dishes.indexOf(dish);
-  return `<li class="bookli"><a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
+  const di = meal.dishes.indexOf(dish), th = state.thumbs[dishKey(dish)];
+  return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
     <span class="bk-name">${esc(dish.name)}</span>${starsHtml}
     <span class="bk-meta">${meta}</span></a><button class="bookmore" data-bookmenu="1" data-meal="${esc(meal.id)}" data-dish="${di}" aria-label="More for ${esc(dish.name)}">⋯</button></li>`;
 }
@@ -1223,8 +1277,8 @@ function renderPast() {
   h += `<div class="booksearch"><input type="search" id="booksearch" placeholder="Search recipes or ingredients" value="${esc(bookQuery)}" autocomplete="off" enterkeyhint="search"></div>`;
   for (const [id, title, list, sort] of groups) {
     if (!list.length) continue;
-    const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish)).join('')}` : '');
-    h += `<details class="card booksec" data-sec="${id}" open><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>
+    const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish, id === 'planned')).join('')}` : '');
+    h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>
       <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
@@ -1244,6 +1298,7 @@ function filterBook() { // hide rows (and empty sections) that don't match the s
   });
   const none = $('#booknone'); if (none) none.hidden = any;
 }
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('.booksec[data-sec="planned"]') && !bookQuery) ls.set('book-planned-open', e.target.open); }, true);
 document.addEventListener('input', (e) => { if (e.target.id === 'booksearch') { bookQuery = e.target.value; filterBook(); } });
 
 // Shrink each "with …" sides line just enough to fit on one line (between 12.5px and 13.5px); wraps if still too long.
@@ -1260,23 +1315,52 @@ function mealCardHtml(meal, tonight) {
   const ri = ratingInfo(meal.name);
   const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
   const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
-  const timeAndProgress = `${time ? `<span class="time">⏱ ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
+  const timeAndProgress = `${time ? `<span class="time">${ICONS.timer} ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
   return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
       <div class="eyebrow">${tonight ? '<span class="tonight-label">Tonight</span>' : `${esc(meal.title)}${plannedChip(meal)}`}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
-      ${tonight ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
+      ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
+      ${tonight || nextPlanned(meal.name) ? '' : `<span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span>`}
       <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : timeAndProgress}</div>
       ${tonight && ri.done ? `<p class="small votes"><span class="avg">${starsText(ri.avg)}</span> last time</p>` : ''}
       ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
     </a>`;
 }
+// The day after a meal (up to 3 days), ask for your rating right on the Meals screen.
+function ratePromptHtml() {
+  const today = dayKey(new Date()), dismissed = ls.get('rate-dismissed', {});
+  for (const k of Object.keys(state.plan).filter((x) => x < today).sort().reverse()) {
+    const ago = Math.round((keyToDate(today) - keyToDate(k)) / 86400000); if (ago > 3) break;
+    const meal = mealByName(state.plan[k]); if (!meal || dismissed[k] || ratingInfo(meal.name).mine) continue;
+    const when = ago === 1 ? 'last night' : 'on ' + fmtDay(keyToDate(k), { weekday: 'long' });
+    return `<section class="card rateprompt"><button class="rp-x" data-ratedismiss="${k}" aria-label="Not now">×</button>
+      <p class="rp-q">How was <strong>${esc(meal.main.name)}</strong> ${esc(when)}?</p>
+      <div class="menustars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-quickrate="${n}" data-meal="${esc(meal.id)}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div></section>`;
+  }
+  return '';
+}
+// "Pick a day" on a planned meal with no calendar day yet: the next two weeks, one tap to plan it.
+async function pickDayFor(meal) {
+  const today = new Date(), days = [];
+  for (let i = 0; i < 14; i++) { const d = new Date(today); d.setDate(d.getDate() + i); days.push(d); }
+  const dlg = formDialog(`<p class="picktitle">${esc(meal.main.name)}</p><p class="small" style="margin:0 0 10px">Which day?</p>
+    <div class="picklist daylist">${days.map((d, i) => { const k = dayKey(d), cur = state.plan[k], other = customText(cur) || (mealByName(cur) ? mealByName(cur).main.name : '');
+      return `<button class="pickopt" value="${k}"><strong>${i === 0 ? 'Tonight' : i === 1 ? 'Tomorrow' : esc(fmtDay(d, { weekday: 'long' }))} <span class="small">${esc(fmtDay(d, { month: 'short', day: 'numeric' }))}</span></strong>${other ? `<span class="small">Replaces ${esc(other)}</span>` : ''}</button>`; }).join('')}</div>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  $('#formdlg').classList.add('centered');
+  const r = await dlg;
+  if (!r.value) return;
+  setPlan(r.value, meal.rid);
+  toast(`Planned for ${r.value === dayKey(today) ? 'tonight' : fmtDay(keyToDate(r.value), { weekday: 'long' })}`);
+}
 function renderMeals() {
-  setTitle(APP_NAME, false); setTab('meals');
+  setTitle('Meals', false); setTab('meals');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
+  h += ratePromptHtml();
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
   // Tonight's meal gets the full card at the top (time, progress, rating) and isn't repeated below.
@@ -1313,7 +1397,8 @@ function prepByDish(t) { // [[dish, [amounts]]], one entry per dish
 function prepCardHtml(meal) {
   const tasks = prepTasks(meal);
   if (!tasks.length) return '';
-  return `<details class="card prep" open id="${meal.id}-prep"><summary class="section-label">Prep list · do these first</summary>
+  const allPrepped = tasks.every((t) => t.parts.every((x) => (state.ticks[meal.id] || {})[x.key]));
+  return `<details class="card prep"${allPrepped ? '' : ' open'} id="${meal.id}-prep" data-autofold="prep" data-meal="${esc(meal.id)}"><summary class="section-label">Prep list · do these first</summary>
     <ul class="list">${tasks.map((t, ti) => `<li class="item preptask" id="${esc(meal.id)}-p${ti}" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
       <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="chip-${d.color} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span>
       <button class="prepgo" data-prepgo="${esc(prepByDish(t).map(([d]) => `${d.anchor}-s${t.parts.find((x) => x.dish === d).num}|${d.type + ': ' + d.name.replace(/;|\|/g, ' ')}`).join(';'))}" aria-label="Go to the step">↓</button></li>`).join('')}</ul></details>`;
@@ -1333,8 +1418,8 @@ function renderMeal(id) {
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
-    h += `<section class="card plan" id="${S}-plan"><p class="section-label">The plan</p><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2>`;
-    if (meal.planFirst) h += `<div class="startfirst"><strong>⚠ Start first</strong>${esc(meal.planFirst)}</div>`;
+    h += `<details class="card plan" id="${S}-plan" data-autofold="plan" data-meal="${esc(S)}"${planStarted(meal) ? '' : ' open'}><summary class="section-label">The plan</summary><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2>`;
+    if (meal.planFirst) h += `<div class="startfirst"><strong>${ICONS.warn} Start first</strong>${esc(meal.planFirst)}</div>`;
     if (meal.starts.length > 1) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
       h += '<p class="section-label">Start order</p><ol class="startorder">' + meal.starts.map((s, i) => {
@@ -1342,7 +1427,7 @@ function renderMeal(id) {
         return `<li class="chip-${s.dish.color}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
       }).join('') + '</ol>';
     }
-    h += '</section>';
+    h += '</details>';
   }
 
   h += prepCardHtml(meal);
@@ -1352,19 +1437,20 @@ function renderMeal(id) {
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     const pk = dishKey(d);
-    h += `<section class="card dish" id="${d.anchor}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">🧑‍🍳 Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>📷 Add photo</button></div></div>`;
+    h += `<section class="card dish" id="${d.anchor}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
-      h += '<h3>Ingredients</h3>';
+      h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${foldedIngs.has(d.anchor) ? '' : ' open'}><summary><h3>Ingredients</h3></summary>`;
       for (const g of d.groups) {
         if (g.name) h += `<h4>${esc(g.name)}</h4>`;
         h += '<ul class="list ings">' + g.items.map((it) =>
           `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('') + '</ul>';
       }
+      h += '</details>';
     }
     if (d.steps.length) {
       h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
-        `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${prepOf.has(s.key) ? `<br><a href="#" class="toprep" data-jump="${esc(prepOf.get(s.key))}">In prep list ↑</a>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">⏱ ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
+        `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${prepOf.has(s.key) ? `<br><a href="#" class="toprep" data-jump="${esc(prepOf.get(s.key))}">In prep list ↑</a>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">${ICONS.timer} ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
     }
     h += '</section>';
   }
@@ -1374,6 +1460,19 @@ function renderMeal(id) {
   view().innerHTML = h;
   refreshTicks();
 }
+// Plan card folds once every dish has been started; Prep list folds once everything on it is ticked.
+// (Only when that happens, so you can open them again.) Ingredient lists fold by hand and stay folded.
+const foldedIngs = new Set(), lastFoldDone = {};
+function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.dishes.filter((d) => d.steps.length).every((d) => d.steps.some((x) => t[x.key])); }
+function autoFold() {
+  document.querySelectorAll('details[data-autofold]').forEach((el) => {
+    const meal = mealById(el.dataset.meal); if (!meal) return;
+    const done = el.dataset.autofold === 'plan' ? planStarted(meal) : [...el.querySelectorAll('.preptask')].every((x) => x.classList.contains('done'));
+    if (done && lastFoldDone[el.id] === false) el.open = false;
+    lastFoldDone[el.id] = done;
+  });
+}
+document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) foldedIngs.delete(el.dataset.ings); else foldedIngs.add(el.dataset.ings); } }, true);
 function shortName(d) { // short label for the jump bar
   const n = d.name.replace(/\s+with\s+.*$/i, '');
   return n.length > 26 ? n.slice(0, 24) + '…' : n;
@@ -1385,6 +1484,7 @@ function renderCalendar() {
   const today = dayKey(new Date());
   const label = state.calWeek === 0 ? 'This week' : state.calWeek === 1 ? 'Next week' : state.calWeek === -1 ? 'Last week' : '';
   let h = banners();
+  if (!ls.get('cal-hint-seen', false)) h += `<div class="card hintcard"><p>Tap a day to choose or change its meal. Press and hold a meal to drag it to another day.</p><button class="btn ghost" data-hintok="cal-hint-seen">Got it</button></div>`;
   h += `<div class="weeknav">
     <button class="btn ghost" data-week="-1" aria-label="Previous week">‹</button>
     <div><strong>${esc(fmtDay(start, { month: 'short', day: 'numeric' }))} – ${esc(fmtDay(end, { month: 'short', day: 'numeric' }))}</strong>${label ? `<span class="small">${label}</span>` : '<button class="linkbtn" data-week="0">Back to this week</button>'}</div>
@@ -1394,7 +1494,7 @@ function renderCalendar() {
     const d = new Date(start); d.setDate(d.getDate() + i);
     const k = dayKey(d), custom = customText(state.plan[k]), name = custom ? '' : state.plan[k], meal = name ? mealByName(name) : null;
     const past = k < today;
-    h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}">
+    h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}${state.plan[k] ? '' : ' noplan'}">
       <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b></div>
       <button class="pick" data-day="${k}">${custom
         ? `<strong>${esc(custom)}</strong>`
@@ -1410,7 +1510,7 @@ function renderCalendar() {
       ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
     </li>`;
   }
-  h += '</ul><p class="small" style="text-align:center">Tap a day to choose or change its meal. Press and hold a meal to drag it to another day. Both phones see the same calendar.</p>';
+  h += '</ul>';
   view().innerHTML = h;
 }
 // A plan entry is either a recipe meal name (string) or a custom note ({ text: 'Chipotle + Leftovers' }).
@@ -1477,8 +1577,8 @@ function renderShopping() {
   h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
     <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
   h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>
-    <p class="donemsg" id="donemsg" hidden></p>
-    <label class="switch hidetoggle"><span>Hide ticked items</span><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}></label>`;
+    <div class="shoptools"><label class="switch hidetoggle"><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}><span>Hide ticked</span></label><button class="btn ghost addinline" id="addinline">＋ Add item</button></div>
+    <p class="donemsg" id="donemsg" hidden></p>`;
   if (autoShop()) {
     h += renderAutoShopping(m);
     h += '<p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>';
@@ -1512,9 +1612,9 @@ function renderSettings() {
   const info = state.recipeInfo || {};
   let h = banners();
   h += '<section class="card"><p class="section-label">Sharing</p>';
-  if (!state.firebase) h += '<p>Not set up yet. Ticks are saved on this phone only. Follow SETUP.md steps 2–5 to share ticks between phones.</p>';
-  else if (state.user) h += `<p>Signed in as <strong>${esc(state.user.email)}</strong>.</p><p class="small">Status: ${esc($('#sync').textContent)}</p><button class="btn ghost" id="signout">Sign out</button>`;
-  h += `<form id="nameform"><label class="field">Your name <span class="small">(shown on your notes and added items)</span>
+  if (!state.firebase) h += '<p>Not set up: everything stays on this phone.</p>';
+  else if (state.user) h += `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>`;
+  h += `<form id="nameform"><label class="field">Your name
     <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
@@ -1523,7 +1623,6 @@ function renderSettings() {
   const cur = ls.get('color-theme', 'teal');
   h += `<section class="card"><p class="section-label">Colour</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>
-    <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
   if (state.firebase && state.user) {
@@ -1559,6 +1658,7 @@ function refreshTicks() {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
   });
+  setTimeout(autoFold, 0);
   document.querySelectorAll('.item.preptask').forEach((el) => { // a prep task is done when all its steps are
     const t = state.ticks[el.dataset.scope] || {};
     const on = el.dataset.prepkeys.split(',').every((k) => t[k]);
@@ -1639,7 +1739,7 @@ document.addEventListener('click', async (e) => {
     if (meal) { const n = Number(star.dataset.rate); setRating(meal, ratingInfo(meal.name).mine === n ? null : n); }
     return;
   }
-  if (e.target.closest('#addbtn')) { addMenu(); return; }
+  if (e.target.closest('#addbtn, #addinline')) { addMenu(); return; }
   if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
   const tb = e.target.closest('[data-timer]');
   if (tb) { timerTap(tb.dataset.label, +tb.dataset.timer, tb.dataset.meal, tb.dataset.step); return; }
@@ -1650,6 +1750,14 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
+  const qr = e.target.closest('[data-quickrate]');
+  if (qr) { const meal = mealById(qr.dataset.meal); if (meal) { const n = +qr.dataset.quickrate; setRating(meal, n); toast(`You gave ${n} star${n > 1 ? 's' : ''}`); } return; }
+  const rd = e.target.closest('[data-ratedismiss]');
+  if (rd) { const d = ls.get('rate-dismissed', {}); d[rd.dataset.ratedismiss] = 1; ls.set('rate-dismissed', d); route(); return; }
+  const pd = e.target.closest('[data-pickday]');
+  if (pd) { e.preventDefault(); const meal = mealById(pd.dataset.pickday); if (meal) pickDayFor(meal); return; }
+  const hk = e.target.closest('[data-hintok]');
+  if (hk) { ls.set(hk.dataset.hintok, true); route(); return; }
   const rp = e.target.closest('[data-replacephoto]');
   if (rp) { pickPhoto(rp.dataset.replacephoto); return; }
   const xp = e.target.closest('[data-removephoto]');
@@ -1663,7 +1771,7 @@ document.addEventListener('click', async (e) => {
   const ct = e.target.closest('[data-colortheme]');
   if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
-  if (e.target.id === 'clearsent') { const n = ideaList(true); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
+  if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
   const ei = e.target.closest('[data-editidea]');
   if (ei) { editIdea(ei.dataset.editidea); return; }
   const di = e.target.closest('[data-delidea]');
@@ -1891,7 +1999,7 @@ function route() {
   const keepScroll = hash === lastRoute;
   if (!keepScroll) doneMsg = ''; // a new visit to a screen gets a new cheer
   const y = scrollY;
-  $('#addbtn').hidden = page !== 'shopping';
+  $('#addbtn').hidden = true; // adding is the "+ Add item" button on the list itself
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
@@ -1943,6 +2051,7 @@ function start() {
     state.ideas = ls.get('local-ideas', {});
     state.madeAdjust = ls.get('local-adjust', {});
     state.photos = ls.get('local-photos', {});
+    state.thumbs = ls.get('local-thumbs', {}); thumbsLoaded = true;
     state.sync = 'local'; renderSync();
   }
   route();

@@ -507,3 +507,46 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .menuphotobtns .photobtn[hidden] { display: none; }
 .menuphotobtns { margin-bottom: 14px; }
 .ideaby .ideadate { font-size: 12.5px; }
+
+/* ================= UX pass ================= */
+.ic { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: -0.2em; flex: none; }
+/* 1: synced = just the dot */
+.sync.ok { padding: 9px; } .sync.ok span { display: none; }
+/* 2: how was it? */
+.rateprompt { position: relative; text-align: center; border: 2px solid #e3a42b; }
+.rp-q { margin: 0 28px 2px; font-size: 16.5px; }
+.rp-x { position: absolute; top: 6px; right: 6px; width: 36px; height: 36px; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 22px; cursor: pointer; }
+.rateprompt .menustars { margin-bottom: 0; }
+/* 5: pick a day */
+.pickday { display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--accent); color: var(--accent); font-weight: 700; font-size: 14.5px; }
+.daylist { max-height: 60dvh; overflow-y: auto; }
+.daylist .pickopt strong .small { font-weight: 500; margin-left: 4px; }
+/* 6: folding plan / ingredients */
+details.plan > summary { cursor: pointer; }
+details.plan:not([open]) > summary { margin: 0; }
+.ingfold > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+.ingfold > summary::-webkit-details-marker { display: none; }
+.ingfold > summary::after { content: "▾"; color: var(--muted); font-size: 15px; }
+.ingfold:not([open]) > summary::after { content: "▸"; }
+.ingfold > summary h3 { margin: 14px 0 6px; }
+/* 7: cook mode step sits higher */
+.cookbody { justify-content: flex-start; padding-top: 28px; }
+/* 8 + 9: calendar */
+.day.noplan .pick { min-height: 46px; padding: 8px 14px; }
+.day.noplan .date { padding: 4px 0; flex-direction: row; gap: 6px; }
+.day.noplan .date b { font-size: 17px; }
+.day.noplan .date span { font-size: 12px; }
+.hintcard { display: flex; align-items: center; gap: 12px; } .hintcard p { margin: 0; flex: 1; font-size: 14.5px; }
+/* 12: thumbnails */
+.bk-thumb { flex: none; width: 48px; height: 48px; border-radius: 10px; overflow: hidden; background: var(--surface-2); }
+.bk-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* 13: ideas already in the Recipe Book */
+.ideaadded { float: right; font-size: 14px; font-weight: 700; text-decoration: none; margin-left: 8px; }
+/* 16: shopping tools row */
+.shoptools { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -2px 0 12px; }
+.shoptools .hidetoggle { margin: 0; justify-content: flex-start; gap: 8px; flex-direction: row; }
+.addinline { min-height: 40px; padding: 0 14px; font-size: 15px; }
+/* 18: settings */
+.signedin { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.signedin span { font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
+.signedin .btn { min-height: 40px; padding: 0 14px; }
