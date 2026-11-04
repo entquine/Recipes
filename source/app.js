@@ -442,11 +442,12 @@ function renderPlanning() {
     <label class="field">Link <span class="small">(optional)</span><input id="idealink" class="dlg-input" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link" autocomplete="off"></label>
     <button class="btn" type="submit">Add idea</button></form></section>`;
   h += `<section class="card"><p class="section-label">Ideas${open.length ? ` (${open.length})` : ''}</p>`;
-  h += open.length ? `<ul class="list idealist">${open.map(ideaRowHtml).join('')}</ul>
-    <button class="btn ghost" type="button" id="copyideas">Copy for recipe Claude</button>
-    <p class="small">Copies these ideas as a message ready to paste to the recipe Claude, then marks them as sent.</p>`
-    : '<p class="small">No ideas waiting. Add a link or a thought above; it shows up on both phones.</p>';
+  h += open.length ? `<ul class="list idealist">${open.map(ideaRowHtml).join('')}</ul>`
+    : '<p class="small">No ideas waiting. Add one above; it shows up on both phones.</p>';
   h += '</section>';
+  if (open.length) h += `<section class="card sendcard"><p class="section-label">Send to the recipe Claude</p>
+    <p class="small">Copies the ${open.length === 1 ? 'idea' : `${open.length} ideas`} above as a message to paste to the recipe Claude, then marks ${open.length === 1 ? 'it' : 'them'} as sent.</p>
+    <button class="btn" type="button" id="copyideas">Copy for recipe Claude</button></section>`;
   if (sent.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">Sent to Claude (${sent.length})</summary>
     <ul class="list idealist">${sent.map(ideaRowHtml).join('')}</ul>
     <button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></details>`;
