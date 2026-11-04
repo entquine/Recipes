@@ -391,20 +391,29 @@ function linkify(text) { // escaped text with web addresses turned into links th
 }
 const ideaList = (sent) => Object.entries(state.ideas).filter(([, x]) => !!x.sent === sent)
   .sort((a, b) => (sent ? (b[1].sent - a[1].sent) || (a[1].at - b[1].at) : (a[1].at || 0) - (b[1].at || 0)));
+// An idea is { name, url } (older ones are a single { text }): the recipe name big, the link under it,
+// then who added it, then the date small and grey.
+const ideaName = (x) => x.name || x.text || '';
+const fixUrl = (u) => { u = String(u || '').trim(); return !u ? '' : /^https?:\/\//i.test(u) ? u : 'https://' + u; };
 function ideaRowHtml([id, x]) {
   const mine = (x.email || '').toLowerCase() === myEmail();
-  return `<li class="idea"><div><span class="ideatext">${linkify(x.text)}</span>
-    <span class="sub">${esc(nameFor(x.email))}${x.at ? ` · ${esc(ideaDay(x.at))}` : ''}${x.sent ? ` · sent ${esc(ideaDay(x.sent))}` : ''}</span></div>
+  return `<li class="idea"><div>
+    <span class="ideaname">${x.name ? esc(x.name) : linkify(x.text || '')}</span>
+    ${x.url ? `<span class="idealinkline">${linkify(x.url)}</span>` : ''}
+    <span class="ideaby">${esc(nameFor(x.email))}</span>
+    <span class="ideadate">${x.at ? esc(ideaDay(x.at)) : ''}${x.sent ? ` · sent ${esc(ideaDay(x.sent))}` : ''}</span></div>
     ${mine ? `<button class="delnote" data-editidea="${esc(id)}" aria-label="Edit idea">✎</button>` : `<button class="delnote" data-delidea="${esc(id)}" aria-label="Delete idea">×</button>`}</li>`;
 }
 const ideaDay = (at) => new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 function renderPlanning() {
   setTitle('Planning', false); setTab('planning');
-  const box = $('#ideatext'), draft = box ? box.value : '', typing = box && document.activeElement === box; // keep a half-typed idea when the list redraws
+  // keep a half-typed idea when the list redraws
+  const draft = ['ideaname', 'idealink'].map((k) => { const el = $('#' + k); return el ? el.value : ''; }), typing = document.activeElement && document.activeElement.id;
   const open = ideaList(false), sent = ideaList(true);
   let h = banners() + planningSwitch('ideas');
   h += `<section class="card"><p class="section-label">New recipe idea</p>
-    <form id="ideaform"><textarea id="ideatext" class="dlg-input ideainput" rows="3" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link, or type an idea (e.g. &quot;Something with salmon and rice&quot;)"></textarea>
+    <form id="ideaform"><label class="field">Recipe name<input id="ideaname" class="dlg-input" maxlength="120" placeholder="e.g. Salmon teriyaki rice bowls" autocomplete="off"></label>
+    <label class="field">Link <span class="small">(optional)</span><input id="idealink" class="dlg-input" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link" autocomplete="off"></label>
     <button class="btn" type="submit">Add idea</button></form></section>`;
   h += `<section class="card"><p class="section-label">Ideas${open.length ? ` (${open.length})` : ''}</p>`;
   h += open.length ? `<ul class="list idealist">${open.map(ideaRowHtml).join('')}</ul>
@@ -416,12 +425,13 @@ function renderPlanning() {
     <ul class="list idealist">${sent.map(ideaRowHtml).join('')}</ul>
     <button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></details>`;
   view().innerHTML = h;
-  if (draft) { $('#ideatext').value = draft; if (typing) $('#ideatext').focus({ preventScroll: true }); }
+  ['ideaname', 'idealink'].forEach((k, n) => { if (draft[n]) $('#' + k).value = draft[n]; });
+  if (typing === 'ideaname' || typing === 'idealink') $('#' + typing).focus({ preventScroll: true });
 }
 let ideasSentOpen = false;
 function ideasMessage(list) {
   return `Recipe ideas from the app's Planning tab. Please add each as a new meal in recipes.xlsx, following CLAUDE.md (a Main with a side or two that suit it, Shop columns, Timer and Prep task columns), then run the checker and push. For a link, open the page and use that recipe. If an idea is too vague, suggest a recipe and check with me first.\n\n`
-    + list.map(([, x], n) => `${n + 1}. ${x.text.replace(/\n+/g, ' / ')} (from ${nameFor(x.email)})`).join('\n');
+    + list.map(([, x], n) => `${n + 1}. ${ideaName(x).replace(/\n+/g, ' / ')}${x.url ? ` - ${x.url}` : ''} (from ${nameFor(x.email)})`).join('\n');
 }
 async function copyIdeas() {
   const list = ideaList(false); if (!list.length) return;
@@ -440,14 +450,15 @@ async function copyIdeas() {
 async function editIdea(id) {
   const x = state.ideas[id]; if (!x) return;
   const r = await formDialog(`<p class="picktitle">Edit idea</p>
-    <textarea class="dlg-input" name="text" rows="4" maxlength="${IDEA_MAX}">${esc(x.text)}</textarea>
+    <label class="field">Recipe name<input class="dlg-input" name="name" maxlength="120" value="${esc(ideaName(x))}" autocomplete="off"></label>
+    <label class="field">Link <span class="small">(optional)</span><input class="dlg-input" name="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" value="${esc(x.url || '')}" autocomplete="off"></label>
     <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>${x.sent ? '<button class="btn ghost" value="unsend">Not sent</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   if (r.value === 'delete') { writeIdeas({ [id]: null }); toast('Idea deleted'); return; }
   if (r.value === 'unsend') { const { sent, ...rest } = x; writeIdeas({ [id]: rest }); toast('Moved back to Ideas'); return; }
   if (r.value !== 'save') return;
-  const text = cleanIdea(r.form.text.value);
-  if (!text) { toast('Type the idea, or tap Delete'); return; }
-  if (text !== x.text) { writeIdeas({ [id]: { ...x, text } }); toast('Idea updated'); }
+  const name = clean(r.form.name.value, 120), url = fixUrl(r.form.url.value);
+  if (!name) { toast('Type the recipe name, or tap Delete'); return; }
+  if (name !== ideaName(x) || url !== (x.url || '')) { const { text, ...rest } = x; writeIdeas({ [id]: { ...rest, name, url } }); toast('Idea updated'); }
 }
 
 // ---------------------------------------------------------------- dish photos
@@ -1735,10 +1746,10 @@ document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.ma
 document.addEventListener('submit', async (e) => {
   if (e.target.id === 'ideaform') {
     e.preventDefault();
-    const text = cleanIdea($('#ideatext').value);
-    if (!text) { toast('Paste a link or type an idea first'); return; }
-    $('#ideatext').value = '';
-    writeIdeas({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { text, email: myEmail(), at: Date.now() } });
+    const name = clean($('#ideaname').value, 120), url = fixUrl($('#idealink').value);
+    if (!name) { toast('Type the recipe name first'); $('#ideaname').focus(); return; }
+    $('#ideaname').value = ''; $('#idealink').value = '';
+    writeIdeas({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name, url, email: myEmail(), at: Date.now() } });
     toast('Idea added');
     return;
   }
