@@ -1362,10 +1362,13 @@ const DONE_MESSAGES = [
   "It's in the bag 🛍️", 'Groceries: handled 🥕', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
   "That's a wrap 🛒", 'Fridge, prepare yourself 😄', 'List conquered 💪', 'All set. Time to cook 🧑‍🍳', 'Look at you go ✨',
 ];
+// keep the same message while you're on the screen (ticks redraw the list); pick a new one on each visit
+let doneMsg = '';
 function showDoneMessage(complete) {
   const el = $('#donemsg'); if (!el) return;
-  if (!complete) { el.hidden = true; el.textContent = ''; return; }
-  if (!el.textContent) el.textContent = DONE_MESSAGES[Math.floor(Math.random() * DONE_MESSAGES.length)];
+  if (!complete) { doneMsg = ''; el.hidden = true; el.textContent = ''; return; }
+  if (!doneMsg) doneMsg = DONE_MESSAGES[Math.floor(Math.random() * DONE_MESSAGES.length)];
+  if (el.textContent !== doneMsg) el.textContent = doneMsg;
   el.hidden = false;
 }
 
@@ -1604,6 +1607,7 @@ function route() {
   const hash = location.hash.replace(/^#\/?/, '');
   const [page, arg] = hash.split('/');
   const keepScroll = hash === lastRoute;
+  if (!keepScroll) doneMsg = ''; // a new visit to a screen gets a new cheer
   const y = scrollY;
   $('#addbtn').hidden = page !== 'shopping';
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
