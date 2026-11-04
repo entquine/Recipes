@@ -8,7 +8,7 @@ import {
   signInWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, signOut, connectAuthEmulator,
 } from 'firebase/auth';
 import {
-  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager, terminate, clearIndexedDbPersistence,
   collection, doc, onSnapshot, setDoc, deleteDoc, deleteField, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
@@ -247,21 +247,21 @@ function startFirestore() {
       : 'Sync error: ' + (err.code || err.message);
     state.sync = 'error'; renderSync(); route();
   });
-  unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), safely('calendar', (snap) => {
+  unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
-    if (/^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
+    if (changed('calendar', state.plan) && /^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
   }), (err) => listenerFailed('calendar', err));
-  unsubRatings = onSnapshot(collection(db, 'ratings'), safely('ratings', (snap) => {
+  unsubRatings = onSnapshot(collection(db, 'ratings'), { includeMetadataChanges: true }, safely('ratings', (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
     state.ratings = r; syncLoaded('ratings', snap);
-    if (/^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
+    if (changed('ratings', r) && /^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
   }), (err) => listenerFailed('ratings', err));
-  unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), safely('notes', (snap) => {
+  unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), { includeMetadataChanges: true }, safely('notes', (snap) => {
     state.notes = { ...((snap.exists() && snap.data().n) || {}) }; syncLoaded('notes', snap);
-    renderNotes();
+    if (changed('notes', state.notes)) renderNotes();
   }), (err) => listenerFailed('notes', err));
   // everyone's names, so notes and added items show the latest name for each email
-  unsubProfile = onSnapshot(collection(db, 'profiles'), safely('names', (snap) => {
+  unsubProfile = onSnapshot(collection(db, 'profiles'), { includeMetadataChanges: true }, safely('names', (snap) => {
     const names = {};
     snap.forEach((d) => {
       const x = d.data();
@@ -270,14 +270,17 @@ function startFirestore() {
     });
     state.names = names; syncLoaded('names', snap);
     const inp = $('#myname'); if (inp && document.activeElement !== inp) inp.value = state.myName;
-    renderNotes(); renderExtras();
+    if (changed('names', names)) { renderNotes(); renderExtras(); }
   }), (err) => listenerFailed('names', err));
-  unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), safely('added items', (snap) => {
+  unsubExtras = onSnapshot(doc(db, 'shopping', 'extra'), { includeMetadataChanges: true }, safely('added items', (snap) => {
     state.extras = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('added items', snap);
     if (!snap.metadata.fromCache) { extrasLoaded = true; tidyOldLists(); }
-    renderExtras();
+    if (changed('added items', state.extras)) renderExtras();
   }), (err) => listenerFailed('added items', err));
 }
+// Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
+const lastSeen = {};
+function changed(what, value) { const sig = JSON.stringify(value); if (lastSeen[what] === sig) return false; lastSeen[what] = sig; return true; }
 // Runs a snapshot handler; if it throws, the error is reported instead of silently stopping later updates.
 const safely = (what, fn) => (snap) => {
   try { fn(snap); } catch (e) {
@@ -297,7 +300,25 @@ function listenerFailed(what, err) {
   toast(`Couldn't load ${what}: ${err.code || err.message}`, 6000);
   route();
 }
-function stopFirestore() { for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = null; }
+// Throw away this phone's saved copy of the shared data and download it all again from Firebase.
+// (Uninstalling the app on Android doesn't clear this copy: it belongs to Chrome.)
+async function resetLocalData() {
+  if (!state.firebase) return;
+  if (!(await confirmDialog('Reload all shared data on this phone from Firebase? Anything ticked or added while offline that hasn\'t synced yet will be lost.', 'Reload'))) return;
+  toast('Reloading data…');
+  try {
+    stopFirestore();
+    // shutting down and clearing can wait forever while another copy of the app holds the data: give up after 6 seconds
+    const busy = new Promise((_, no) => setTimeout(() => no(Object.assign(new Error('busy'), { code: 'failed-precondition' })), 6000));
+    await Promise.race([terminate(state.firebase.db), busy]);
+    await Promise.race([clearIndexedDbPersistence(state.firebase.db), busy]);
+    location.reload();
+  } catch (e) {
+    toast(e.code === 'failed-precondition' ? 'Close any other copy of the app (for example a Chrome tab), then try again.' : 'Could not reset: ' + (e.code || e.message), 8000);
+    setTimeout(() => location.reload(), 8000);
+  }
+}
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = null; }
 
 // ---------------------------------------------------------------- shopping notes
 // Shared notes at the top of the shopping list, stored in Firestore notes/shopping as { n: { id: { text, email, at } } }.
@@ -876,7 +897,9 @@ function renderSettings() {
     h += `<details class="card synccheck"><summary class="section-label">Sync check</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
       ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}</ul></details>`;
+      ${row('names', Object.keys(state.names).length + ' names')}</ul>
+      <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
+      <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
@@ -967,6 +990,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
+  if (e.target.id === 'resetcache') { resetLocalData(); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
