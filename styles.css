@@ -459,3 +459,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .bk-made { color: var(--ok); font-weight: 650; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bk-stars { color: #f0b03c; } }
 @media (min-width: 760px) { #view:has(.booksec) { display: block; } .booksec { max-width: 760px; margin-left: auto; margin-right: auto; } .booksearch, #view:has(.booksec) .seg { max-width: 760px; margin-left: auto; margin-right: auto; } }
+.booklist li.bk-sub { border-top: 0; padding: 10px 0 0; font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.booklist li.bk-sub + li { border-top: 0; }
+.booklist li.bk-sub:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
+.booklist li.bk-sub[hidden] { display: none; }

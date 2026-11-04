@@ -1074,14 +1074,13 @@ function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
 }
-// Recipe Book: every recipe as a short index. A search box, then sections:
-// Planned (on the Planned list or the calendar), Made before (best rated first), Want to try, and Sides (folded).
-function bookRowHtml(meal, dish, note) {
+// Recipe Book: every dish on its own line (mains and sides split), as a short index. A search box, then sections:
+// Planned (on the Planned list or the calendar), Made before (best rated first) and Want to try, each with Mains then Sides.
+function bookRowHtml(meal, dish) {
   const ri = dish === meal.main ? ratingInfo(meal.name) : { done: false };
   const n = madeCount(meal, dish), next = nextPlanned(meal.name);
-  const covers = dish === meal.main ? meal.dishes : [dish]; // a main row matches its whole meal; a side row only itself
-  const words = [dish.name, note || '', ...covers.map((d) => d.name), ...covers.flatMap((d) => d.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text)))].join(' ').toLowerCase();
-  const meta = [note ? esc(note) : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
+  const words = [dish.name, ...dish.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text))].join(' ').toLowerCase();
+  const meta = [n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
     next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
   return `<li><a class="bookrow" href="#/meal/${meal.id}" data-search="${esc(words)}">
     <span class="bk-name">${esc(dish.name)}</span>${ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>` : ''}
@@ -1093,22 +1092,23 @@ function renderPast() {
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners() + mealsSwitch('past');
-  const mains = [...m.meals, ...(m.past || []).filter((x) => x.kind !== 'Side')];
-  const isPlanned = (meal) => !meal.archived || !!nextPlanned(meal.name);
-  const byRating = (a, b) => { const ra = ratingInfo(a.name), rb = ratingInfo(b.name);
-    return (rb.done ? rb.avg : 0) - (ra.done ? ra.avg : 0) || madeCount(b) - madeCount(a) || a.main.name.localeCompare(b.main.name); };
-  const planned = mains.filter(isPlanned).sort((a, b) => (nextPlanned(a.name) || '9') .localeCompare(nextPlanned(b.name) || '9') || a.name.localeCompare(b.name, undefined, { numeric: true }));
-  const made = mains.filter((x) => !isPlanned(x) && madeCount(x) > 0).sort(byRating);
-  const tryList = mains.filter((x) => !isPlanned(x) && !madeCount(x)).sort((a, b) => a.main.name.localeCompare(b.main.name));
-  const sides = [...m.meals.flatMap((meal) => meal.sides.map((d) => [meal, d, 'with ' + meal.main.name])), ...(m.past || []).filter((x) => x.kind === 'Side').map((x) => [x, x.main, ''])]
-    .sort((a, b) => a[1].name.localeCompare(b[1].name) || a[2].localeCompare(b[2]));
-  const withSides = (meal) => (meal.sides.length ? 'with ' + meal.sides.map((d) => d.name).join(' & ') : '');
-  const section = (id, title, hint, rows, folded) => (rows.length ? `<details class="card booksec" data-sec="${id}"${folded && !bookQuery ? '' : ' open'}><summary><span class="section-label">${title}</span><span class="bk-count">${rows.length}</span></summary>${hint ? `<p class="small bk-hint">${hint}</p>` : ''}<ul class="booklist">${rows.join('')}</ul></details>` : '');
+  // one entry per dish: current meals give their main and each side; archived entries are one dish already
+  const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, side: d.type === 'Side' }))),
+    ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))];
+  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !e.meal.archived || !!e.next;
+    const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
+  const groups = [
+    ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
+    ['made', 'Made before', all.filter((e) => !e.planned && e.made), (a, b) => b.stars - a.stars || b.made - a.made || a.dish.name.localeCompare(b.dish.name)],
+    ['try', 'Want to try', all.filter((e) => !e.planned && !e.made), (a, b) => a.dish.name.localeCompare(b.dish.name)],
+  ];
   h += `<div class="booksearch"><input type="search" id="booksearch" placeholder="Search recipes or ingredients" value="${esc(bookQuery)}" autocomplete="off" enterkeyhint="search"></div>`;
-  h += section('planned', 'Planned', '', planned.map((x) => bookRowHtml(x, x.main, withSides(x))));
-  h += section('made', 'Made before', 'Best rated first', made.map((x) => bookRowHtml(x, x.main, withSides(x))));
-  h += section('try', 'Want to try', '', tryList.map((x) => bookRowHtml(x, x.main, withSides(x))));
-  h += section('sides', 'Sides', '', sides.map(([meal, d, note]) => bookRowHtml(meal, d, note)), !ls.get('book-sides-open', false));
+  for (const [id, title, list, sort] of groups) {
+    if (!list.length) continue;
+    const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish)).join('')}` : '');
+    h += `<details class="card booksec" data-sec="${id}" open><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>
+      <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
+  }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
   view().innerHTML = h;
   filterBook();
@@ -1119,13 +1119,13 @@ function filterBook() { // hide rows (and empty sections) that don't match the s
   document.querySelectorAll('.booksec').forEach((sec) => {
     let n = 0;
     sec.querySelectorAll('.bookrow').forEach((a) => { const ok = q.every((w) => a.dataset.search.includes(w)); a.parentElement.hidden = !ok; if (ok) n++; });
+    sec.querySelectorAll('[data-sub]').forEach((li) => { let x = li.nextElementSibling, vis = false; while (x && !x.hasAttribute('data-sub')) { if (!x.hidden) vis = true; x = x.nextElementSibling; } li.hidden = !vis; });
     sec.hidden = !n; sec.querySelector('.bk-count').textContent = n; if (q.length && n) sec.open = true;
     any = any || n > 0;
   });
   const none = $('#booknone'); if (none) none.hidden = any;
 }
 document.addEventListener('input', (e) => { if (e.target.id === 'booksearch') { bookQuery = e.target.value; filterBook(); } });
-document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('.booksec[data-sec="sides"]') && !bookQuery) ls.set('book-sides-open', e.target.open); }, true);
 
 // Shrink each "with …" sides line just enough to fit on one line (between 12.5px and 13.5px); wraps if still too long.
 function fitSides() {
