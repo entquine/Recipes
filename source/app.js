@@ -523,7 +523,7 @@ function renderExtras() { // added items sit inside the shopping sections, so re
 function formDialog(html) { // shows a small form dialog; resolves with the submit button's value and the form
   let dlg = $('#formdlg');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'formdlg'; document.body.appendChild(dlg); }
-  dlg.innerHTML = `<form method="dialog">${html}</form>`;
+  dlg.className = ''; dlg.innerHTML = `<form method="dialog">${html}</form>`;
   dlg.returnValue = '';
   // Enter in a text box saves (otherwise the first button, Cancel or Remove, would be used)
   dlg.querySelectorAll('input').forEach((inp) => inp.addEventListener('keydown', (ev) => {
@@ -885,18 +885,16 @@ function writeAdjust(id, delta) {
   setDoc(doc(state.firebase.db, 'history', 'adjust'), { a: { [id]: delta || deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
 async function madeMenu(meal, dish) { // press and hold a Recipe Book line: change how many times it shows as made
-  const id = dishKey(dish), counted = countedMade(meal, dish), cal = pastDays(meal.rid).length, sheet = dish.madeBefore || 0;
+  const id = dishKey(dish), counted = countedMade(meal, dish);
   let n = madeCount(meal, dish);
-  const why = [cal ? `${cal} ${cal === 1 ? 'day' : 'days'} on the calendar` : '', sheet ? `${sheet} from the recipe list` : ''].filter(Boolean).join(' + ');
   const dlg = formDialog(`<p class="picktitle">${esc(dish.name)}</p>
     <p class="small" style="margin:0">Times made</p>
     <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
-    <p class="small">The app counted ${counted}${why ? ` (${esc(why)})` : ''}. Your change is kept on top of that, so new calendar days still add up.</p>
-    <div class="row-btns">${n !== counted ? `<button class="btn ghost" value="reset" style="margin-right:auto">Use ${counted}</button>` : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  $('#formdlg').classList.add('centered'); // no keyboard here, so it can sit in the middle
   $('#formdlg').querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
   const r = await dlg;
-  if (r.value === 'reset') { writeAdjust(id, 0); toast('Back to the counted number'); }
-  else if (r.value === 'save' && n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); toast('Saved'); }
+  if (r.value === 'save' && n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); toast('Saved'); }
 }
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
 function lastMadeText(meal, dish = meal.main) {
