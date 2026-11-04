@@ -725,9 +725,9 @@ function alarm(label, mine) {
 
 // Cook mode: one step at a time, big text
 let cook = null; // { meal, dish }
-function openCook(mealId) {
+function openCook(mealId, dish = 0) {
   const meal = mealById(mealId); if (!meal) return;
-  cook = { meal: meal.id, dish: 0, step: null };
+  cook = { meal: meal.id, dish: Math.min(dish, meal.dishes.length - 1), step: null };
   renderCook();
 }
 function renderCook() {
@@ -742,6 +742,7 @@ function renderCook() {
   const mins = st ? stepMinutes(st.text) : 0;
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
       <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
+    <p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>
     <div class="cookbody">${doneAll
       ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>`
       : `<p class="cookcount">Step ${esc(st.num)} of ${d.steps.length}${ticks[st.key] ? ' · done' : ''}</p>
@@ -751,12 +752,18 @@ function renderCook() {
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
     <div class="cookfoot"><button class="btn ghost" data-cook="back"${cook.step === 0 ? ' disabled' : ''}>‹ Back</button>
       ${doneAll ? '' : `<button class="btn" data-cook="done">${ticks[st.key] ? 'Next ›' : 'Done ✓'}</button>`}</div>`;
+  const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
+  if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   renderTimers();
 }
 function cookAction(a) {
   if (!cook) return;
   const meal = mealById(cook.meal); const d = meal.dishes[cook.dish];
-  if (a === 'close') { cook = null; renderCook(); route(); return; }
+  if (a === 'close') { // back to the recipe, at the dish you were cooking
+    const anchor = d.anchor; cook = null; renderCook(); route();
+    const sec = document.getElementById(anchor); if (sec) scrollTo(0, sec.getBoundingClientRect().top + scrollY - 120);
+    return;
+  }
   if (a.startsWith('dish:')) { cook.dish = +a.slice(5); cook.step = null; renderCook(); return; }
   if (a === 'back') { cook.step = Math.max(0, cook.step - 1); renderCook(); return; }
   const st = d.steps[cook.step]; if (!st) return;
@@ -1062,7 +1069,6 @@ function renderMeal(id) {
   h += banners();
   if (meal.archived) h += '<div class="banner">This is a past recipe. You can still cook it, tick it and plan it. To bring it back to the current list, ask Claude to un-archive it.</div>';
   { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
-  h += `<button class="btn block cookbtn" data-opencook="${esc(meal.id)}">👩‍🍳 Cook mode: one step at a time</button>`.replace('👩‍🍳', '🧑‍🍳');
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
@@ -1080,7 +1086,7 @@ function renderMeal(id) {
 
   // ---- dishes
   for (const d of meal.dishes) {
-    h += `<section class="card dish" id="${d.anchor}"><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}</div>`;
+    h += `<section class="card dish" id="${d.anchor}"><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">🧑‍🍳 Cook mode</button>` : ''}</div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += '<h3>Ingredients</h3>';
@@ -1356,7 +1362,7 @@ document.addEventListener('click', async (e) => {
   const stp = e.target.closest('[data-stoptimer]');
   if (stp) { writeSession('timers', stp.dataset.stoptimer, null); return; }
   const oc = e.target.closest('[data-opencook]');
-  if (oc) { openCook(oc.dataset.opencook); return; }
+  if (oc) { openCook(oc.dataset.opencook, +(oc.dataset.dish || 0)); return; }
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }

@@ -1,5 +1,5 @@
 // Service worker: keeps the app working offline.
-const VERSION = '5e45087200';
+const VERSION = '0f5a9574f6';
 const CACHE = 'dinner-' + VERSION;
 const FILES = ["./","index.html","styles.css","app.js","config.js","manifest.webmanifest","recipes.xlsx","icons/icon-192.png","icons/icon-512.png","icons/icon-maskable-512.png"];
 

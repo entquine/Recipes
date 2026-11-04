@@ -349,3 +349,9 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 /* timers inside cook mode sit just above the Back / Done buttons */
 #cookmode .cooktimers { position: static; box-shadow: none; border: 0; border-radius: 12px; margin: 0 0 10px; }
 .cooktimer.rang { background: var(--danger); color: #fff; }
+.cookdishbtn { margin-top: 10px; border: 0; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 15px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
+.cookdish { margin: 12px 0 0; font-size: 20px; font-weight: 750; line-height: 1.25; padding-left: 10px; border-left: 5px solid var(--c0); }
+.cookdish span { display: block; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--c0); }
+.cookdish.c1 { border-color: var(--c1); } .cookdish.c1 span { color: var(--c1); }
+.cookdish.c2 { border-color: var(--c2); } .cookdish.c2 span { color: var(--c2); }
+.cookdish.c3 { border-color: var(--c3); } .cookdish.c3 span { color: var(--c3); }
