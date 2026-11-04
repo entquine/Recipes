@@ -8,7 +8,7 @@ import sys
 
 import openpyxl
 
-SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip"}
+SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made"}
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
@@ -85,7 +85,13 @@ def check_meals(ws, tab, errors, warnings):
             d["plan"] += 1
             if amount is not None and not re.fullmatch(r"Before|\d{1,2}:\d{2}(:00)?", str(amount).strip()):
                 warnings.append(f"{where}: Plan time should look like 0:27 or Before, found {amount!r}")
-        if not text:
+        if s == "made":
+            d["made"] = d.get("made", 0) + 1
+            if d["made"] > 1:
+                errors.append(f"{where}: more than one Made row for {recipe!r}; use one row with the total")
+            if not re.fullmatch(r"\d{1,3}", str(amount if amount is not None else "").strip()):
+                errors.append(f"{where}: Made rows need Amount = how many times it was made before the calendar, as a whole number, found {amount!r}")
+        elif not text:
             warnings.append(f"{where}: empty Text")
         if timer not in (None, ""):
             if s != "step":

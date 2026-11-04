@@ -116,6 +116,7 @@ function buildMeals(recipes) {
       }
       case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
+      case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
     }
   }
@@ -213,7 +214,6 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
-  madeBefore: {},          // history/made: dish ID -> times made before the calendar tracked it
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
   staples: {},             // shopping/staples: items we usually have, by name key
@@ -227,7 +227,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubMade = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -319,10 +319,6 @@ function startFirestore() {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
     if (changed('ideas', state.ideas) && /^#\/planning/.test(location.hash)) route();
   }), (err) => listenerFailed('ideas', err));
-  unsubMade = onSnapshot(doc(db, 'history', 'made'), { includeMetadataChanges: true }, safely('times made', (snap) => {
-    state.madeBefore = { ...((snap.exists() && snap.data().m) || {}) }; syncLoaded('times made', snap);
-    if (changed('times made', state.madeBefore) && /^#?\/?(past|calendar|meal\/.*)?$/.test(location.hash)) route();
-  }), (err) => listenerFailed('times made', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
 const lastSeen = {};
@@ -364,7 +360,7 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubMade]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubMade = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -871,37 +867,19 @@ function cookAction(a) {
   if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); cook.step += 1; renderCook(); }
 }
 
-// Last made and times made: calendar days before today, plus any times made before the calendar (history/made).
-// A side served in a current meal counts that meal's calendar days. `own` is the dish ID holding the earlier count.
+// Last made and times made: calendar days before today, plus the dish's "Made" row in the spreadsheet
+// (times made before the calendar). A side served in a current meal also counts that meal's calendar days.
 const pastDays = (rid) => { const today = dayKey(new Date()); return Object.keys(state.plan).filter((k) => k < today && planKey(state.plan[k]) === rid).sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
-const madeCount = (meal, own = meal.rid) => pastDays(meal.rid).length + (Number(state.madeBefore[own]) || 0);
+const madeCount = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore || 0);
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
-function lastMadeText(meal, own) {
-  const k = lastMade(meal), n = madeCount(meal, own);
+function lastMadeText(meal, dish = meal.main) {
+  const k = lastMade(meal), n = madeCount(meal, dish);
   if (!n) return 'Not made yet';
-  if (!k) return timesText(n);
+  if (!k) return timesText(n) + (dish.madeNote ? ` · last ${dish.madeNote}` : '');
   const days = Math.round((keyToDate(dayKey(new Date())) - keyToDate(k)) / 86400000);
   const ago = days <= 1 ? 'yesterday' : days < 14 ? `${days} days ago` : days < 60 ? `${Math.round(days / 7)} weeks ago` : `${Math.round(days / 30)} months ago`;
   return `${timesText(n)} · last ${ago}`;
-}
-function writeMadeBefore(id, n) {
-  if (n > 0) state.madeBefore[id] = n; else delete state.madeBefore[id];
-  route();
-  if (!state.firebase) { ls.set('local-made', state.madeBefore); return; }
-  setDoc(doc(state.firebase.db, 'history', 'made'), { m: { [id]: n > 0 ? n : deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
-}
-async function madeDialog(meal, own, name) { // set how many times a recipe was made before the calendar tracked it
-  const cal = pastDays(meal.rid).length;
-  let n = Number(state.madeBefore[own]) || 0;
-  const dlg = formDialog(`<p class="picktitle">${esc(name)}</p>
-    <p class="small">How many times did you make it <strong>before</strong> putting it on the calendar?</p>
-    <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
-    <p class="small">${cal ? `Plus ${cal} ${cal === 1 ? 'day' : 'days'} on the calendar, counted automatically.` : 'Days you put it on the calendar are counted automatically.'}</p>
-    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
-  $('#formdlg').querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
-  const r = await dlg;
-  if (r.value === 'save' && n !== (Number(state.madeBefore[own]) || 0)) writeMadeBefore(own, n);
 }
 // Suggestions for a day: well rated, and not had in a while (never made counts as a while)
 function suggestions(day) {
@@ -1096,59 +1074,58 @@ function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">📅 ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
 }
-// Recipe Book: every recipe. Current meals (also on Planned), their sides (under Sides), and everything archived.
-function bookEntries() {
-  const m = state.model, out = [];
-  for (const meal of m.meals) {
-    out.push({ meal, kind: 'Main', name: meal.main.name, own: meal.rid, current: true });
-    for (const d of meal.sides) out.push({ meal, kind: 'Side', name: d.name, own: d.id || 'd-' + slug(d.name), current: true, side: d });
-  }
-  for (const meal of m.past || []) out.push({ meal, kind: meal.kind, name: meal.main.name, own: meal.rid, current: false });
-  for (const e of out) { e.made = madeCount(e.meal, e.own); e.planned = e.current || !!nextPlanned(e.meal.name); }
-  return out;
+// Recipe Book: every recipe as a short index. A search box, then sections:
+// Planned (on the Planned list or the calendar), Made before (best rated first), Want to try, and Sides (folded).
+function bookRowHtml(meal, dish, note) {
+  const ri = dish === meal.main ? ratingInfo(meal.name) : { done: false };
+  const n = madeCount(meal, dish), next = nextPlanned(meal.name);
+  const covers = dish === meal.main ? meal.dishes : [dish]; // a main row matches its whole meal; a side row only itself
+  const words = [dish.name, note || '', ...covers.map((d) => d.name), ...covers.flatMap((d) => d.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text)))].join(' ').toLowerCase();
+  const meta = [note ? esc(note) : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
+    next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
+  return `<li><a class="bookrow" href="#/meal/${meal.id}" data-search="${esc(words)}">
+    <span class="bk-name">${esc(dish.name)}</span>${ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>` : ''}
+    <span class="bk-meta">${meta}</span></a></li>`;
 }
+let bookQuery = '';
 function renderPast() {
   setTitle(APP_NAME, false); setTab('meals');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners() + mealsSwitch('past');
-  const kindF = ls.get('past-filter', 'all'); // all | Main | Side
-  const statusF = ls.get('book-status', 'all'); // all | made | planned | new
-  const all = bookEntries();
-  // "All" shows meals as one card (sides listed inside); Sides lists every side on its own
-  const byKind = (k) => all.filter((e) => (k === 'all' ? !e.side : e.kind === k));
-  const inKind = byKind(kindF);
-  const st = { all: () => true, made: (e) => e.made > 0, planned: (e) => e.planned, new: (e) => !e.made };
-  h += `<nav class="filters" aria-label="Show">${[['all', 'All'], ['made', 'Made'], ['planned', 'Planned'], ['new', 'New']]
-    .map(([v, label]) => `<button class="filter${statusF === v ? ' on' : ''}" data-bookstatus="${v}">${label} <span>${inKind.filter(st[v]).length}</span></button>`).join('')}</nav>`;
-  h += `<nav class="filters kinds" aria-label="Type">${[['all', 'Meals'], ['Main', 'Mains'], ['Side', 'Sides']]
-    .map(([v, label]) => `<button class="filter${kindF === v ? ' on' : ''}" data-pastfilter="${v}">${label}</button>`).join('')}</nav>`;
-  const list = inKind.filter(st[statusF] || st.all).sort((a, b) => {
-    const ra = ratingInfo(a.meal.name), rb = ratingInfo(b.meal.name);
-    const sa = a.side ? -1 : ra.done ? ra.avg : -1, sb = b.side ? -1 : rb.done ? rb.avg : -1;
-    return sb - sa || b.made - a.made || a.name.localeCompare(b.name, undefined, { numeric: true });
-  });
-  if (!list.length) h += '<p class="empty">Nothing here yet.</p>';
-  for (const e of list) {
-    const meal = e.meal, ri = ratingInfo(meal.name);
-    const sides = e.side ? '' : meal.sides.map((d) => esc(d.name)).join(' &amp; ');
-    const status = e.side ? `<span class="small">Served with ${esc(meal.main.name)}</span>`
-      : ri.done ? `<span class="avg">${starsText(ri.avg)}</span>`
-        : `<span class="small">${ri.mine ? 'Waiting for the other vote' : ri.count ? 'The other vote is in' : 'Not rated'}</span>`;
-    const tags = `<span class="kind chip-${e.kind === 'Side' ? 1 : 0}">${e.kind}</span>${e.planned ? '<span class="kind tag-planned">Planned</span>' : ''}${e.made ? `<span class="kind tag-made">Made ${e.made}×</span>` : '<span class="kind tag-new">New</span>'}`;
-    h += `<div class="card meal-card past-card">
-      <a class="cardlink" href="#/meal/${meal.id}">
-        <div class="eyebrow">${tags}${plannedChip(meal)}</div>
-        <h2>${esc(e.name)}</h2>
-        ${sides ? `<p class="sides">with ${sides}</p>` : ''}
-        <p class="lastmade">${esc(lastMadeText(meal, e.own))}</p>
-      </a>
-      <div class="meta">${status}<span class="cardbtns"><button class="madebtn" data-madeof="${esc(meal.id)}" data-madeown="${esc(e.own)}" data-madename="${esc(e.name)}" aria-label="Times made">✓ ${e.made}×</button>${e.side ? '' : `<button class="ratebtn${ri.mine ? ' voted' : ''}" data-ratemeal="${meal.id}" aria-label="Rate ${esc(meal.main.name)}">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button>`}</span></div>
-    </div>`;
-  }
+  const mains = [...m.meals, ...(m.past || []).filter((x) => x.kind !== 'Side')];
+  const isPlanned = (meal) => !meal.archived || !!nextPlanned(meal.name);
+  const byRating = (a, b) => { const ra = ratingInfo(a.name), rb = ratingInfo(b.name);
+    return (rb.done ? rb.avg : 0) - (ra.done ? ra.avg : 0) || madeCount(b) - madeCount(a) || a.main.name.localeCompare(b.main.name); };
+  const planned = mains.filter(isPlanned).sort((a, b) => (nextPlanned(a.name) || '9') .localeCompare(nextPlanned(b.name) || '9') || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const made = mains.filter((x) => !isPlanned(x) && madeCount(x) > 0).sort(byRating);
+  const tryList = mains.filter((x) => !isPlanned(x) && !madeCount(x)).sort((a, b) => a.main.name.localeCompare(b.main.name));
+  const sides = [...m.meals.flatMap((meal) => meal.sides.map((d) => [meal, d, 'with ' + meal.main.name])), ...(m.past || []).filter((x) => x.kind === 'Side').map((x) => [x, x.main, ''])]
+    .sort((a, b) => a[1].name.localeCompare(b[1].name) || a[2].localeCompare(b[2]));
+  const withSides = (meal) => (meal.sides.length ? 'with ' + meal.sides.map((d) => d.name).join(' & ') : '');
+  const section = (id, title, hint, rows, folded) => (rows.length ? `<details class="card booksec" data-sec="${id}"${folded && !bookQuery ? '' : ' open'}><summary><span class="section-label">${title}</span><span class="bk-count">${rows.length}</span></summary>${hint ? `<p class="small bk-hint">${hint}</p>` : ''}<ul class="booklist">${rows.join('')}</ul></details>` : '');
+  h += `<div class="booksearch"><input type="search" id="booksearch" placeholder="Search recipes or ingredients" value="${esc(bookQuery)}" autocomplete="off" enterkeyhint="search"></div>`;
+  h += section('planned', 'Planned', '', planned.map((x) => bookRowHtml(x, x.main, withSides(x))));
+  h += section('made', 'Made before', 'Best rated first', made.map((x) => bookRowHtml(x, x.main, withSides(x))));
+  h += section('try', 'Want to try', '', tryList.map((x) => bookRowHtml(x, x.main, withSides(x))));
+  h += section('sides', 'Sides', '', sides.map(([meal, d, note]) => bookRowHtml(meal, d, note)), !ls.get('book-sides-open', false));
+  h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
   view().innerHTML = h;
-  fitSides();
+  filterBook();
 }
+function filterBook() { // hide rows (and empty sections) that don't match the search
+  const q = bookQuery.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  let any = false;
+  document.querySelectorAll('.booksec').forEach((sec) => {
+    let n = 0;
+    sec.querySelectorAll('.bookrow').forEach((a) => { const ok = q.every((w) => a.dataset.search.includes(w)); a.parentElement.hidden = !ok; if (ok) n++; });
+    sec.hidden = !n; sec.querySelector('.bk-count').textContent = n; if (q.length && n) sec.open = true;
+    any = any || n > 0;
+  });
+  const none = $('#booknone'); if (none) none.hidden = any;
+}
+document.addEventListener('input', (e) => { if (e.target.id === 'booksearch') { bookQuery = e.target.value; filterBook(); } });
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('.booksec[data-sec="sides"]') && !bookQuery) ls.set('book-sides-open', e.target.open); }, true);
 
 // Shrink each "with …" sides line just enough to fit on one line (between 12.5px and 13.5px); wraps if still too long.
 function fitSides() {
@@ -1433,7 +1410,7 @@ function renderSettings() {
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
       ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}${row('times made', Object.keys(state.madeBefore).length + ' recipes')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
+      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
@@ -1568,10 +1545,6 @@ document.addEventListener('click', async (e) => {
   if (dx) { const x = state.extras[dx.dataset.delextra]; if (x && await confirmDialog(`Remove "${x.name}" from the shopping list for both of you?`, 'Remove')) writeExtras({ [dx.dataset.delextra]: null }); return; }
   const dn = e.target.closest('[data-delnote]');
   if (dn) { if (await confirmDialog('Delete this note for both of you?', 'Delete')) writeNotes({ [dn.dataset.delnote]: null }); return; }
-  const bs = e.target.closest('[data-bookstatus]');
-  if (bs) { ls.set('book-status', bs.dataset.bookstatus); route(); return; }
-  const mb = e.target.closest('[data-madeof]');
-  if (mb) { const meal = mealById(mb.dataset.madeof); if (meal) madeDialog(meal, mb.dataset.madeown, mb.dataset.madename); return; }
   const pf = e.target.closest('[data-pastfilter]');
   if (pf) { ls.set('past-filter', pf.dataset.pastfilter); route(); return; }
   const rm = e.target.closest('[data-ratemeal]');
@@ -1831,7 +1804,6 @@ function start() {
     state.staples = ls.get('local-staples', {});
     state.bought = ls.get('local-bought', {});
     state.ideas = ls.get('local-ideas', {});
-    state.madeBefore = ls.get('local-made', {});
     state.sync = 'local'; renderSync();
   }
   route();
