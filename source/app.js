@@ -214,6 +214,7 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
+  madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
   staples: {},             // shopping/staples: items we usually have, by name key
@@ -227,7 +228,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -319,6 +320,10 @@ function startFirestore() {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
     if (changed('ideas', state.ideas) && /^#\/planning/.test(location.hash)) route();
   }), (err) => listenerFailed('ideas', err));
+  unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
+    state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; syncLoaded('times made', snap);
+    if (changed('times made', state.madeAdjust) && /^#?\/?(past)?$/.test(location.hash)) route();
+  }), (err) => listenerFailed('times made', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
 const lastSeen = {};
@@ -360,7 +365,7 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -871,7 +876,28 @@ function cookAction(a) {
 // (times made before the calendar). A side served in a current meal also counts that meal's calendar days.
 const pastDays = (rid) => { const today = dayKey(new Date()); return Object.keys(state.plan).filter((k) => k < today && planKey(state.plan[k]) === rid).sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
-const madeCount = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore || 0);
+const countedMade = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore || 0); // calendar + spreadsheet
+const madeCount = (meal, dish = meal.main) => Math.max(0, countedMade(meal, dish) + (Number(state.madeAdjust[dishKey(dish)]) || 0)); // plus your change
+function writeAdjust(id, delta) {
+  if (delta) state.madeAdjust[id] = delta; else delete state.madeAdjust[id];
+  route();
+  if (!state.firebase) { ls.set('local-adjust', state.madeAdjust); return; }
+  setDoc(doc(state.firebase.db, 'history', 'adjust'), { a: { [id]: delta || deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+async function madeMenu(meal, dish) { // press and hold a Recipe Book line: change how many times it shows as made
+  const id = dishKey(dish), counted = countedMade(meal, dish), cal = pastDays(meal.rid).length, sheet = dish.madeBefore || 0;
+  let n = madeCount(meal, dish);
+  const why = [cal ? `${cal} ${cal === 1 ? 'day' : 'days'} on the calendar` : '', sheet ? `${sheet} from the recipe list` : ''].filter(Boolean).join(' + ');
+  const dlg = formDialog(`<p class="picktitle">${esc(dish.name)}</p>
+    <p class="small" style="margin:0">Times made</p>
+    <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
+    <p class="small">The app counted ${counted}${why ? ` (${esc(why)})` : ''}. Your change is kept on top of that, so new calendar days still add up.</p>
+    <div class="row-btns">${n !== counted ? `<button class="btn ghost" value="reset" style="margin-right:auto">Use ${counted}</button>` : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  $('#formdlg').querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
+  const r = await dlg;
+  if (r.value === 'reset') { writeAdjust(id, 0); toast('Back to the counted number'); }
+  else if (r.value === 'save' && n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); toast('Saved'); }
+}
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
 function lastMadeText(meal, dish = meal.main) {
   const k = lastMade(meal), n = madeCount(meal, dish);
@@ -909,7 +935,7 @@ function toggleStaple(name) {
 // once the page starts scrolling the phone stops reporting finger movement, so scroll and cancel events are watched too.
 let holdTimer = null, held = false;
 document.addEventListener('pointerdown', (e) => {
-  const it = e.target.closest('.item[data-name]'); if (!it) return;
+  const it = e.target.closest('.item[data-name], .bookrow[data-dish]'); if (!it) return;
   held = false; const x0 = e.clientX, y0 = e.clientY, sy = scrollY;
   const stop = () => { clearTimeout(holdTimer); for (const [t, f] of offs) document.removeEventListener(t, f, true); removeEventListener('scroll', stop, true); };
   const moved = (ev) => { const p = ev.touches ? ev.touches[0] : ev; if (!p || Math.hypot(p.clientX - x0, p.clientY - y0) > 8) stop(); };
@@ -917,9 +943,10 @@ document.addEventListener('pointerdown', (e) => {
   for (const [t, f] of offs) document.addEventListener(t, f, { capture: true, passive: true });
   addEventListener('scroll', stop, { capture: true, passive: true });
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25); stapleMenu(it.dataset.name); }, 600);
+  holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25);
+    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else stapleMenu(it.dataset.name); }, 600);
 });
-document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name]')) e.preventDefault(); });
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
 async function stapleMenu(name) {
   const on = isStaple(name);
   const r = await formDialog(`<p class="picktitle">${esc(name)}</p><p class="small" style="margin:0 0 12px">${on ? 'You marked this as something you usually have.' : 'Usually have this at home? Staples move to a folded "Usually have" card and don’t count toward the list.'}</p>
@@ -1082,7 +1109,7 @@ function bookRowHtml(meal, dish) {
   const words = [dish.name, ...dish.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text))].join(' ').toLowerCase();
   const meta = [n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
     next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
-  return `<li><a class="bookrow" href="#/meal/${meal.id}" data-search="${esc(words)}">
+  return `<li><a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(dish)}" data-search="${esc(words)}">
     <span class="bk-name">${esc(dish.name)}</span>${ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>` : ''}
     <span class="bk-meta">${meta}</span></a></li>`;
 }
@@ -1110,6 +1137,7 @@ function renderPast() {
       <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
+  h += '<p class="small staplehint">Tip: press and hold a recipe to change how many times it shows as made.</p>';
   view().innerHTML = h;
   filterBook();
 }
@@ -1410,7 +1438,7 @@ function renderSettings() {
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
       ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
+      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}${row('times made', Object.keys(state.madeAdjust).length + ' changed')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
@@ -1519,7 +1547,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn')) { addMenu(); return; }
-  if (held) { held = false; return; } // a press-and-hold just opened the staples menu
+  if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
   const tb = e.target.closest('[data-timer]');
   if (tb) { timerTap(tb.dataset.label, +tb.dataset.timer, tb.dataset.meal, tb.dataset.step); return; }
   const stp = e.target.closest('[data-stoptimer]');
@@ -1804,6 +1832,7 @@ function start() {
     state.staples = ls.get('local-staples', {});
     state.bought = ls.get('local-bought', {});
     state.ideas = ls.get('local-ideas', {});
+    state.madeAdjust = ls.get('local-adjust', {});
     state.sync = 'local'; renderSync();
   }
   route();

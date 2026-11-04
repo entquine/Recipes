@@ -463,3 +463,4 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .booklist li.bk-sub + li { border-top: 0; }
 .booklist li.bk-sub:not(:first-child) { margin-top: 6px; border-top: 1px solid var(--line); padding-top: 14px; }
 .booklist li.bk-sub[hidden] { display: none; }
+.bookrow { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
