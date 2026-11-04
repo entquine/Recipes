@@ -215,6 +215,7 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
+  photos: {},              // photos/<dish ID>: dish ID -> shrunk JPEG (data URL), or null when there's none
   madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
@@ -366,7 +367,7 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -447,6 +448,63 @@ async function editIdea(id) {
   const text = cleanIdea(r.form.text.value);
   if (!text) { toast('Type the idea, or tap Delete'); return; }
   if (text !== x.text) { writeIdeas({ [id]: { ...x, text } }); toast('Idea updated'); }
+}
+
+// ---------------------------------------------------------------- dish photos
+// One photo per dish in Firestore photos/<dish ID> as { img: JPEG data URL, email, at }. The phone shrinks it first
+// (longest side 1100 px, about 100-250 KB) so it fits in a document and the free plan. A dish's photo is only
+// loaded when its recipe is opened (1 read), then kept on the phone.
+const photoUnsubs = {};
+function watchPhoto(key) {
+  if (!state.firebase || photoUnsubs[key]) return;
+  photoUnsubs[key] = onSnapshot(doc(state.firebase.db, 'photos', key), safely('photos', (snap) => {
+    state.photos[key] = (snap.exists() && snap.data().img) || null; paintPhotos();
+  }), (err) => { console.warn('photo', key, err); });
+}
+function paintPhotos() { // fill each dish's photo slot and its Add photo button
+  document.querySelectorAll('[data-photo]').forEach((slot) => {
+    const key = slot.dataset.photo; watchPhoto(key);
+    const img = state.photos[key];
+    if (img) { if (slot.dataset.src !== img) { slot.innerHTML = `<img src="${img}" alt="Photo of ${esc(slot.dataset.name)}">`; slot.dataset.src = img; } }
+    else { slot.innerHTML = ''; slot.dataset.src = ''; }
+    slot.hidden = !img;
+    const btn = document.querySelector(`[data-addphoto="${CSS.escape(key)}"]`); if (btn) btn.hidden = !!img || state.photos[key] === undefined && !!state.firebase;
+  });
+}
+async function shrinkPhoto(file) {
+  const bmp = await createImageBitmap(file); // turned the right way up from the camera's orientation
+  const k = Math.min(1, 1100 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  let url = '';
+  for (const q of [0.8, 0.7, 0.6, 0.5, 0.4]) { url = c.toDataURL('image/jpeg', q); if (url.length < 340000) break; }
+  return url;
+}
+function pickPhoto(key) {
+  const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
+  inp.addEventListener('change', async () => {
+    const f = inp.files && inp.files[0]; if (!f) return;
+    toast('Saving photo…', 10000);
+    try { savePhoto(key, await shrinkPhoto(f)); } catch (e) { toast('Couldn’t use that photo: ' + e.message, 4000); }
+  });
+  inp.click();
+}
+function savePhoto(key, img) {
+  state.photos[key] = img; paintPhotos();
+  if (!state.firebase) { try { ls.set('local-photos', state.photos); } catch { /* full */ } toast(img ? 'Photo saved' : 'Photo removed'); return; }
+  const ref = doc(state.firebase.db, 'photos', key);
+  (img ? setDoc(ref, { img, email: myEmail(), at: Date.now() }) : deleteDoc(ref))
+    .then(() => toast(img ? 'Photo saved' : 'Photo removed'))
+    .catch((e) => toast('Could not save the photo: ' + (e.code || e.message), 5000));
+}
+async function photoMenu(key, name) {
+  const dlg = formDialog(`<p class="picktitle">${esc(name)}</p>
+    <div class="picklist"><button class="pickopt" value="replace"><strong>Replace photo</strong></button><button class="pickopt" value="remove"><strong>Remove photo</strong></button></div>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  $('#formdlg').classList.add('centered');
+  const r = await dlg;
+  if (r.value === 'replace') pickPhoto(key);
+  else if (r.value === 'remove' && await confirmDialog(`Remove the photo of ${name} for both of you?`, 'Remove')) savePhoto(key, null);
 }
 
 // ---------------------------------------------------------------- shopping notes
@@ -1120,8 +1178,10 @@ function bookRowHtml(meal, dish) {
   const words = [dish.name, ...dish.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text))].join(' ').toLowerCase();
   const meta = [n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : 'Not made yet',
     next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
+  const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>`
+    : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
   return `<li><a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(dish)}" data-search="${esc(words)}">
-    <span class="bk-name">${esc(dish.name)}</span>${ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>` : ''}
+    <span class="bk-name">${esc(dish.name)}</span>${starsHtml}
     <span class="bk-meta">${meta}</span></a></li>`;
 }
 let bookQuery = '';
@@ -1133,7 +1193,7 @@ function renderPast() {
   // one entry per dish: current meals give their main and each side; archived entries are one dish already
   const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, side: d.type === 'Side' }))),
     ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))].filter((e) => !e.dish.hideBook);
-  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !!e.next || (!e.meal.archived && !e.made); // on the calendar soon, or on the Planned list and not made yet
+  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !!e.next || (!e.meal.archived && !madeCount(e.meal)); // on the calendar soon, or its meal is on the Planned list and hasn't been made yet (a side skipped when the meal was made goes to Want to try)
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
@@ -1270,7 +1330,8 @@ function renderMeal(id) {
   // ---- dishes (side by side on wide screens)
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
-    h += `<section class="card dish" id="${d.anchor}"><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">🧑‍🍳 Cook mode</button>` : ''}</div>`;
+    const pk = dishKey(d);
+    h += `<section class="card dish" id="${d.anchor}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">🧑‍🍳 Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>📷 Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += '<h3>Ingredients</h3>';
@@ -1568,6 +1629,10 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
+  const ap = e.target.closest('[data-addphoto]');
+  if (ap) { pickPhoto(ap.dataset.addphoto); return; }
+  const ph = e.target.closest('.dishphoto[data-photo]');
+  if (ph) { photoMenu(ph.dataset.photo, ph.dataset.name); return; }
   const ct = e.target.closest('[data-colortheme]');
   if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
@@ -1808,6 +1873,7 @@ function route() {
   else if (page === 'settings') renderSettings();
   else if (page === 'planning') renderPlanning();
   else renderMeals();
+  paintPhotos();
   if (keepScroll) scrollTo(0, y); else scrollTo(0, 0);
   if (hash !== lastRoute) navCount++;
   lastRoute = hash;
@@ -1849,6 +1915,7 @@ function start() {
     state.bought = ls.get('local-bought', {});
     state.ideas = ls.get('local-ideas', {});
     state.madeAdjust = ls.get('local-adjust', {});
+    state.photos = ls.get('local-photos', {});
     state.sync = 'local'; renderSync();
   }
   route();

@@ -478,3 +478,13 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .menustars { display: flex; justify-content: center; gap: 4px; margin: 6px 0 14px; }
 .menustars button { width: 48px; height: 48px; border: 0; background: none; font-size: 36px; line-height: 1; color: var(--line); cursor: pointer; padding: 0; }
 .menustars button.on { color: #e3a42b; }
+
+/* ---------- dish photos ---------- */
+.dishphoto { margin: -16px -16px 14px; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; cursor: pointer; background: var(--surface-2); }
+.dishphoto img { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.dishphoto[hidden], .photobtn[hidden] { display: none; }
+.dishbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.dishbtns .cookdishbtn { margin-top: 0; }
+.photobtn { border: 1.5px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 700; font-size: 15px; background: transparent; color: var(--text); cursor: pointer; }
+.bk-stars.mine { color: #d9b46a; font-weight: 650; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bk-stars.mine { color: #a88a4e; } }
