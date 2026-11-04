@@ -24,7 +24,7 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
 // Colour themes: chosen per phone in Settings (stored on the phone only). index.html applies it before the page draws.
-const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e']];
+const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e'], ['pink', 'Hot Pink', '#d6336c'], ['violet', 'Violet', '#7c3aed']];
 function applyColor() {
   const c = ls.get('color-theme', 'teal');
   if (c && c !== 'teal') document.documentElement.dataset.color = c; else delete document.documentElement.dataset.color;
