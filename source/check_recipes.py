@@ -12,6 +12,10 @@ SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
+SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer"]
+SHOP_SECTIONS = {"Meat", "Produce", "Dairy", "Frozen", "Bakery", "Pantry", "Other"}
+SHOP_SEEN = {}     # shop item (lower case) -> (section, unit set, where)
+SHOP_MISSING = []  # dishes with ingredients that have no shopping details yet
 
 
 def main(path):
@@ -29,6 +33,7 @@ def main(path):
     else:
         warnings.append('No "Archive" tab (past recipes). Add one with the same columns as Recipes when archiving a meal')
     shopping_check(wb, names, errors, warnings)
+    shop_report(warnings)
     for w in warnings:
         print("warning:", w)
     for e in errors:
@@ -41,9 +46,12 @@ def check_meals(ws, tab, errors, warnings):
     header = [str(c.value or "").strip() for c in ws[1]]
     if header[: len(RECIPE_COLS)] != RECIPE_COLS:
         errors.append(f"{tab} columns must be {RECIPE_COLS}, found {header}")
+    extra = [h for h in header[len(RECIPE_COLS):] if h]
+    if extra and extra != SHOP_COLS_NEW[: len(extra)]:
+        errors.append(f"{tab}: columns after ID must be {SHOP_COLS_NEW}, found {extra}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        recipe, typ, meal, section, group, order, amount, text, rid = (list(row) + [None] * 9)[:9]
+        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer = (list(row) + [None] * 14)[:14]
         if not any(row):
             continue
         where = f"{tab} row {i}"
@@ -79,6 +87,17 @@ def check_meals(ws, tab, errors, warnings):
                 warnings.append(f"{where}: Plan time should look like 0:27 or Before, found {amount!r}")
         if not text:
             warnings.append(f"{where}: empty Text")
+        if timer not in (None, ""):
+            if s != "step":
+                errors.append(f"{where}: Timer is only used on Step rows")
+            elif not re.search(r"\d+(\s*(-|–|to)\s*\d+)?\s*(minutes?|mins?|hours?|hrs?)\b", str(text or ""), re.I):
+                errors.append(f"{where}: has a Timer name but the step text has no duration like '3 minutes'")
+            elif len(str(timer)) > 40:
+                warnings.append(f"{where}: Timer name is long; keep it under 40 characters, e.g. 'Cook cutlets'")
+        if s == "ingredient":
+            check_shop(where, tab, str(recipe).strip(), s_item, s_qty, s_unit, s_sec, errors)
+        elif any(v not in (None, "") for v in (s_item, s_qty, s_unit, s_sec)):
+            warnings.append(f"{where}: shopping columns are only used on Ingredient rows")
     for meal, dishes in meals.items():
         mains = [n for n, d in dishes.items() if d["type"] == "Main"]
         sides = [n for n, d in dishes.items() if d["type"] == "Side"]
@@ -109,6 +128,47 @@ def check_meals(ws, tab, errors, warnings):
                 ALL_IDS[i] = (tab, meal, n)
         print(f"- {meal}: " + "; ".join(f"{n} ({d['type']}, {next(iter(d['ids']), 'no ID')})" for n, d in dishes.items()))
     return meals
+
+
+def check_shop(where, tab, dish, item, qty, unit, sec, errors):
+    item = str(item or "").strip()
+    if not item:
+        SHOP_MISSING.append((tab, dish))
+        return
+    if item.lower() in ("(none)", "none"):
+        return
+    if qty not in (None, ""):
+        try:
+            q = float(str(qty).replace(",", "."))
+            if q <= 0:
+                raise ValueError
+        except ValueError:
+            errors.append(f"{where}: Shop qty must be a plain number like 2, 0.5 or 1.25 (or blank for 'as needed'), found {qty!r}")
+        if not str(unit or "").strip():
+            errors.append(f"{where}: Shop unit is required when there's a Shop qty (use 'each' for things you count)")
+    sec = str(sec or "").strip()
+    if sec not in SHOP_SECTIONS:
+        errors.append(f"{where}: Shop section must be one of {sorted(SHOP_SECTIONS)}, found {sec!r}")
+    seen = SHOP_SEEN.setdefault(item.lower(), {"section": sec, "units": set(), "where": where, "name": item})
+    if seen["section"] != sec:
+        errors.append(f"{where}: Shop item {item!r} is in section {sec!r} here but {seen['section']!r} at {seen['where']}. Use one section per item")
+    if seen["name"] != item:
+        errors.append(f"{where}: Shop item {item!r} is spelled {seen['name']!r} at {seen['where']}. Use exactly the same name so they combine")
+    if str(unit or "").strip():
+        seen["units"].add(str(unit).strip())
+
+
+def shop_report(warnings):
+    for k, v in SHOP_SEEN.items():
+        if len(v["units"]) > 1:
+            warnings.append(f"Shop item {v['name']!r} uses several units {sorted(v['units'])}; amounts only add up within the same unit")
+    if SHOP_MISSING:
+        dishes = sorted({f"{d} ({t})" for t, d in SHOP_MISSING})
+        print(f"Shopping details missing on {len(SHOP_MISSING)} ingredient rows in {len(dishes)} dishes: the app keeps using the Shopping tab until every current or planned dish has them.")
+        for d in dishes[:40]:
+            print("  -", d)
+    else:
+        print("Shopping details: complete. The app builds the shopping list from the recipes.")
 
 
 def shopping_check(wb, names, errors, warnings):
