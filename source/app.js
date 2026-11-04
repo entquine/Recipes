@@ -275,12 +275,12 @@ function startFirestore() {
   });
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
-    if (changed('calendar', state.plan) && /^#?\/?(calendar|past)?$/.test(location.hash)) route(); // re-draw Calendar or Meals list
+    if (changed('calendar', state.plan) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
   }), (err) => listenerFailed('calendar', err));
   unsubRatings = onSnapshot(collection(db, 'ratings'), { includeMetadataChanges: true }, safely('ratings', (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
     state.ratings = r; syncLoaded('ratings', snap);
-    if (changed('ratings', r) && /^#?\/?(calendar|past|meal\/.*)?$/.test(location.hash)) route();
+    if (changed('ratings', r) && /^#?\/?(calendar|past|planning|meal\/.*)?$/.test(location.hash)) route();
   }), (err) => listenerFailed('ratings', err));
   unsubNotes = onSnapshot(doc(db, 'notes', 'shopping'), { includeMetadataChanges: true }, safely('notes', (snap) => {
     state.notes = { ...((snap.exists() && snap.data().n) || {}) }; syncLoaded('notes', snap);
@@ -320,11 +320,11 @@ function startFirestore() {
   }), (err) => listenerFailed('bought', err));
   unsubIdeas = onSnapshot(doc(db, 'ideas', 'list'), { includeMetadataChanges: true }, safely('ideas', (snap) => {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
-    if (changed('ideas', state.ideas) && /^#\/planning/.test(location.hash)) route();
+    if (changed('ideas', state.ideas) && /^#\/ideas/.test(location.hash)) route();
   }), (err) => listenerFailed('ideas', err));
   unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
     state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; syncLoaded('times made', snap);
-    if (changed('times made', state.madeAdjust) && /^#?\/?(past)?$/.test(location.hash)) route();
+    if (changed('times made', state.madeAdjust) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
   }), (err) => listenerFailed('times made', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
@@ -374,7 +374,7 @@ function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (co
 // "Copy for recipe Claude" copies the unsent ideas as a ready-to-paste message, then marks them sent.
 function writeIdeas(changes) {
   for (const [id, v] of Object.entries(changes)) { if (v) state.ideas[id] = v; else delete state.ideas[id]; }
-  if (/^#\/planning/.test(location.hash)) route();
+  if (/^#\/ideas/.test(location.hash)) route();
   if (!state.firebase) { ls.set('local-ideas', state.ideas); return; }
   const i = {}; for (const [id, v] of Object.entries(changes)) i[id] = v || deleteField();
   setDoc(doc(state.firebase.db, 'ideas', 'list'), { i }, { merge: true }).catch((e) => toast('Could not save idea: ' + (e.code || e.message)));
@@ -402,7 +402,7 @@ function renderPlanning() {
   setTitle('Planning', false); setTab('planning');
   const box = $('#ideatext'), draft = box ? box.value : '', typing = box && document.activeElement === box; // keep a half-typed idea when the list redraws
   const open = ideaList(false), sent = ideaList(true);
-  let h = banners();
+  let h = banners() + planningSwitch('ideas');
   h += `<section class="card"><p class="section-label">New recipe idea</p>
     <form id="ideaform"><textarea id="ideatext" class="dlg-input ideainput" rows="3" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link, or type an idea (e.g. &quot;Something with salmon and rice&quot;)"></textarea>
     <button class="btn" type="submit">Add idea</button></form></section>`;
@@ -1031,7 +1031,7 @@ function shopMeals() {
   if (!state.model) return [];
   const today = dayKey(new Date()), seen = new Set(), out = [];
   const add = (m) => { if (m && !seen.has(m.rid)) { seen.add(m.rid); out.push(m); } };
-  state.model.meals.forEach(add);
+  state.model.meals.filter(isPlannedMeal).forEach(add); // made meals drop off until they're planned again
   Object.keys(state.plan).filter((k) => k >= today).sort().forEach((k) => add(mealByName(state.plan[k])));
   return out;
 }
@@ -1160,11 +1160,14 @@ function banners() {
   return h;
 }
 
-function mealsSwitch(active) {
-  return `<nav class="seg" aria-label="Which meals">
-    <a href="#/" class="${active === 'current' ? 'on' : ''}">Planned</a>
-    <a href="#/past" class="${active === 'past' ? 'on' : ''}">Recipe Book</a></nav>`;
+function planningSwitch(active) {
+  return `<nav class="seg" aria-label="Planning">
+    <a href="#/planning" class="${active === 'book' ? 'on' : ''}">Recipe Book</a>
+    <a href="#/ideas" class="${active === 'ideas' ? 'on' : ''}">Ideas</a></nav>`;
 }
+// Planned = on the calendar for today or later, or a current meal (Recipes tab) that hasn't been made yet.
+// Used by the Meals list, the Recipe Book's Planned section and the shopping list.
+const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal));
 const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : 0}">${meal.kind === 'Side' ? 'Side' : 'Main'}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
@@ -1186,14 +1189,14 @@ function bookRowHtml(meal, dish) {
 }
 let bookQuery = '';
 function renderPast() {
-  setTitle(APP_NAME, false); setTab('meals');
+  setTitle('Planning', false); setTab('planning');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
-  let h = banners() + mealsSwitch('past');
+  let h = banners() + planningSwitch('book');
   // one entry per dish: current meals give their main and each side; archived entries are one dish already
   const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, side: d.type === 'Side' }))),
     ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))].filter((e) => !e.dish.hideBook);
-  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !!e.next || (!e.meal.archived && !madeCount(e.meal)); // on the calendar soon, or its meal is on the Planned list and hasn't been made yet (a side skipped when the meal was made goes to Want to try)
+  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = isPlannedMeal(e.meal); // on the calendar soon, or its meal is on the Planned list and hasn't been made yet (a side skipped when the meal was made goes to Want to try)
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
@@ -1255,7 +1258,7 @@ function renderMeals() {
   setTitle(APP_NAME, false); setTab('meals');
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
-  let h = banners() + mealsSwitch('current');
+  let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
@@ -1264,10 +1267,11 @@ function renderMeals() {
   if (tonight) h += mealCardHtml(tonight, true);
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
   const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };
-  const sorted = m.meals.filter((meal) => meal !== tonight).map((meal, i) => ({ meal, i, r: rank(meal) }))
+  const sorted = [...m.meals, ...(m.past || [])].filter((meal) => meal !== tonight && isPlannedMeal(meal)).map((meal, i) => ({ meal, i, r: rank(meal) }))
     .sort((a, b) => a.r[0] - b.r[0] || a.r[1].localeCompare(b.r[1]) || a.i - b.i).map((x) => x.meal);
   for (const meal of sorted) h += mealCardHtml(meal, false);
-  view().innerHTML = h || '<p class="empty">No meals yet.</p>';
+  if (!sorted.length && !tonight) h += '<p class="empty">Nothing planned right now.<br><span class="small">Pick something from Planning → Recipe Book and put it on the calendar.</span></p>';
+  view().innerHTML = h;
   fitSides();
   refreshTicks();
 }
@@ -1307,7 +1311,7 @@ function renderMeal(id) {
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
   h += banners();
-  if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book but not on the Planned list. You can still cook it, tick it and put it on the calendar. To add it back to Planned, ask Claude to un-archive it.</div>';
+  if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
   { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
 
   // ---- Plan first
@@ -1869,9 +1873,9 @@ function route() {
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
   else if (page === 'calendar') renderCalendar();
-  else if (page === 'past') renderPast();
+  else if (page === 'past' || page === 'planning') renderPast(); // Recipe Book (Planning tab)
+  else if (page === 'ideas') renderPlanning();
   else if (page === 'settings') renderSettings();
-  else if (page === 'planning') renderPlanning();
   else renderMeals();
   paintPhotos();
   if (keepScroll) scrollTo(0, y); else scrollTo(0, 0);
