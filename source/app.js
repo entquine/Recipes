@@ -1080,7 +1080,8 @@ function prepCardHtml(meal) {
   if (!tasks.length) return '';
   return `<details class="card prep" open id="${meal.id}-prep"><summary class="section-label">Prep list · do these first</summary>
     <ul class="list">${tasks.map((t, ti) => `<li class="item preptask" id="${esc(meal.id)}-p${ti}" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
-      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<a href="#" class="chip-${d.color} prepdish" data-jump="${esc(d.anchor)}-s${esc(t.parts.find((x) => x.dish === d).num)}" title="Go to this step">${esc(shortName(d))} ›</a>`).join(' + ')}</span></span></li>`).join('')}</ul></details>`;
+      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="chip-${d.color} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span>
+      <button class="prepgo" data-prepgo="${esc(prepByDish(t).map(([d]) => `${d.anchor}-s${t.parts.find((x) => x.dish === d).num}|${d.type + ': ' + d.name.replace(/;|\|/g, ' ')}`).join(';'))}" aria-label="Go to the step">↓</button></li>`).join('')}</ul></details>`;
 }
 
 function renderMeal(id) {
@@ -1428,6 +1429,17 @@ document.addEventListener('click', async (e) => {
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
   if (e.target.closest('.delnote')) return;
+  const pg = e.target.closest('[data-prepgo]');
+  if (pg) { // jump to the step; ask which dish when the task is used by more than one
+    const opts = pg.dataset.prepgo.split(';').map((x) => x.split('|'));
+    let go = opts[0][0];
+    if (opts.length > 1) {
+      const r = await formDialog(`<p class="picktitle">Go to which dish?</p><div class="picklist">${opts.map(([id, name]) => `<button class="pickopt" value="${esc(id)}"><strong>${esc(name)}</strong></button>`).join('')}</div><div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+      if (!r.value) return; go = r.value;
+    }
+    const a = document.createElement('a'); a.dataset.jump = go; a.hidden = true; document.body.appendChild(a); a.click(); a.remove();
+    return;
+  }
   const pt = e.target.closest('.item.preptask');
   if (pt) { const on = !pt.classList.contains('done'); pt.dataset.prepkeys.split(',').forEach((k) => setTick(pt.dataset.scope, k, on)); return; }
   const gl = e.target.closest('.item.gline');
