@@ -32,6 +32,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Timer | **Step rows only, optional.** A short name for the step's timer, e.g. `Cook cutlets`, `Roast potatoes`. Only on steps whose text has a duration ("3 minutes") |
 | Prep task | **Step rows only, optional.** Marks a step that's pure preparation and can be done before cooking starts (chopping, mincing, zesting, measuring a sauce). A short, generic task name, e.g. `Mince garlic`, `Chop parsley`, `Zest and juice lemon`, `Whisk teriyaki sauce`. Use the **same wording** across dishes so the app combines them |
 | Prep amount | **Step rows only, optional.** How much this step preps, e.g. `2 cloves`, `1 tbsp`, `1 lemon`. Leave blank if it doesn't apply |
+| Hide from Recipe Book | **Optional.** `yes` on a dish's rows keeps that dish out of the app's Recipe Book list and its counts. It still shows in its meal on the Planned list (and on the calendar, shopping list, etc.). Meant for simple sides like "rice, as directed on the package" that are worth offering as a side but not worth listing as a recipe. The checker warns if it's set on a Main |
 
 - Plan rows (`Plan total`, `Plan first`, `Plan`) go on the **Main** dish's rows only.
 - `Plan first` says which dish to start first. This matters when a side takes longer than the main.
@@ -63,7 +64,8 @@ Same columns as **Recipes**, but each entry is a **single dish**: one Main, or o
 ### Times made (Section `Made`)
 The app shows how many times each recipe has been made: every past day it was on the app's calendar counts automatically, **plus** an optional `Made` row for times **before** it was tracked on the calendar.
 - One `Made` row per dish at most, on that dish's own rows (Recipe, Type, Meal, ID as usual). **Amount** = the number of times made before the calendar, as a whole number (`4`). **Text** = optional rough "last made", e.g. `Oct 2026` (shown only until the calendar has a date). Other columns blank.
-- Put it on the dish that was made: the Main for a meal (its sides share the meal's calendar days), or an archived Side entry for a side made on its own.
+- Put it on the dish that was made: the Main for a meal (its sides share the meal's calendar days and, unless they have their own `Made` row, the Main's count), or an archived Side entry for a side made on its own.
+- In the Recipe Book, a meal on the Planned list moves from **Planned** to **Made before** once it has been made (unless it's on the calendar for an upcoming day).
 - Never count days that are on the app's calendar; the app adds those. If unsure whether a time was on the calendar, ask the owner.
 - When the owner says how many times something was made, add or update its `Made` row. Don't invent numbers: ask.
 - The owner can also nudge the shown number in the app (press and hold a recipe in the Recipe Book). That change is stored in the app as a difference and stays on top of whatever the `Made` row says, so if you change a `Made` row for a dish the owner has adjusted, tell them to check the number shown and correct it in that menu if needed.

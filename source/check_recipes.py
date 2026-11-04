@@ -12,7 +12,7 @@ SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
-SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount"]
+SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount", "Hide from Recipe Book"]
 SHOP_SECTIONS = {"Meat", "Produce", "Dairy", "Frozen", "Bakery", "Pantry", "Other"}
 SHOP_SEEN = {}     # shop item (lower case) -> (section, unit set, where)
 SHOP_MISSING = []  # dishes with ingredients that have no shopping details yet
@@ -51,7 +51,7 @@ def check_meals(ws, tab, errors, warnings):
         errors.append(f"{tab}: columns after ID must be {SHOP_COLS_NEW}, found {extra}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt = (list(row) + [None] * 16)[:16]
+        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt, hide = (list(row) + [None] * 17)[:17]
         if not any(row):
             continue
         where = f"{tab} row {i}"
@@ -107,6 +107,12 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: has a Prep amount but no Prep task")
             elif len(str(prep)) > 40:
                 warnings.append(f"{where}: Prep task is long; keep it short like 'Mince garlic'")
+        if hide not in (None, ""):
+            hv = str(hide).strip().lower()
+            if hv not in ("yes", "no", "y", "n", "true", "false"):
+                warnings.append(f"{where}: Hide from Recipe Book should be yes or blank, found {hide!r}")
+            elif hv in ("yes", "y", "true") and str(typ or "").strip() == "Main":
+                warnings.append(f"{where}: Hide from Recipe Book is set on a Main ({recipe!r}); it's meant for simple sides")
         if s == "ingredient":
             check_shop(where, tab, str(recipe).strip(), s_item, s_qty, s_unit, s_sec, errors)
         elif any(v not in (None, "") for v in (s_item, s_qty, s_unit, s_sec)):

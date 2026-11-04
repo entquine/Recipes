@@ -103,6 +103,7 @@ function buildMeals(recipes) {
     let dish = meal.dishes.get(recipe);
     if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
     if (!dish.id && r.id) dish.id = r.id;
+    if (/^(yes|y|true)$/i.test(r['hide from recipe book'] || '')) dish.hideBook = true; // simple sides kept out of the Recipe Book
     const order = r.order === '' ? NaN : parseFloat(r.order);
     switch (section) {
       case 'makes': dish.makes = r.text; break;
@@ -876,7 +877,8 @@ function cookAction(a) {
 // (times made before the calendar). A side served in a current meal also counts that meal's calendar days.
 const pastDays = (rid) => { const today = dayKey(new Date()); return Object.keys(state.plan).filter((k) => k < today && planKey(state.plan[k]) === rid).sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
-const countedMade = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore || 0); // calendar + spreadsheet
+// calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
+const countedMade = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
 const madeCount = (meal, dish = meal.main) => Math.max(0, countedMade(meal, dish) + (Number(state.madeAdjust[dishKey(dish)]) || 0)); // plus your change
 function writeAdjust(id, delta) {
   if (delta) state.madeAdjust[id] = delta; else delete state.madeAdjust[id];
@@ -1130,8 +1132,8 @@ function renderPast() {
   let h = banners() + mealsSwitch('past');
   // one entry per dish: current meals give their main and each side; archived entries are one dish already
   const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, side: d.type === 'Side' }))),
-    ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))];
-  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !e.meal.archived || !!e.next;
+    ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))].filter((e) => !e.dish.hideBook);
+  all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = !!e.next || (!e.meal.archived && !e.made); // on the calendar soon, or on the Planned list and not made yet
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
