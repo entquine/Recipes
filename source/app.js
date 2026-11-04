@@ -976,7 +976,7 @@ function renderCook() {
     </div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
     <div class="cookfoot"><button class="btn ghost" data-cook="back"${cook.step === 0 ? ' disabled' : ''}>‹ Back</button>
-      ${doneAll ? '' : `<button class="btn" data-cook="done">${ticks[st.key] ? 'Next ›' : 'Done ✓'}</button>`}</div>`;
+      ${doneAll ? '' : `<button class="btn" data-cook="done">Next ›</button>`}</div>`;
   const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   renderTimers();
