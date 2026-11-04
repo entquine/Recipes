@@ -530,7 +530,6 @@ details.plan:not([open]) > summary { margin: 0; }
 .ingfold:not([open]) > summary::after { content: "▸"; }
 .ingfold > summary h3 { margin: 14px 0 6px; }
 /* 7: cook mode step sits higher */
-.cookbody { justify-content: flex-start; padding-top: 28px; }
 /* 8 + 9: calendar */
 .day.noplan .pick { min-height: 46px; padding: 8px 14px; }
 .day.noplan .date { padding: 4px 0; flex-direction: row; gap: 6px; }
@@ -550,3 +549,8 @@ details.plan:not([open]) > summary { margin: 0; }
 .signedin { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
 .signedin span { font-weight: 650; overflow: hidden; text-overflow: ellipsis; }
 .signedin .btn { min-height: 40px; padding: 0 14px; }
+.bk-meta { grid-column: 1; }
+.bk-stars { grid-column: 2; grid-row: 1 / span 2; align-self: center; padding-top: 0; }
+.cooknext { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+.cooknext .btn { display: flex; flex-direction: column; align-items: flex-start; text-align: left; padding: 12px 16px; min-height: 58px; font-size: 17px; font-weight: 700; }
+.cooknext .btn .small { font-weight: 500; }

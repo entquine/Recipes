@@ -967,7 +967,9 @@ function renderCook() {
       <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
     <p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>
     <div class="cookbody">${doneAll
-      ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>`
+      ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>${meal.dishes.length > 1 ? `<div class="cooknext"><p class="small">Cook another part of the meal:</p>${meal.dishes.map((x, i) => { if (i === cook.dish || !x.steps.length) return '';
+          const left = x.steps.filter((st2) => !ticks[st2.key]).length;
+          return `<button class="btn ghost chip-${x.color}" data-cook="dish:${i}">${esc(x.name)}<span class="small">${left ? `${left} step${left > 1 ? 's' : ''} to go` : 'Done ✓'}</span></button>`; }).join('')}</div>` : ''}`
       : `<p class="cookcount">Step ${esc(st.num)} of ${d.steps.length}${ticks[st.key] ? ' · done' : ''}</p>
          <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
          ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}`}
@@ -1634,7 +1636,7 @@ function renderSettings() {
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
-  h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
+  h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
 
@@ -1700,6 +1702,9 @@ function shopCountKeys() {
 const DONE_MESSAGES = [
   "It's in the bag 🛍️", 'Groceries: handled 🥕', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
   "That's a wrap 🛒", 'Fridge, prepare yourself 😄', 'List conquered 💪', 'All set. Time to cook 🧑‍🍳', 'Look at you go ✨',
+  'Cart: full. Mission: complete 🚀', 'Pantry restocked like a pro 🏆', 'Shopping champion of the week 🥇', 'The fridge thanks you 🧊',
+  'Done and dusted 🧹', 'Groceries secured. Snacks earned 🍪', "Chef's kiss on that shop 👨‍🍳", 'Smooth shopping, smooth sailing ⛵',
+  'Everything ticked. High five ✋', 'Bags packed, dinner sorted 🥡',
 ];
 // keep the same message while you're on the screen (ticks redraw the list); pick a new one on each visit
 let doneMsg = '';
