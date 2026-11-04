@@ -782,6 +782,9 @@ function suggestions(day) {
     .sort((a, b) => b.score - a.score).slice(0, 3).map((o) => o.x);
 }
 
+// whether the folded "Usually have" card is open, kept across redraws (ticking redraws the list)
+let staplesOpen = false;
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.staples')) staplesOpen = e.target.open; }, true);
 // Staples: items we usually have. They sit in their own folded card and don't count toward the list.
 const stapleId = (name) => 's-' + slug(name);
 const isStaple = (name) => !!state.staples[stapleId(name)];
@@ -920,7 +923,7 @@ function renderAutoShopping(m) {
   }
   const staples = lines.filter((l) => isStaple(l.item)).sort((a, b) => a.item.localeCompare(b.item));
   const stapleExtras = extrasListHtml(null, true);
-  if (staples.length || stapleExtras) h += `<details class="card staples"><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
+  if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
     <p class="small">Things you usually have at home. They don't count toward the list. Tick one if you're buying it this time.</p><ul class="list">${staples.map(row).join('')}${stapleExtras}</ul></details>`;
   if (!lines.length && !Object.keys(state.extras).length) h += '<p class="empty">Nothing to buy. Plan a meal on the calendar, or tap + to add an item.</p>';
   return h;
@@ -1224,7 +1227,7 @@ function renderShopping() {
   }
   const staples = m.shopping.flatMap((sec) => sec.items).filter((x) => isStaple(x.item));
   const stapleExtras = extrasListHtml(null, true);
-  if (staples.length || stapleExtras) h += `<details class="card staples"><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
+  if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
     <p class="small">Things you usually have at home. They don't count toward the list. Tick one if you're buying it this time.</p><ul class="list">${staples.map(shopRow).join('')}${stapleExtras}</ul></details>`;
   h += '<p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>';
   if (!m.shopping.length && !other) h += '<p class="empty">The shopping list is empty. Tap + to add an item.</p>';
