@@ -400,8 +400,7 @@ function ideaRowHtml([id, x]) {
   return `<li class="idea"><div>
     <span class="ideaname">${x.name ? esc(x.name) : linkify(x.text || '')}</span>
     ${x.url ? `<span class="idealinkline">${linkify(x.url)}</span>` : ''}
-    <span class="ideaby">${esc(nameFor(x.email))}</span>
-    <span class="ideadate">${x.at ? esc(ideaDay(x.at)) : ''}${x.sent ? ` · sent ${esc(ideaDay(x.sent))}` : ''}</span></div>
+    <span class="ideaby">${esc(nameFor(x.email))}${x.at ? `<span class="ideadate"> – ${esc(ideaDay(x.at))}${x.sent ? ` · sent ${esc(ideaDay(x.sent))}` : ''}</span>` : ''}</span></div>
     ${mine ? `<button class="delnote" data-editidea="${esc(id)}" aria-label="Edit idea">✎</button>` : `<button class="delnote" data-delidea="${esc(id)}" aria-label="Delete idea">×</button>`}</li>`;
 }
 const ideaDay = (at) => new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -479,7 +478,9 @@ function paintPhotos() { // fill each dish's photo slot and its Add photo button
     if (img) { if (slot.dataset.src !== img) { slot.innerHTML = `<img src="${img}" alt="Photo of ${esc(slot.dataset.name)}">`; slot.dataset.src = img; } }
     else { slot.innerHTML = ''; slot.dataset.src = ''; }
     slot.hidden = !img;
-    const btn = document.querySelector(`[data-addphoto="${CSS.escape(key)}"]`); if (btn) btn.hidden = !!img || state.photos[key] === undefined && !!state.firebase;
+    const unknown = state.photos[key] === undefined && !!state.firebase; // still loading
+    document.querySelectorAll(`[data-addphoto="${CSS.escape(key)}"]`).forEach((b) => { b.hidden = !!img || unknown; });
+    document.querySelectorAll(`[data-hasphoto="${CSS.escape(key)}"]`).forEach((b) => { b.hidden = !img; }); // Replace / Remove in the recipe menu
   });
 }
 async function shrinkPhoto(file) {
@@ -963,10 +964,14 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
   const dlg = formDialog(`<p class="picktitle">${esc(dish.name)}</p>
     <p class="small menulabel">Times made</p>
     <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
+    <p class="small menulabel">Photo</p>
+    <div class="menuphoto" data-photo="${esc(id)}" data-name="${esc(dish.name)}" hidden></div>
+    <div class="menuphotobtns"><button type="button" class="photobtn" data-addphoto="${esc(id)}" hidden>📷 Add photo</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-replacephoto="${esc(id)}" hidden>Replace</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-removephoto="${esc(id)}" data-name="${esc(dish.name)}" hidden>Remove</button></div>
     ${rateable ? `<p class="small menulabel">Your rating</p><div class="menustars">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-menustar="${k}" aria-label="${k} star${k > 1 ? 's' : ''}">★</button>`).join('')}</div>` : ''}
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   const f = $('#formdlg');
   f.classList.add('centered'); // no keyboard here, so it can sit in the middle
+  paintPhotos();
   const paint = () => f.querySelectorAll('[data-menustar]').forEach((b) => b.classList.toggle('on', +b.dataset.menustar <= stars));
   paint();
   f.querySelectorAll('[data-menustar]').forEach((b) => b.addEventListener('click', () => { const k = +b.dataset.menustar; stars = stars === k ? 0 : k; paint(); }));
@@ -1194,9 +1199,10 @@ function bookRowHtml(meal, dish) {
     next ? `📅 ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
   const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
-  return `<li><a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(dish)}" data-search="${esc(words)}">
+  const di = meal.dishes.indexOf(dish);
+  return `<li class="bookli"><a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
     <span class="bk-name">${esc(dish.name)}</span>${starsHtml}
-    <span class="bk-meta">${meta}</span></a></li>`;
+    <span class="bk-meta">${meta}</span></a><button class="bookmore" data-bookmenu="1" data-meal="${esc(meal.id)}" data-dish="${di}" aria-label="More for ${esc(dish.name)}">⋯</button></li>`;
 }
 let bookQuery = '';
 function renderPast() {
@@ -1222,7 +1228,7 @@ function renderPast() {
       <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
-  h += '<p class="small staplehint">Tip: press and hold a recipe to rate it or change how many times it’s been made.</p>';
+  h += '<p class="small staplehint">Tip: tap ⋯ (or press and hold a recipe) to rate it, add a photo or change how many times it’s been made.</p>';
   view().innerHTML = h;
   filterBook();
 }
@@ -1644,6 +1650,12 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
+  const rp = e.target.closest('[data-replacephoto]');
+  if (rp) { pickPhoto(rp.dataset.replacephoto); return; }
+  const xp = e.target.closest('[data-removephoto]');
+  if (xp) { if (await confirmDialog(`Remove the photo of ${xp.dataset.name} for both of you?`, 'Remove')) savePhoto(xp.dataset.removephoto, null); return; }
+  const bm = e.target.closest('[data-bookmenu]');
+  if (bm) { const meal = mealById(bm.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+bm.dataset.dish]); return; }
   const ap = e.target.closest('[data-addphoto]');
   if (ap) { pickPhoto(ap.dataset.addphoto); return; }
   const ph = e.target.closest('.dishphoto[data-photo]');

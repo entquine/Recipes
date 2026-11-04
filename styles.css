@@ -496,3 +496,14 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .idealinkline { font-size: 14.5px; overflow-wrap: anywhere; margin-top: 1px; }
 .ideaby { font-size: 14px; color: var(--text); margin-top: 3px; }
 .ideadate { font-size: 12.5px; color: var(--muted); }
+/* recipe book: ⋯ button per line; photo row in its menu */
+.booklist li.bookli { display: flex; align-items: center; gap: 6px; }
+.bookli .bookrow { flex: 1; min-width: 0; }
+.bookmore { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--text); font-size: 22px; font-weight: 800; line-height: 1; cursor: pointer; }
+.menuphoto { margin: 8px auto 6px; max-width: 220px; border-radius: 12px; overflow: hidden; }
+.menuphoto img { display: block; width: 100%; max-height: 150px; object-fit: cover; }
+.menuphoto[hidden] { display: none; }
+.menuphotobtns { display: flex; justify-content: center; gap: 8px; margin: 6px 0 4px; flex-wrap: wrap; }
+.menuphotobtns .photobtn[hidden] { display: none; }
+.menuphotobtns { margin-bottom: 14px; }
+.ideaby .ideadate { font-size: 12.5px; }
