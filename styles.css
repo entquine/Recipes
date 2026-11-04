@@ -420,3 +420,20 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .swatch { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; border: 2px solid var(--line); background: var(--surface); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; text-align: left; min-height: 52px; }
 .swatch i { flex: none; width: 26px; height: 26px; border-radius: 50%; }
 .swatch.on { border-color: var(--text); }
+
+/* ---------- recipe book ---------- */
+.filters.kinds { margin-top: -8px; }
+.filters.kinds .filter { padding: 5px 12px; font-size: 14px; }
+.filters { flex-wrap: wrap; }
+.eyebrow .kind + .kind { margin-left: 6px; }
+.kind.tag-planned { background: var(--c0-soft); color: var(--accent); }
+.kind.tag-made { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.kind.tag-new { background: var(--surface-2); color: var(--muted); }
+.cardbtns { display: flex; gap: 8px; flex: none; }
+.madebtn { flex: none; padding: 6px 12px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: var(--text); font-size: 14px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+.stepper { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 14px 0; }
+.stepper .btn { width: 56px; min-height: 52px; font-size: 26px; padding: 0; }
+.stepper output { min-width: 48px; text-align: center; font-size: 30px; font-weight: 750; }
+.filters { gap: 6px; }
+.filters .filter { padding: 6px 12px; font-size: 15px; }
+.filters.kinds .filter { padding: 4px 12px; font-size: 14px; }
