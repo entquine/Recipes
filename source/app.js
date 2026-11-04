@@ -940,13 +940,6 @@ function alarm(label, mine) {
   } catch { /* sound not available */ }
 }
 
-// Swipe left/right in cook mode to go to the next/previous step (doesn't tick anything).
-let swipe = null;
-document.addEventListener('touchstart', (e) => { swipe = cook && e.target.closest('#cookmode .cookbody') && e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null; }, { passive: true });
-document.addEventListener('touchend', (e) => {
-  if (!swipe || !cook) return; const t = e.changedTouches[0], dx = t.clientX - swipe.x, dy = t.clientY - swipe.y; swipe = null;
-  if (Math.abs(dx) > 60 && Math.abs(dy) < 50) cookAction(dx < 0 ? 'next' : 'back');
-}, { passive: true });
 // Cook mode: one step at a time, big text
 let cook = null; // { meal, dish }
 function openCook(mealId, dish = 0) {
@@ -960,27 +953,63 @@ function renderCook() {
   const meal = mealById(cook.meal); if (!meal) { cook = null; renderCook(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'cookmode'; document.body.appendChild(el); }
   document.body.classList.add('cooking');
-  const d = meal.dishes[cook.dish], ticks = state.ticks[meal.id] || {};
-  if (cook.step == null) { const i = d.steps.findIndex((x) => !ticks[x.key]); cook.step = i < 0 ? d.steps.length : i; }
-  const st = d.steps[cook.step], doneAll = cook.step >= d.steps.length;
-  const mins = st ? stepMinutes(st.text) : 0;
+  const d = meal.dishes[cook.dish], ticks = state.ticks[meal.id] || {}, n = d.steps.length;
+  if (cook.step == null) { const i = d.steps.findIndex((x) => !ticks[x.key]); cook.step = i < 0 ? n : i; }
+  const others = meal.dishes.length > 1 ? `<div class="cooknext"><p class="small">Cook another part of the meal:</p>${meal.dishes.map((x, i) => { if (i === cook.dish || !x.steps.length) return '';
+    const left = x.steps.filter((st2) => !ticks[st2.key]).length;
+    return `<button class="btn ghost chip-${x.color}" data-cook="dish:${i}">${esc(x.name)}<span class="small">${left ? `${left} step${left > 1 ? 's' : ''} to go` : 'Done ✓'}</span></button>`; }).join('')}</div>` : '';
+  // A wheel of steps: the current one in the middle at full size; the ones around it smaller and fainter
+  // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
       <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
     <p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>
-    <div class="cookbody">${doneAll
-      ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>${meal.dishes.length > 1 ? `<div class="cooknext"><p class="small">Cook another part of the meal:</p>${meal.dishes.map((x, i) => { if (i === cook.dish || !x.steps.length) return '';
-          const left = x.steps.filter((st2) => !ticks[st2.key]).length;
-          return `<button class="btn ghost chip-${x.color}" data-cook="dish:${i}">${esc(x.name)}<span class="small">${left ? `${left} step${left > 1 ? 's' : ''} to go` : 'Done ✓'}</span></button>`; }).join('')}</div>` : ''}`
-      : `<p class="cookcount">Step ${esc(st.num)} of ${d.steps.length}${ticks[st.key] ? ' · done' : ''}</p>
-         <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
-         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}`}
-    </div>
+    <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
+      ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
+        <p class="cookcount">Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
+        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
+        ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}</div>`; }).join('')}
+      <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
+      <div class="cw-pad"></div></div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
-    <div class="cookfoot"><button class="btn ghost" data-cook="back"${cook.step === 0 ? ' disabled' : ''}>‹ Back</button>
-      ${doneAll ? '' : `<button class="btn" data-cook="done">Next ›</button>`}</div>`;
+    <div class="cookfoot"><button class="btn ghost" data-cook="back" id="cookback">‹ Back</button><button class="btn" data-cook="done" id="cooknextbtn">Next ›</button></div>`;
   const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   renderTimers();
+  sizeWheel(); wheelTo(cook.step, false);
+  $('#cookwheel').addEventListener('scroll', onWheelScroll, { passive: true });
+}
+function sizeWheel() { // room above the first step and below the last, so each can sit in the middle
+  const w = $('#cookwheel'); if (!w) return;
+  w.querySelectorAll('.cw-pad').forEach((x) => { x.style.height = Math.max(0, w.clientHeight / 2 - 60) + 'px'; });
+}
+addEventListener('resize', () => { if (cook) { sizeWheel(); wheelTo(cook.step, false); } });
+function wheelTo(i, smooth) {
+  const w = $('#cookwheel'); const el = w && w.querySelector(`[data-cwi="${i}"]`); if (!el) return;
+  w.scrollTo({ top: el.offsetTop - (w.clientHeight - el.offsetHeight) / 2, behavior: smooth ? 'smooth' : 'auto' });
+  markWheel(i);
+}
+function markWheel(cur) { // size/fade each step by its distance from the current one; done ones turn green
+  if (!cook) return; const w = $('#cookwheel'); if (!w) return;
+  cook.step = cur;
+  const t = state.ticks[cook.meal] || {}, last = w.querySelectorAll('.cw-step').length - 1;
+  w.querySelectorAll('.cw-step').forEach((el) => {
+    const dist = Math.min(3, Math.abs(+el.dataset.cwi - cur));
+    for (let k = 0; k < 4; k++) el.classList.toggle('cw-d' + k, k === dist);
+    if (el.dataset.cwkey) el.classList.toggle('ticked', !!t[el.dataset.cwkey]);
+  });
+  const back = $('#cookback'), next = $('#cooknextbtn');
+  if (back) back.disabled = cur === 0;
+  if (next) next.hidden = cur >= last;
+}
+let wheelRaf = 0;
+function onWheelScroll() { // the step nearest the middle becomes the current one
+  cancelAnimationFrame(wheelRaf);
+  wheelRaf = requestAnimationFrame(() => {
+    const w = $('#cookwheel'); if (!w || !cook) return;
+    const mid = w.scrollTop + w.clientHeight / 2; let best = cook.step, bd = Infinity;
+    w.querySelectorAll('.cw-step').forEach((el) => { const dd = Math.abs(el.offsetTop + el.offsetHeight / 2 - mid); if (dd < bd) { bd = dd; best = +el.dataset.cwi; } });
+    if (best !== cook.step) markWheel(best);
+  });
 }
 function cookAction(a) {
   if (!cook) return;
@@ -991,11 +1020,10 @@ function cookAction(a) {
     return;
   }
   if (a.startsWith('dish:')) { cook.dish = +a.slice(5); cook.step = null; renderCook(); return; }
-  if (a === 'back') { cook.step = Math.max(0, cook.step - 1); renderCook(); return; }
-  if (a === 'next') { if (cook.step < d.steps.length) { cook.step += 1; renderCook(); } return; } // swipe: move on without ticking
+  if (a === 'back') { wheelTo(Math.max(0, cook.step - 1), true); return; }
   const st = d.steps[cook.step]; if (!st) return;
   if (a === 'timer') { timerTap(timerLabel(d, st), stepMinutes(st.text), meal.id, st.key); return; }
-  if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); cook.step += 1; renderCook(); }
+  if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); wheelTo(cook.step + 1, true); }
 }
 
 // Last made and times made: calendar days before today, plus the dish's "Made" row in the spreadsheet
@@ -1662,6 +1690,7 @@ function refreshTicks() {
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
   });
   setTimeout(autoFold, 0);
+  if (cook) markWheel(cook.step);
   document.querySelectorAll('.item.preptask').forEach((el) => { // a prep task is done when all its steps are
     const t = state.ticks[el.dataset.scope] || {};
     const on = el.dataset.prepkeys.split(',').every((k) => t[k]);
@@ -1753,6 +1782,8 @@ document.addEventListener('click', async (e) => {
   if (stp) { writeSession('timers', stp.dataset.stoptimer, null); return; }
   const oc = e.target.closest('[data-opencook]');
   if (oc) { openCook(oc.dataset.opencook, +(oc.dataset.dish || 0)); return; }
+  const cw = e.target.closest('.cw-step:not(.cw-d0)');
+  if (cw) { wheelTo(+cw.dataset.cwi, true); return; }
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
