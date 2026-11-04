@@ -884,17 +884,28 @@ function writeAdjust(id, delta) {
   if (!state.firebase) { ls.set('local-adjust', state.madeAdjust); return; }
   setDoc(doc(state.firebase.db, 'history', 'adjust'), { a: { [id]: delta || deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
-async function madeMenu(meal, dish) { // press and hold a Recipe Book line: change how many times it shows as made
+async function madeMenu(meal, dish) { // press and hold a Recipe Book line: times made (and your rating)
   const id = dishKey(dish), counted = countedMade(meal, dish);
-  let n = madeCount(meal, dish);
+  const rateable = dish === meal.main; // a side served in a current meal shares the meal's rating
+  const before = rateable ? ratingInfo(meal.name).mine : 0;
+  let n = madeCount(meal, dish), stars = before;
   const dlg = formDialog(`<p class="picktitle">${esc(dish.name)}</p>
-    <p class="small" style="margin:0">Times made</p>
+    <p class="small menulabel">Times made</p>
     <div class="stepper"><button type="button" class="btn ghost" data-step="-1" aria-label="One less">−</button><output id="madeval">${n}</output><button type="button" class="btn ghost" data-step="1" aria-label="One more">+</button></div>
+    ${rateable ? `<p class="small menulabel">Your rating</p><div class="menustars">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-menustar="${k}" aria-label="${k} star${k > 1 ? 's' : ''}">★</button>`).join('')}</div>` : ''}
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
-  $('#formdlg').classList.add('centered'); // no keyboard here, so it can sit in the middle
-  $('#formdlg').querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
+  const f = $('#formdlg');
+  f.classList.add('centered'); // no keyboard here, so it can sit in the middle
+  const paint = () => f.querySelectorAll('[data-menustar]').forEach((b) => b.classList.toggle('on', +b.dataset.menustar <= stars));
+  paint();
+  f.querySelectorAll('[data-menustar]').forEach((b) => b.addEventListener('click', () => { const k = +b.dataset.menustar; stars = stars === k ? 0 : k; paint(); }));
+  f.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
   const r = await dlg;
-  if (r.value === 'save' && n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); toast('Saved'); }
+  if (r.value !== 'save') return;
+  let saved = false;
+  if (n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); saved = true; }
+  if (rateable && stars !== before) { setRating(meal, stars || null); saved = true; }
+  if (saved) toast('Saved');
 }
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
 function lastMadeText(meal, dish = meal.main) {
@@ -1135,7 +1146,7 @@ function renderPast() {
       <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
-  h += '<p class="small staplehint">Tip: press and hold a recipe to change how many times it shows as made.</p>';
+  h += '<p class="small staplehint">Tip: press and hold a recipe to rate it or change how many times it’s been made.</p>';
   view().innerHTML = h;
   filterBook();
 }
