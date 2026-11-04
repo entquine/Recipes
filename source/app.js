@@ -976,7 +976,13 @@ function renderCook() {
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   renderTimers();
   sizeWheel(); wheelTo(cook.step, false);
-  $('#cookwheel').addEventListener('scroll', onWheelScroll, { passive: true });
+  const w = $('#cookwheel');
+  w.addEventListener('scroll', onWheelScroll, { passive: true });
+  // a hard swipe keeps all its momentum; once the wheel stops, it settles on the nearest step
+  if ('onscrollend' in window) w.addEventListener('scrollend', settleWheel);
+  else w.addEventListener('scroll', () => { clearTimeout(settleTimer); settleTimer = setTimeout(settleWheel, 140); }, { passive: true });
+  w.addEventListener('touchstart', () => { fingerDown = true; }, { passive: true });
+  w.addEventListener('touchend', () => { fingerDown = false; setTimeout(() => { if (Date.now() - lastWheelScroll > 120) settleWheel(); }, 150); }, { passive: true }); // let go without a fling
 }
 function sizeWheel() { // room above the first step and below the last, so each can sit in the middle
   const w = $('#cookwheel'); if (!w) return;
@@ -1001,8 +1007,15 @@ function markWheel(cur) { // size/fade each step by its distance from the curren
   if (back) back.disabled = cur === 0;
   if (next) next.hidden = cur >= last;
 }
-let wheelRaf = 0;
+let wheelRaf = 0, settleTimer = 0, fingerDown = false, lastWheelScroll = 0;
+function settleWheel() {
+  const w = $('#cookwheel'); if (!w || !cook || fingerDown) return;
+  const el = w.querySelector(`[data-cwi="${cook.step}"]`); if (!el) return;
+  const off = el.offsetTop - (w.clientHeight - el.offsetHeight) / 2 - w.scrollTop;
+  if (Math.abs(off) > 2) w.scrollTo({ top: w.scrollTop + off, behavior: 'smooth' });
+}
 function onWheelScroll() { // the step nearest the middle becomes the current one
+  lastWheelScroll = Date.now();
   cancelAnimationFrame(wheelRaf);
   wheelRaf = requestAnimationFrame(() => {
     const w = $('#cookwheel'); if (!w || !cook) return;

@@ -557,7 +557,7 @@ details.plan:not([open]) > summary { margin: 0; }
 .sendcard .small { margin: 0 0 12px; }
 .card:not(.ideasent) > .idealist:last-child { margin-bottom: 0; }
 /* cook mode: wheel of steps */
-.cookwheel { flex: 1; position: relative; overflow-y: auto; scroll-snap-type: y mandatory; margin: 6px -16px 8px; padding: 0 20px; scrollbar-width: none;
+.cookwheel { flex: 1; position: relative; overflow-y: auto; margin: 6px -16px 8px; padding: 0 20px; scrollbar-width: none;
   -webkit-mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); mask-image: linear-gradient(transparent, #000 14%, #000 86%, transparent); }
 .cookwheel::-webkit-scrollbar { display: none; }
 .cw-step { scroll-snap-align: center; padding: 14px 0; display: flex; flex-direction: column; gap: 10px; transform-origin: left center; transition: transform .25s, opacity .25s; }
