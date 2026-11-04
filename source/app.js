@@ -892,21 +892,21 @@ function renderSettings() {
     <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
   h += '</section>';
 
-  if (state.firebase && state.user) {
-    const row = (what, n) => { const x = syncInfo[what]; return `<li>${esc(what)}: ${x ? (x.ok ? `${n} ${x.server ? '✓' : '(from this phone, not yet confirmed)'}` : `<span class="err">error: ${esc(x.error)}</span>`) : 'not loaded yet'}</li>`; };
-    h += `<details class="card synccheck"><summary class="section-label">Sync check</summary><ul class="small">
-      ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
-      ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}</ul>
-      <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
-      <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
-  }
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
+  if (state.firebase && state.user) {
+    const row = (what, n) => { const x = syncInfo[what]; return `<li>${esc(what)}: ${x ? (x.ok ? `${n} ${x.server ? '✓' : '(from this phone, not yet confirmed)'}` : `<span class="err">error: ${esc(x.error)}</span>`) : 'not loaded yet'}</li>`; };
+    h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
+      ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
+      ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
+      ${row('names', Object.keys(state.names).length + ' names')}</ul>
+      <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
+      <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
+  }
   h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · version ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
