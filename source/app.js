@@ -294,7 +294,6 @@ function startFirestore() {
     const d = (snap.exists() && snap.data()) || {};
     state.session = { dinner: { ...(d.dinner || {}) }, timers: { ...(d.timers || {}) } }; syncLoaded('cooking', snap);
     renderTimers();
-    if (changed('cooking-view', state.session.dinner) && /^#\/meal\//.test(location.hash)) route();
   }), (err) => listenerFailed('cooking', err));
   unsubStaples = onSnapshot(doc(db, 'shopping', 'staples'), { includeMetadataChanges: true }, safely('staples', (snap) => {
     state.staples = { ...((snap.exists() && snap.data().s) || {}) }; syncLoaded('staples', snap);
@@ -634,8 +633,8 @@ function deleteTicks(id) {
 }
 
 // ---------------------------------------------------------------- cooking together: dinner time, timers, who makes what
-// One shared record, cooking/session: { dinner: { mealId: 'HH:MM' }, timers: { id: {...} } }
-function writeSession(part, key, value) { // part: 'dinner' | 'timers'; value null = delete
+// One shared record, cooking/session: { timers: { id: {...} } }
+function writeSession(part, key, value) { // part: 'timers'; value null = delete
   const cur = state.session[part] || (state.session[part] = {});
   if (value == null) delete cur[key]; else cur[key] = value;
   if (!state.firebase) { ls.set('local-session', state.session); renderTimers(); route(); return; }
@@ -644,13 +643,6 @@ function writeSession(part, key, value) { // part: 'dinner' | 'timers'; value nu
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
 const dishKey = (d) => d.id || 'd-' + slug(d.name);
-const fmtClock = (mins) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setMinutes(mins); return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); };
-const toMins = (hhmm) => { const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); return m ? +m[1] * 60 + +m[2] : null; };
-// Clock time for a plan minute (0:00 = start cooking), when a dinner time is set for this meal
-function planClock(meal, min) {
-  const at = toMins(state.session.dinner[meal.id]);
-  return at == null || meal.totalMin == null || min == null ? null : fmtClock(at - meal.totalMin + min);
-}
 
 // Step timers: "Roast 20-25 minutes" gets a 20-minute timer button. Timers are shared, so both phones see them.
 function stepMinutes(text) {
@@ -680,7 +672,9 @@ function renderTimers() {
   const list = Object.entries(state.session.timers || {}).sort((a, b) => a[1].ends - b[1].ends);
   bar.hidden = !list.length;
   document.body.classList.toggle('has-timers', !!list.length);
-  if (!list.length) { clearInterval(timerTick); timerTick = null; bar.innerHTML = ''; markTimerButtons(); return; }
+  const cookBar = $('#cooktimers');
+  if (cookBar) cookBar.hidden = !list.length;
+  if (!list.length) { clearInterval(timerTick); timerTick = null; bar.innerHTML = ''; if (cookBar) cookBar.innerHTML = ''; markTimerButtons(); return; }
   const now = Date.now();
   bar.innerHTML = list.map(([id, t]) => {
     const left = Math.round((t.ends - now) / 1000), done = left <= 0;
@@ -689,12 +683,20 @@ function renderTimers() {
     const theirs = t.by && t.by.toLowerCase() !== myEmail();
     return `<div class="timer${done ? ' done' : ''}"><a href="#/meal/${esc(t.meal || '')}" class="tlabel">${esc(t.label)}${theirs ? ` <span class="towner">· ${esc(nameFor(t.by))}</span>` : ''}</a><span class="tleft">${done ? 'Done!' : `${mm}:${ss}`}</span><button class="tclose" data-stoptimer="${esc(id)}" aria-label="${done ? 'Dismiss' : 'Cancel'} timer">×</button></div>`;
   }).join('');
+  if (cookBar) cookBar.innerHTML = bar.innerHTML; // cook mode covers the screen, so it shows the timers too
   if (!timerTick) timerTick = setInterval(renderTimers, 1000);
   markTimerButtons();
 }
 // timer buttons on steps: filled in and counting down while their timer runs
 function markTimerButtons() {
   const now = Date.now();
+  document.querySelectorAll('.cooktimer[data-cookstep]').forEach((btn) => { // the timer button in cook mode
+    const run = runningTimerFor(btn.dataset.cookstep);
+    const left = run ? Math.round((run[1].ends - now) / 1000) : 0;
+    btn.classList.toggle('running', !!run && left > 0);
+    btn.classList.toggle('rang', !!run && left <= 0);
+    btn.textContent = !run ? `⏱ Start ${btn.dataset.mins} min timer` : left > 0 ? `⏱ ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : '⏰ Done · tap to clear';
+  });
   document.querySelectorAll('[data-timer][data-step]').forEach((btn) => {
     const run = runningTimerFor(btn.dataset.step);
     btn.classList.toggle('running', !!run && run[1].ends > now);
@@ -744,10 +746,12 @@ function renderCook() {
       ? `<p class="cookdone">${esc(d.name)} is done 🎉</p>`
       : `<p class="cookcount">Step ${esc(st.num)} of ${d.steps.length}${ticks[st.key] ? ' · done' : ''}</p>
          <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
-         ${mins ? `<button class="btn ghost cooktimer${runningTimerFor(st.key) ? ' running' : ''}" data-cook="timer">${runningTimerFor(st.key) ? '⏱ Timer running · tap to cancel' : `⏱ Start ${mins} min timer`}</button>` : ''}`}
+         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">⏱ Start ${mins} min timer</button>` : ''}`}
     </div>
+    <div class="timerbar cooktimers" id="cooktimers" hidden></div>
     <div class="cookfoot"><button class="btn ghost" data-cook="back"${cook.step === 0 ? ' disabled' : ''}>‹ Back</button>
       ${doneAll ? '' : `<button class="btn" data-cook="done">${ticks[st.key] ? 'Next ›' : 'Done ✓'}</button>`}</div>`;
+  renderTimers();
 }
 function cookAction(a) {
   if (!cook) return;
@@ -756,7 +760,7 @@ function cookAction(a) {
   if (a.startsWith('dish:')) { cook.dish = +a.slice(5); cook.step = null; renderCook(); return; }
   if (a === 'back') { cook.step = Math.max(0, cook.step - 1); renderCook(); return; }
   const st = d.steps[cook.step]; if (!st) return;
-  if (a === 'timer') { timerTap(timerLabel(d, st), stepMinutes(st.text), meal.id, st.key); setTimeout(renderCook, 50); return; }
+  if (a === 'timer') { timerTap(timerLabel(d, st), stepMinutes(st.text), meal.id, st.key); return; }
   if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); cook.step += 1; renderCook(); }
 }
 
@@ -1063,18 +1067,12 @@ function renderMeal(id) {
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
     h += `<section class="card plan" id="${S}-plan"><p class="section-label">The plan</p><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2>`;
-    if (meal.totalMin != null) {
-      const startAt = planClock(meal, 0);
-      h += `<div class="dinnerat"><label>Dinner at <input type="time" id="dinnerat" data-meal="${esc(meal.id)}" value="${esc(state.session.dinner[meal.id] || '')}"></label>
-        ${startAt ? `<span class="startat">Start cooking at <strong>${esc(startAt)}</strong></span>` : '<span class="small">Set a time to see when to start each dish</span>'}</div>`;
-    }
     if (meal.planFirst) h += `<div class="startfirst"><strong>⚠ Start first</strong>${esc(meal.planFirst)}</div>`;
     if (meal.starts.length > 1) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
       h += '<p class="section-label">Start order</p><ol class="startorder">' + meal.starts.map((s, i) => {
         const early = i === 0 && s.dish !== meal.main && mainStart != null && s.min < mainStart;
-        const clock = planClock(meal, s.min);
-        return `<li class="chip-${s.dish.color}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${clock ? esc(clock) : s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
+        return `<li class="chip-${s.dish.color}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
       }).join('') + '</ol>';
     }
     h += '</section>';
@@ -1457,7 +1455,6 @@ document.addEventListener('submit', async (e) => {
 document.addEventListener('change', (e) => {
   if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); }
   if (e.target.id === 'hideticked') { ls.set('hide-ticked', e.target.checked); refreshTicks(); }
-  if (e.target.id === 'dinnerat') writeSession('dinner', e.target.dataset.meal, e.target.value || null);
 });
 
 // keep screen on while a meal is open

@@ -308,10 +308,6 @@ body.hide-ticked main section.card.all-ticked { display: none; }
 
 /* ---------- cooking together ---------- */
 .cookbtn { margin: 0 0 14px; }
-.dinnerat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 14px; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); }
-.dinnerat label { font-weight: 650; display: flex; align-items: center; gap: 8px; }
-.dinnerat input { font: inherit; padding: 6px 8px; border-radius: 8px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); }
-.startat strong { color: var(--accent); }
 .timerbtn { margin-top: 6px; border: 1.5px solid var(--c2); color: var(--c2); background: transparent; border-radius: 999px; padding: 3px 10px; font-size: 14px; font-weight: 700; cursor: pointer; }
 .timerbar { position: sticky; top: 56px; z-index: 15; display: flex; flex-direction: column; gap: 6px; padding: 8px 16px; background: var(--c2-soft); border-bottom: 1px solid var(--line); }
 .timerbar[hidden] { display: none; }
@@ -350,3 +346,6 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .timerbtn.rang { background: var(--danger); color: #fff; border-color: var(--danger); }
 .cooktimer.running { background: var(--c2); color: #fff; }
 .timer .towner { color: var(--muted); font-weight: 600; }
+/* timers inside cook mode sit just above the Back / Done buttons */
+#cookmode .cooktimers { position: static; box-shadow: none; border: 0; border-radius: 12px; margin: 0 0 10px; }
+.cooktimer.rang { background: var(--danger); color: #fff; }
