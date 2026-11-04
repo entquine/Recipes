@@ -1079,8 +1079,8 @@ function prepCardHtml(meal) {
   const tasks = prepTasks(meal);
   if (!tasks.length) return '';
   return `<details class="card prep" open id="${meal.id}-prep"><summary class="section-label">Prep list · do these first</summary>
-    <ul class="list">${tasks.map((t) => `<li class="item preptask" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
-      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="chip-${d.color} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span></li>`).join('')}</ul></details>`;
+    <ul class="list">${tasks.map((t, ti) => `<li class="item preptask" id="${esc(meal.id)}-p${ti}" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
+      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<a href="#" class="chip-${d.color} prepdish" data-jump="${esc(d.anchor)}-s${esc(t.parts.find((x) => x.dish === d).num)}" title="Go to this step">${esc(shortName(d))} ›</a>`).join(' + ')}</span></span></li>`).join('')}</ul></details>`;
 }
 
 function renderMeal(id) {
@@ -1110,6 +1110,7 @@ function renderMeal(id) {
   }
 
   h += prepCardHtml(meal);
+  const prepOf = new Map(); prepTasks(meal).forEach((t, ti) => t.parts.forEach((x) => prepOf.set(x.key, `${meal.id}-p${ti}`)));
 
   // ---- dishes (side by side on wide screens)
   h += `<div class="dishes cols-${meal.dishes.length}">`;
@@ -1126,7 +1127,7 @@ function renderMeal(id) {
     }
     if (d.steps.length) {
       h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
-        `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">⏱ ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
+        `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${prepOf.has(s.key) ? `<br><a href="#" class="toprep" data-jump="${esc(prepOf.get(s.key))}">In prep list ↑</a>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">⏱ ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
     }
     h += '</section>';
   }
@@ -1375,8 +1376,15 @@ document.addEventListener('click', async (e) => {
     e.preventDefault();
     const target = document.getElementById(jump.dataset.jump) || document.getElementById(jump.dataset.jump.replace(/-s\d+$/, ''));
     if (target) {
-      const y = target.getBoundingClientRect().top + scrollY - 120;
-      scrollTo({ top: y, behavior: 'smooth' });
+      const prep = target.closest('details.prep'); if (prep) prep.open = true;
+      // a dish column that scrolls on its own (wide screens): scroll inside it; otherwise scroll the page
+      const col = target.closest('.dishes .card.dish');
+      if (col && col.scrollHeight > col.clientHeight + 2) {
+        col.scrollTo({ top: col.scrollTop + target.getBoundingClientRect().top - col.getBoundingClientRect().top - col.clientHeight / 3, behavior: 'smooth' });
+        const ct = col.getBoundingClientRect().top; if (ct < 56 || ct > innerHeight / 2) scrollTo({ top: ct + scrollY - 130, behavior: 'smooth' });
+      } else {
+        scrollTo({ top: target.getBoundingClientRect().top + scrollY - 130, behavior: 'smooth' });
+      }
       if (target.classList.contains('item')) { target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); }
     }
     return;
