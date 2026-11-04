@@ -703,6 +703,7 @@ function renderMeal(id) {
   // ---- dishes
   for (const d of meal.dishes) {
     h += `<section class="card dish" id="${d.anchor}"><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}</div>`;
+    for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += '<h3>Ingredients</h3>';
       for (const g of d.groups) {
@@ -715,7 +716,6 @@ function renderMeal(id) {
       h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
         `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
     }
-    for (const t of d.tips) h += `<div class="tip"><strong>Tip:</strong> ${esc(t)}</div>`;
     h += '</section>';
   }
   h += ratingCardHtml(meal);

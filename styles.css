@@ -303,3 +303,4 @@ body.hide-ticked main section.card.all-ticked { display: none; }
 .donemsg { margin: -2px 0 12px; text-align: center; font-size: 18px; font-weight: 700; color: var(--ok); animation: pop .35s ease-out; }
 @keyframes pop { from { transform: scale(.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .hidetoggle { justify-content: flex-end; gap: 10px; }
+.tip.tip-top { margin: 10px 0 4px; }
