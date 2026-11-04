@@ -204,6 +204,7 @@ const state = {
   plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
+  ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
   staples: {},             // shopping/staples: items we usually have, by name key
   bought: {},              // shopping/bought: meal ID -> { since: 'YYYY-MM-DD', i: { shop item key: true } }
@@ -216,7 +217,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubSession = null, unsubStaples = null, unsubBought = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 function setTick(scope, key, value) {
   if (!state.firebase) {
@@ -304,6 +305,10 @@ function startFirestore() {
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
     if (changed('bought', state.bought)) renderExtras();
   }), (err) => listenerFailed('bought', err));
+  unsubIdeas = onSnapshot(doc(db, 'ideas', 'list'), { includeMetadataChanges: true }, safely('ideas', (snap) => {
+    state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
+    if (changed('ideas', state.ideas) && /^#\/planning/.test(location.hash)) route();
+  }), (err) => listenerFailed('ideas', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
 const lastSeen = {};
@@ -345,7 +350,88 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = null; }
+
+// ---------------------------------------------------------------- Planning: recipe ideas
+// Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
+// "Copy for recipe Claude" copies the unsent ideas as a ready-to-paste message, then marks them sent.
+function writeIdeas(changes) {
+  for (const [id, v] of Object.entries(changes)) { if (v) state.ideas[id] = v; else delete state.ideas[id]; }
+  if (/^#\/planning/.test(location.hash)) route();
+  if (!state.firebase) { ls.set('local-ideas', state.ideas); return; }
+  const i = {}; for (const [id, v] of Object.entries(changes)) i[id] = v || deleteField();
+  setDoc(doc(state.firebase.db, 'ideas', 'list'), { i }, { merge: true }).catch((e) => toast('Could not save idea: ' + (e.code || e.message)));
+}
+const IDEA_MAX = 1000;
+const cleanIdea = (v) => String(v || '').replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, IDEA_MAX);
+function linkify(text) { // escaped text with web addresses turned into links that open outside the app
+  return esc(text).replace(/https?:\/\/[^\s<]+/g, (u) => {
+    const trail = (u.match(/[).,!?;:]+$/) || [''])[0]; const url = u.slice(0, u.length - trail.length);
+    let label = url; try { const x = new URL(url.replace(/&amp;/g, '&')); label = esc(x.hostname.replace(/^www\./, '') + (x.pathname.length > 1 ? x.pathname : '')); } catch { /* keep as typed */ }
+    if (label.length > 60) label = label.slice(0, 58) + '…';
+    return `<a class="idealink" href="${url}" target="_blank" rel="noopener">${label}</a>${trail}`;
+  });
+}
+const ideaList = (sent) => Object.entries(state.ideas).filter(([, x]) => !!x.sent === sent)
+  .sort((a, b) => (sent ? (b[1].sent - a[1].sent) || (a[1].at - b[1].at) : (a[1].at || 0) - (b[1].at || 0)));
+function ideaRowHtml([id, x]) {
+  const mine = (x.email || '').toLowerCase() === myEmail();
+  return `<li class="idea"><div><span class="ideatext">${linkify(x.text)}</span>
+    <span class="sub">${esc(nameFor(x.email))}${x.at ? ` · ${esc(ideaDay(x.at))}` : ''}${x.sent ? ` · sent ${esc(ideaDay(x.sent))}` : ''}</span></div>
+    ${mine ? `<button class="delnote" data-editidea="${esc(id)}" aria-label="Edit idea">✎</button>` : `<button class="delnote" data-delidea="${esc(id)}" aria-label="Delete idea">×</button>`}</li>`;
+}
+const ideaDay = (at) => new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+function renderPlanning() {
+  setTitle('Planning', false); setTab('planning');
+  const box = $('#ideatext'), draft = box ? box.value : '', typing = box && document.activeElement === box; // keep a half-typed idea when the list redraws
+  const open = ideaList(false), sent = ideaList(true);
+  let h = banners();
+  h += `<section class="card"><p class="section-label">New recipe idea</p>
+    <form id="ideaform"><textarea id="ideatext" class="dlg-input ideainput" rows="3" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link, or type an idea (e.g. &quot;Something with salmon and rice&quot;)"></textarea>
+    <button class="btn" type="submit">Add idea</button></form></section>`;
+  h += `<section class="card"><p class="section-label">Ideas${open.length ? ` (${open.length})` : ''}</p>`;
+  h += open.length ? `<ul class="list idealist">${open.map(ideaRowHtml).join('')}</ul>
+    <button class="btn ghost" type="button" id="copyideas">Copy for recipe Claude</button>
+    <p class="small">Copies these ideas as a message ready to paste to the recipe Claude, then marks them as sent.</p>`
+    : '<p class="small">No ideas waiting. Add a link or a thought above; it shows up on both phones.</p>';
+  h += '</section>';
+  if (sent.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">Sent to Claude (${sent.length})</summary>
+    <ul class="list idealist">${sent.map(ideaRowHtml).join('')}</ul>
+    <button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></details>`;
+  view().innerHTML = h;
+  if (draft) { $('#ideatext').value = draft; if (typing) $('#ideatext').focus({ preventScroll: true }); }
+}
+let ideasSentOpen = false;
+function ideasMessage(list) {
+  return `Recipe ideas from the app's Planning tab. Please add each as a new meal in recipes.xlsx, following CLAUDE.md (a Main with a side or two that suit it, Shop columns, Timer and Prep task columns), then run the checker and push. For a link, open the page and use that recipe. If an idea is too vague, suggest a recipe and check with me first.\n\n`
+    + list.map(([, x], n) => `${n + 1}. ${x.text.replace(/\n+/g, ' / ')} (from ${nameFor(x.email)})`).join('\n');
+}
+async function copyIdeas() {
+  const list = ideaList(false); if (!list.length) return;
+  const msg = ideasMessage(list);
+  let copied = false;
+  try { await navigator.clipboard.writeText(msg); copied = true; } catch { /* shown below to copy by hand */ }
+  const r = await formDialog(`<p class="picktitle">${copied ? 'Copied' : 'Copy this message'}</p>
+    <p class="small">${copied ? 'Paste it to the recipe Claude.' : 'Select all of it, copy, and paste it to the recipe Claude.'} Mark ${list.length === 1 ? 'this idea' : `these ${list.length} ideas`} as sent?</p>
+    <textarea class="dlg-input" rows="6" readonly>${esc(msg)}</textarea>
+    <div class="row-btns"><button class="btn ghost" value="">Not yet</button><button class="btn" value="save">Mark as sent</button></div>`);
+  if (r.value !== 'save') return;
+  const now = Date.now(), ch = {};
+  for (const [id, x] of list) ch[id] = { ...x, sent: now };
+  writeIdeas(ch); toast('Marked as sent');
+}
+async function editIdea(id) {
+  const x = state.ideas[id]; if (!x) return;
+  const r = await formDialog(`<p class="picktitle">Edit idea</p>
+    <textarea class="dlg-input" name="text" rows="4" maxlength="${IDEA_MAX}">${esc(x.text)}</textarea>
+    <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>${x.sent ? '<button class="btn ghost" value="unsend">Not sent</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  if (r.value === 'delete') { writeIdeas({ [id]: null }); toast('Idea deleted'); return; }
+  if (r.value === 'unsend') { const { sent, ...rest } = x; writeIdeas({ [id]: rest }); toast('Moved back to Ideas'); return; }
+  if (r.value !== 'save') return;
+  const text = cleanIdea(r.form.text.value);
+  if (!text) { toast('Type the idea, or tap Delete'); return; }
+  if (text !== x.text) { writeIdeas({ [id]: { ...x, text } }); toast('Idea updated'); }
+}
 
 // ---------------------------------------------------------------- shopping notes
 // Shared notes at the top of the shopping list, stored in Firestore notes/shopping as { n: { id: { text, email, at } } }.
@@ -1293,7 +1379,7 @@ function renderSettings() {
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
       ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
+      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
@@ -1412,6 +1498,12 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
+  if (e.target.id === 'copyideas') { copyIdeas(); return; }
+  if (e.target.id === 'clearsent') { const n = ideaList(true); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
+  const ei = e.target.closest('[data-editidea]');
+  if (ei) { editIdea(ei.dataset.editidea); return; }
+  const di = e.target.closest('[data-delidea]');
+  if (di) { if (await confirmDialog('Delete this idea for both of you?', 'Delete')) writeIdeas({ [di.dataset.delidea]: null }); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
@@ -1494,7 +1586,17 @@ document.addEventListener('click', async (e) => {
 document.addEventListener('keydown', (e) => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target.matches('.item[data-key], .item.gline')) { e.preventDefault(); e.target.click(); }
 });
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.ideasent')) ideasSentOpen = e.target.open; }, true);
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'ideaform') {
+    e.preventDefault();
+    const text = cleanIdea($('#ideatext').value);
+    if (!text) { toast('Paste a link or type an idea first'); return; }
+    $('#ideatext').value = '';
+    writeIdeas({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { text, email: myEmail(), at: Date.now() } });
+    toast('Idea added');
+    return;
+  }
   if (e.target.id === 'nameform') {
     e.preventDefault();
     const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -1628,6 +1730,7 @@ function route() {
   else if (page === 'calendar') renderCalendar();
   else if (page === 'past') renderPast();
   else if (page === 'settings') renderSettings();
+  else if (page === 'planning') renderPlanning();
   else renderMeals();
   if (keepScroll) scrollTo(0, y); else scrollTo(0, 0);
   if (hash !== lastRoute) navCount++;
@@ -1666,6 +1769,7 @@ function start() {
     state.session = ls.get('local-session', { dinner: {}, timers: {} });
     state.staples = ls.get('local-staples', {});
     state.bought = ls.get('local-bought', {});
+    state.ideas = ls.get('local-ideas', {});
     state.sync = 'local'; renderSync();
   }
   route();

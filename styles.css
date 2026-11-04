@@ -385,3 +385,14 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .toprep { display: inline-block; margin-top: 6px; font-size: 14px; font-weight: 700; color: var(--muted); text-decoration: none; border: 1.5px solid var(--line); border-radius: 999px; padding: 3px 10px; }
 .item.preptask { grid-template-columns: 44px 1fr 48px; }
 .prepgo { align-self: center; justify-self: end; width: 44px; height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--surface-2); color: var(--text); font-size: 22px; font-weight: 700; cursor: pointer; }
+
+/* ---------- planning: recipe ideas ---------- */
+.ideainput { margin: 4px 0 10px; resize: vertical; font: inherit; }
+#formdlg textarea.dlg-input { font: inherit; resize: vertical; }
+.idealist { list-style: none; margin: 0 0 10px; padding: 0; }
+.idea { display: flex; align-items: flex-start; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.idea:last-child { border-bottom: 0; }
+.idea > div { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ideatext { font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; }
+.idealink { color: var(--accent); overflow-wrap: anywhere; }
+.ideasent .idea { opacity: .75; }
