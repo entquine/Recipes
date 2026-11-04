@@ -432,18 +432,14 @@ function ideaRecipe(x) {
 function renderPlanning() {
   setTitle('Planning', false); setTab('planning');
   // keep a half-typed idea when the list redraws
-  const draft = ['ideaname', 'idealink'].map((k) => { const el = $('#' + k); return el ? el.value : ''; }), typing = document.activeElement && document.activeElement.id;
   const added = Object.entries(state.ideas).filter(([, x]) => ideaRecipe(x)).sort((a, b) => (b[1].at || 0) - (a[1].at || 0));
   const isAdded = ([, x]) => !!ideaRecipe(x);
   const open = ideaList(false).filter((e) => !isAdded(e)), sent = ideaList(true).filter((e) => !isAdded(e));
   let h = banners() + planningSwitch('ideas');
-  h += `<section class="card"><p class="section-label">New recipe idea</p>
-    <form id="ideaform"><label class="field">Recipe name<input id="ideaname" class="dlg-input" maxlength="120" placeholder="e.g. Salmon teriyaki rice bowls" autocomplete="off"></label>
-    <label class="field">Link <span class="small">(optional)</span><input id="idealink" class="dlg-input" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link" autocomplete="off"></label>
-    <button class="btn" type="submit">Add idea</button></form></section>`;
+  h += '<button class="btn addidea" id="addidea">＋ Add idea</button>';
   h += `<section class="card"><p class="section-label">Ideas${open.length ? ` (${open.length})` : ''}</p>`;
   h += open.length ? `<ul class="list idealist">${open.map(ideaRowHtml).join('')}</ul>`
-    : '<p class="small">No ideas waiting. Add one above; it shows up on both phones.</p>';
+    : '<p class="small">No ideas waiting. Tap Add idea; it shows up on both phones.</p>';
   h += '</section>';
   if (open.length) h += `<section class="card sendcard"><p class="section-label">Send to the recipe Claude</p>
     <p class="small">Copies the ${open.length === 1 ? 'idea' : `${open.length} ideas`} above as a message to paste to the recipe Claude, then marks ${open.length === 1 ? 'it' : 'them'} as sent.</p>
@@ -454,8 +450,6 @@ function renderPlanning() {
   if (added.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">In the Recipe Book ✓ (${added.length})</summary>
     <ul class="list idealist">${added.map(([id, x]) => { const meal = ideaRecipe(x); return ideaRowHtml([id, x]).replace('<span class="ideaname">', `<a class="ideaadded" href="#/meal/${esc(meal.id)}">Open recipe ›</a><span class="ideaname">`); }).join('')}</ul></details>`;
   view().innerHTML = h;
-  ['ideaname', 'idealink'].forEach((k, n) => { if (draft[n]) $('#' + k).value = draft[n]; });
-  if (typing === 'ideaname' || typing === 'idealink') $('#' + typing).focus({ preventScroll: true });
 }
 let ideasSentOpen = false;
 function ideasMessage(list) {
@@ -475,6 +469,17 @@ async function copyIdeas() {
   const now = Date.now(), ch = {};
   for (const [id, x] of list) ch[id] = { ...x, sent: now };
   writeIdeas(ch); toast('Marked as sent');
+}
+async function addIdea(name = '', url = '') { // the Add idea dialog (stays near the top: it opens the keyboard)
+  const r = await formDialog(`<p class="picktitle">New recipe idea</p>
+    <label class="field">Recipe name<input class="dlg-input" name="name" maxlength="120" placeholder="e.g. Salmon teriyaki rice bowls" value="${esc(name)}" autocomplete="off"></label>
+    <label class="field">Link <span class="small">(optional)</span><input class="dlg-input" name="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" placeholder="Paste a recipe link" value="${esc(url)}" autocomplete="off"></label>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Add idea</button></div>`);
+  if (r.value !== 'save') return;
+  const n = clean(r.form.name.value, 120), u = fixUrl(r.form.url.value);
+  if (!n) { toast('Type the recipe name first'); addIdea('', r.form.url.value); return; }
+  writeIdeas({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name: n, url: u, email: myEmail(), at: Date.now() } });
+  toast('Idea added');
 }
 async function editIdea(id) {
   const x = state.ideas[id]; if (!x) return;
@@ -649,16 +654,20 @@ function formDialog(html) { // shows a small form dialog; resolves with the subm
 const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
 async function addMenu() {
   const full = myNoteCount() >= NOTE_LIMIT;
-  const r = await formDialog(`<p class="picktitle">Add to the shopping list</p>
+  const dlg = formDialog(`<p class="picktitle">Add to the shopping list</p>
     <div class="picklist">
       <button class="pickopt" value="item"><strong>Item</strong><span class="small">Something to buy, with an amount</span></button>
       <button class="pickopt" value="note"${full ? ' disabled' : ''}><strong>Note</strong><span class="small">${full ? `You have ${NOTE_LIMIT} notes. Delete one to add another.` : `A note for both of you (up to ${NOTE_LIMIT} each)`}</span></button>
     </div><div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  $('#formdlg').classList.add('mid'); // no typing here, so it sits in the middle
+  const r = await dlg;
   if (r.value === 'item') editItem(null);
   else if (r.value === 'note') {
-    const n = await formDialog(`<p class="picktitle">New note</p>
+    const nd = formDialog(`<p class="picktitle">New note</p>
       <input class="dlg-input" name="text" maxlength="200" placeholder="e.g. Coupon in the glovebox" autocomplete="off">
       <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Add note</button></div>`);
+    $('#formdlg').classList.add('mid'); // small enough to sit in the middle
+    const n = await nd;
     const text = clean(n.form.text.value, 200);
     if (n.value === 'save' && text && addNote(text)) toast('Note added');
   }
@@ -1821,6 +1830,7 @@ document.addEventListener('click', async (e) => {
   const ct = e.target.closest('[data-colortheme]');
   if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
+  if (e.target.id === 'addidea') { addIdea(); return; }
   if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
   const ei = e.target.closest('[data-editidea]');
   if (ei) { editIdea(ei.dataset.editidea); return; }
@@ -1914,15 +1924,6 @@ document.addEventListener('keydown', (e) => {
 });
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.ideasent')) ideasSentOpen = e.target.open; }, true);
 document.addEventListener('submit', async (e) => {
-  if (e.target.id === 'ideaform') {
-    e.preventDefault();
-    const name = clean($('#ideaname').value, 120), url = fixUrl($('#idealink').value);
-    if (!name) { toast('Type the recipe name first'); $('#ideaname').focus(); return; }
-    $('#ideaname').value = ''; $('#idealink').value = '';
-    writeIdeas({ [Date.now().toString(36) + Math.random().toString(36).slice(2, 6)]: { name, url, email: myEmail(), at: Date.now() } });
-    toast('Idea added');
-    return;
-  }
   if (e.target.id === 'nameform') {
     e.preventDefault();
     const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
