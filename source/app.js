@@ -981,7 +981,8 @@ function renderCook() {
   // a hard swipe keeps all its momentum; once the wheel stops, it settles on the nearest step
   if ('onscrollend' in window) w.addEventListener('scrollend', settleWheel);
   else w.addEventListener('scroll', () => { clearTimeout(settleTimer); settleTimer = setTimeout(settleWheel, 140); }, { passive: true });
-  wheelTouch(w);
+  w.addEventListener('touchstart', () => { fingerDown = true; }, { passive: true });
+  w.addEventListener('touchend', () => { fingerDown = false; setTimeout(() => { if (Date.now() - lastWheelScroll > 120) settleWheel(); }, 150); }, { passive: true }); // let go without a fling
 }
 function sizeWheel() { // room above the first step and below the last, so each can sit in the middle
   const w = $('#cookwheel'); if (!w) return;
@@ -989,7 +990,6 @@ function sizeWheel() { // room above the first step and below the last, so each 
 }
 addEventListener('resize', () => { if (cook) { sizeWheel(); wheelTo(cook.step, false); } });
 function wheelTo(i, smooth) {
-  stopGlide();
   const w = $('#cookwheel'); const el = w && w.querySelector(`[data-cwi="${i}"]`); if (!el) return;
   w.scrollTo({ top: el.offsetTop - (w.clientHeight - el.offsetHeight) / 2, behavior: smooth ? 'smooth' : 'auto' });
   markWheel(i);
@@ -1008,45 +1008,8 @@ function markWheel(cur) { // size/fade each step by its distance from the curren
   if (next) next.hidden = cur >= last;
 }
 let wheelRaf = 0, settleTimer = 0, fingerDown = false, lastWheelScroll = 0;
-// Finger scrolling is done here rather than by the phone, so a flick can glide a set distance:
-// the wheel follows the finger exactly, then glides on (FLING = 0.8: about 20% less far than the phone's own
-// scrolling) and lands on the step nearest to where it would stop.
-const FLING = 0.8;
-function flingDistance(v) { // how far Android's own scrolling would glide for a flick of v px/ms (its OverScroller physics)
-  const dpr = devicePixelRatio || 1, coef = 9.80665 * 39.37 * 160 * dpr * 0.84 * 0.015, vp = Math.abs(v) * 1000 * dpr;
-  if (vp < 1) return 0;
-  return (coef * Math.exp((2.358 / 1.358) * Math.log(0.35 * vp / coef))) / dpr;
-}
-let wheelAnim = 0, gliding = false;
-function wheelTouch(w) {
-  let y0 = 0, top0 = 0, samples = [];
-  w.addEventListener('touchstart', (e) => { stopGlide(); fingerDown = true; y0 = e.touches[0].clientY; top0 = w.scrollTop; samples = [[performance.now(), y0]]; }, { passive: true });
-  w.addEventListener('touchmove', (e) => { const y = e.touches[0].clientY; w.scrollTop = top0 - (y - y0); samples.push([performance.now(), y]); if (samples.length > 10) samples.shift(); }, { passive: true });
-  w.addEventListener('touchend', () => {
-    fingerDown = false;
-    const now = performance.now(), recent = samples.filter((x) => now - x[0] < 100);
-    let v = 0; // px per ms, in scroll direction; 0 if the finger stopped before letting go
-    if (recent.length >= 2 && now - recent[recent.length - 1][0] < 60) { const a = recent[0], b = recent[recent.length - 1]; if (b[0] > a[0]) v = -(b[1] - a[1]) / (b[0] - a[0]); }
-    glide(w, v);
-  }, { passive: true });
-}
-function stopGlide() { cancelAnimationFrame(wheelAnim); gliding = false; }
-function glide(w, v) {
-  const dist = flingDistance(v) * FLING, projected = w.scrollTop + Math.sign(v) * dist, max = w.scrollHeight - w.clientHeight;
-  let target = w.scrollTop, best = Infinity;
-  w.querySelectorAll('.cw-step').forEach((el) => { const c = el.offsetTop - (w.clientHeight - el.offsetHeight) / 2; if (Math.abs(c - projected) < best) { best = Math.abs(c - projected); target = c; } });
-  target = Math.max(0, Math.min(max, target));
-  const from = w.scrollTop, t0 = performance.now(), tau = Math.abs(v) > 0.15 ? Math.max(150, Math.min(900, Math.abs(target - from) / Math.abs(v))) : 110;
-  gliding = true;
-  const frame = (t) => {
-    if (!gliding) return;
-    w.scrollTop = from + (target - from) * (1 - Math.exp(-(t - t0) / tau));
-    if (Math.abs(target - w.scrollTop) > 0.6) wheelAnim = requestAnimationFrame(frame); else { w.scrollTop = target; gliding = false; }
-  };
-  wheelAnim = requestAnimationFrame(frame);
-}
-function settleWheel() { // after mouse-wheel or keyboard scrolling
-  const w = $('#cookwheel'); if (!w || !cook || fingerDown || gliding) return;
+function settleWheel() {
+  const w = $('#cookwheel'); if (!w || !cook || fingerDown) return;
   const el = w.querySelector(`[data-cwi="${cook.step}"]`); if (!el) return;
   const off = el.offsetTop - (w.clientHeight - el.offsetHeight) / 2 - w.scrollTop;
   if (Math.abs(off) > 2) w.scrollTo({ top: w.scrollTop + off, behavior: 'smooth' });
