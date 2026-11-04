@@ -667,28 +667,10 @@ async function timerTap(label, mins, mealId, step) {
   if (run) { if (await confirmDialog(`Cancel the "${run[1].label}" timer?`, 'Cancel timer')) writeSession('timers', run[0], null); return; }
   startTimer(label, mins, mealId, step);
 }
-// Optional (Settings): also hand the timer to Android's Clock app, which rings even when this app is closed or the
-// phone is on silent. Uses Android's standard "set a timer" request; not every phone or Clock app accepts it from a
-// web app, so we watch whether the app was left for the Clock app and say so if nothing happened.
-function phoneTimer(label, mins) {
-  const url = 'intent:#Intent;action=android.intent.action.SET_TIMER;'
-    + `i.android.intent.extra.alarm.LENGTH=${Math.round(mins * 60)};`
-    + `S.android.intent.extra.alarm.MESSAGE=${encodeURIComponent(label)};`
-    + 'B.android.intent.extra.alarm.SKIP_UI=true;end';
-  let left = false;
-  const seen = () => { if (document.visibilityState === 'hidden') left = true; };
-  document.addEventListener('visibilitychange', seen);
-  setTimeout(() => {
-    document.removeEventListener('visibilitychange', seen);
-    if (!left) toast("The phone's Clock app didn't take the timer. The app's own timer is still running.", 6000);
-  }, 2500);
-  try { location.href = url; } catch { /* not supported */ }
-}
 function startTimer(label, mins, mealId, step) {
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   writeSession('timers', id, { label, mins, ends: Date.now() + mins * 60000, meal: mealId, step: step || '', by: myEmail() });
   audioUnlock(); updateWakeLock();
-  if (ls.get('clock-timer', false)) phoneTimer(label, mins);
   toast(`Timer started: ${mins} min`);
 }
 const alarmed = new Set();
@@ -1263,9 +1245,7 @@ function renderSettings() {
   h += '</section>';
 
   h += `<section class="card"><p class="section-label">While cooking</p>
-    <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label>
-    <label class="switch"><span>Also set timers in the phone's Clock app <span class="small">(rings even when the app is closed or the phone is silent)</span></span><input type="checkbox" id="clocktimer" ${ls.get('clock-timer', false) ? 'checked' : ''}></label>
-    ${ls.get('clock-timer', false) ? '<button class="btn ghost" type="button" id="testclock">Test: set a 1-minute Clock timer</button>' : ''}</section>`;
+    <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   h += `<section class="card"><p class="section-label">Updates</p>
     <p class="small">Updates app, loads latest recipes</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
@@ -1379,7 +1359,6 @@ document.addEventListener('click', async (e) => {
   const ca = e.target.closest('[data-cook]');
   if (ca) { cookAction(ca.dataset.cook); return; }
   if (e.target.id === 'resetcache') { resetLocalData(); return; }
-  if (e.target.id === 'testclock') { phoneTimer('Test from the recipe app', 1); return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
@@ -1474,7 +1453,6 @@ document.addEventListener('submit', async (e) => {
 });
 document.addEventListener('change', (e) => {
   if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); }
-  if (e.target.id === 'clocktimer') { ls.set('clock-timer', e.target.checked); route(); }
   if (e.target.id === 'hideticked') { ls.set('hide-ticked', e.target.checked); refreshTicks(); }
   if (e.target.id === 'dinnerat') writeSession('dinner', e.target.dataset.meal, e.target.value || null);
 });
@@ -1594,7 +1572,7 @@ addEventListener('hashchange', route);
 
 // ---------------------------------------------------------------- start
 function start() {
-  try { localStorage.removeItem('sheet-url'); } catch { /* old setting, no longer used */ }
+  try { localStorage.removeItem('sheet-url'); localStorage.removeItem('clock-timer'); } catch { /* old settings, no longer used */ }
   const cached = ls.get('recipes-cache', null);
   if (cached) { try { state.model = buildModel(cached); state.rowsSig = JSON.stringify(cached); } catch { /* ignore bad cache */ } }
 
