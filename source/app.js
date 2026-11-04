@@ -774,16 +774,19 @@ function toggleStaple(name) {
   setDoc(doc(state.firebase.db, 'shopping', 'staples'), { s: { [id]: on ? { name, by: myEmail() } : deleteField() } }, { merge: true })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
-// press and hold a shopping item to mark it as a staple
+// press and hold a shopping item to mark it as a staple. Any movement or scrolling cancels the hold:
+// once the page starts scrolling the phone stops reporting finger movement, so scroll and cancel events are watched too.
 let holdTimer = null, held = false;
 document.addEventListener('pointerdown', (e) => {
   const it = e.target.closest('.item[data-name]'); if (!it) return;
-  held = false; const x0 = e.clientX, y0 = e.clientY;
+  held = false; const x0 = e.clientX, y0 = e.clientY, sy = scrollY;
+  const stop = () => { clearTimeout(holdTimer); for (const [t, f] of offs) document.removeEventListener(t, f, true); removeEventListener('scroll', stop, true); };
+  const moved = (ev) => { const p = ev.touches ? ev.touches[0] : ev; if (!p || Math.hypot(p.clientX - x0, p.clientY - y0) > 8) stop(); };
+  const offs = [['pointermove', moved], ['touchmove', moved], ['pointercancel', stop], ['pointerup', stop], ['touchend', stop]];
+  for (const [t, f] of offs) document.addEventListener(t, f, { capture: true, passive: true });
+  addEventListener('scroll', stop, { capture: true, passive: true });
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { held = true; if (navigator.vibrate) navigator.vibrate(25); stapleMenu(it.dataset.name); }, 550);
-  const cancel = (ev) => { if (!ev || Math.hypot(ev.clientX - x0, ev.clientY - y0) > 10) { clearTimeout(holdTimer); document.removeEventListener('pointermove', cancel); } };
-  document.addEventListener('pointermove', cancel);
-  document.addEventListener('pointerup', () => { clearTimeout(holdTimer); document.removeEventListener('pointermove', cancel); }, { once: true });
+  holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25); stapleMenu(it.dataset.name); }, 600);
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name]')) e.preventDefault(); });
 async function stapleMenu(name) {
