@@ -23,7 +23,7 @@ const ls = {
   get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
-// Colour themes: chosen per phone in Settings (stored on the phone only). index.html applies it before the page draws.
+// Color themes: chosen per phone in Settings (stored on the phone only). index.html applies it before the page draws.
 const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e'], ['pink', 'Hot Pink', '#d6336c'], ['violet', 'Violet', '#7c3aed'], ['ocean', 'Ocean', '#0b78a8']];
 function applyColor() {
   const c = ls.get('color-theme', 'teal');
@@ -72,7 +72,7 @@ function confirmDialog(text, okLabel = 'Clear') {
     dlg.returnValue = ''; dlg.showModal();
   });
 }
-// Small line icons in the tab-bar style; they take the colour of the text around them (so they follow the theme).
+// Small line icons in the tab-bar style; they take the color of the text around them (so they follow the theme).
 const IC = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICONS = {
   cal: IC('M4.5 6.5h15v13h-15zM4.5 10.5h15M8.5 4v4M15.5 4v4'),
@@ -1713,7 +1713,7 @@ function renderSettings() {
     <div class="updrow"><button class="btn ghost" type="button" id="update">Check for updates</button><span class="ver">${esc(window.APP_VERSION || 'dev')}</span></div>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}</section>`;
   const cur = ls.get('color-theme', 'teal');
-  h += `<section class="card"><p class="section-label">Colour</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></section>`;
+  h += `<section class="card"><p class="section-label">Color</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></section>`;
   // Account: rarely needed, so folded; the summary shows who you are
   h += `<details class="card account"><summary class="section-label">Account<span class="acct-who">${esc(state.myName || (state.user && state.user.email) || '')}</span></summary>
     ${!state.firebase ? '<p>Not set up: everything stays on this phone.</p>' : state.user ? `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>` : ''}
