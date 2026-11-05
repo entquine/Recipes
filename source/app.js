@@ -1559,7 +1559,7 @@ function renderMeal(id) {
   const S = meal.id;
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
-    meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(shortName(d))}</a>`).join('') + '</nav>';
+    meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
   { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }

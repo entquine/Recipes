@@ -663,3 +663,4 @@ main:has(.shopfoot) { display: flex; flex-direction: column; }
 body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); }
 .toast.hasundo { white-space: nowrap; }
 .cooktabs { gap: 6px; } .cooktabs button { padding: 6px 10px; font-size: 15px; }
+.jump { gap: 5px; padding-left: 12px; padding-right: 12px; } .jump a { padding: 6px 9px; font-size: 14.5px; }
