@@ -1025,7 +1025,7 @@ function renderCook() {
   // A wheel of steps: the current one in the middle at full size; the ones around it smaller and fainter
   // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
-      <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
+      <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(cookTabName(meal, x))}</button>`).join('')}</div></div>
     <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span><b class="cd-name">${esc(d.name)}</b></p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
     <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
       <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
@@ -1050,6 +1050,23 @@ function renderCook() {
   else w.addEventListener('scroll', () => { clearTimeout(settleTimer); settleTimer = setTimeout(settleWheel, 140); }, { passive: true });
   w.addEventListener('touchstart', () => { fingerDown = true; }, { passive: true });
   w.addEventListener('touchend', () => { fingerDown = false; setTimeout(() => { if (Date.now() - lastWheelScroll > 120) settleWheel(); }, 150); }, { passive: true }); // let go without a fling
+}
+// Cook mode's dish tabs use just the key food word: "Lemon-Herb Chicken Cutlets" → "Chicken", "Roasted Baby
+// Potatoes" → "Potatoes", "Chicken Pot Pie with Biscuit Topping" → "Pot Pie". If two dishes in the meal would
+// get the same word, they keep their longer names.
+const TAB_PAIRS = ['green beans', 'pot pie', 'garlic bread', 'lettuce wraps', 'sweet potatoes', 'sweet potato', 'fried rice', 'black beans', 'brussels sprouts', 'mashed potatoes', 'french fries', 'mac and cheese'];
+const TAB_SHAPES = new Set(['cutlets', 'bites', 'skewers', 'strips', 'fillets', 'filets', 'tenders', 'medallions', 'kebabs', 'chunks', 'slices', 'pieces', 'patties', 'thighs', 'breasts']);
+const titleCase = (t) => t.replace(/\b\w/g, (c) => c.toUpperCase());
+function keyWord(name) {
+  const n = name.replace(/\s+with\s+.*$/i, '').split(',')[0].trim(), low = n.toLowerCase();
+  for (const p of TAB_PAIRS) if (low.endsWith(p)) return titleCase(n.slice(n.length - p.length));
+  const w = n.split(/\s+/);
+  while (w.length > 1 && TAB_SHAPES.has(w[w.length - 1].toLowerCase())) w.pop();
+  return titleCase(w[w.length - 1].replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '')) || shortName({ name });
+}
+function cookTabName(meal, d) {
+  const k = keyWord(d.name);
+  return meal.dishes.filter((x) => keyWord(x.name) === k).length > 1 ? shortName(d) : k;
 }
 function fitCookName() { // shrink the dish name (20px down to 16px) to fit one line; if it still can't, wrap it evenly
   const el = $('#cookmode .cd-name'); if (!el) return;
