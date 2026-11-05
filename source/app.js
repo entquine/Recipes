@@ -1715,7 +1715,7 @@ function renderShopping() {
     <p class="donemsg" id="donemsg" hidden></p>`;
   if (autoShop()) {
     h += renderAutoShopping(m);
-    h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>
+    h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold items you usually have at home</p>
       <div class="shopbtns"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div></div>`;
     view().innerHTML = h;
     fitShopPage();
@@ -1735,7 +1735,7 @@ function renderShopping() {
   const stapleExtras = extrasListHtml(null, true);
   if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
     <p class="small">Things you usually have at home. They don't count toward the list. Tick one if you're buying it this time.</p><ul class="list">${staples.map(shopRow).join('')}${stapleExtras}</ul></details>`;
-  h += '<p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>';
+  h += '<p class="small staplehint">Tip: press and hold items you usually have at home</p>';
   if (!m.shopping.length && !other) h += '<p class="empty">The shopping list is empty. Tap + to add an item.</p>';
   if (m.shopping.length || other) h += `<button class="btn outline-danger" data-clear="${SHOP()}" data-label="the shopping list">Clear shopping ticks</button>`;
   view().innerHTML = h;
