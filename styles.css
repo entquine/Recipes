@@ -632,3 +632,7 @@ details.plan:not([open]) > summary { margin: 0; }
 .tonightcook { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border-radius: 14px; padding: 9px 16px; }
 .tc-main { display: inline-flex; align-items: center; gap: 6px; }
 .tc-sub { font-size: 13px; font-weight: 500; opacity: .85; padding-left: 1.6em; }
+.account > summary { list-style: none; }
+.account > summary::-webkit-details-marker { display: none; }
+.account > summary::before { content: "▸"; font-size: 13px; margin-right: 2px; }
+.account[open] > summary::before { content: "▾"; }
