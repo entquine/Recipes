@@ -405,6 +405,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 :root[data-color="forest"] { --accent: #2f6b3a; --c0: #2f6b3a; --c0-soft: #dcebdc; --c1: #9a6a00; --c1-soft: #f6ecd0; }
 :root[data-color="slate"] { --accent: #44525e; --c0: #44525e; --c0-soft: #e2e7ec;  }
 :root[data-color="pink"] { --accent: #d6336c; --c0: #d6336c; --c0-soft: #fbe0ea; }
+:root[data-color="ocean"] { --accent: #0b78a8; --c0: #0b78a8; --c0-soft: #d9eef7; --c2: #9a5b16; --c2-soft: #f5e7d3; }
 :root[data-color="violet"] { --accent: #7c3aed; --c0: #7c3aed; --c0-soft: #ece4fd; --c3: #1f6e68; --c3-soft: #d8eeeb; }
 @media (prefers-color-scheme: dark) {
   :root[data-color="rust"]:not([data-theme="light"]) { --accent: #e3795a; --c0: #e3795a; --c0-soft: #45281e; --head: #7a2f1c;  }
@@ -413,6 +414,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
   :root[data-color="forest"]:not([data-theme="light"]) { --accent: #7cc48a; --c0: #7cc48a; --c0-soft: #213825; --head: #24502c; --c1: #e3b54f; --c1-soft: #3a2f12; }
   :root[data-color="slate"]:not([data-theme="light"]) { --accent: #a9b8c6; --c0: #a9b8c6; --c0-soft: #283038; --head: #33404b;  }
   :root[data-color="pink"]:not([data-theme="light"]) { --accent: #ff7aa8; --c0: #ff7aa8; --c0-soft: #47202f; --head: #a3204f; }
+  :root[data-color="ocean"]:not([data-theme="light"]) { --accent: #5cc3ec; --c0: #5cc3ec; --c0-soft: #16303d; --head: #0b5a7c; --c2: #e0a865; --c2-soft: #3a2a17; }
   :root[data-color="violet"]:not([data-theme="light"]) { --accent: #b197fc; --c0: #b197fc; --c0-soft: #2e2348; --head: #5b2bb5; --c3: #6fcbc0; --c3-soft: #1b3836; }
 }
 .swatches { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
@@ -635,3 +637,12 @@ details.plan:not([open]) > summary { margin: 0; }
 #picker .custom { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
 #picker .row-btns { margin-top: 10px; }
 #picker .picktitle:focus { outline: none; }
+/* settings fits on one screen */
+.settop .switch { padding: 0 0 10px; }
+.updrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--line); padding-top: 10px; }
+.updrow .btn { min-height: 42px; padding: 0 16px; }
+.ver { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.swatches { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 8px; }
+.swatch { flex-direction: column; justify-content: center; gap: 5px; padding: 8px 4px; min-height: 0; text-align: center; font-size: 14px; }
+.swatch i { width: 24px; height: 24px; }
+body:has(.settop) .card { margin-bottom: 10px; }

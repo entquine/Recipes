@@ -24,7 +24,7 @@ const ls = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage full or blocked */ } },
 };
 // Colour themes: chosen per phone in Settings (stored on the phone only). index.html applies it before the page draws.
-const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e'], ['pink', 'Hot Pink', '#d6336c'], ['violet', 'Violet', '#7c3aed']];
+const THEMES = [['teal', 'Teal', '#1f6e68'], ['rust', 'Rust', '#b8472a'], ['blueberry', 'Blueberry', '#2f4f8f'], ['plum', 'Plum', '#7a3b6e'], ['forest', 'Forest', '#2f6b3a'], ['slate', 'Slate', '#44525e'], ['pink', 'Hot Pink', '#d6336c'], ['violet', 'Violet', '#7c3aed'], ['ocean', 'Ocean', '#0b78a8']];
 function applyColor() {
   const c = ls.get('color-theme', 'teal');
   if (c && c !== 'teal') document.documentElement.dataset.color = c; else delete document.documentElement.dataset.color;
@@ -1708,13 +1708,12 @@ function renderSettings() {
   setTitle('Settings', false); setTab('settings');
   const info = state.recipeInfo || {};
   let h = banners();
-  h += `<section class="card"><p class="section-label">While cooking</p>
-    <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
+  // one small card for the two everyday settings, so the whole page fits on a phone screen
+  h += `<section class="card settop"><label class="switch"><span>Keep screen on while cooking</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label>
+    <div class="updrow"><button class="btn ghost" type="button" id="update">Check for updates</button><span class="ver">${esc(window.APP_VERSION || 'dev')}</span></div>
+    ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}</section>`;
   const cur = ls.get('color-theme', 'teal');
   h += `<section class="card"><p class="section-label">Colour</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></section>`;
-  h += `<section class="card"><p class="section-label">Updates</p>
-    ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
-    <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
   // Account: rarely needed, so folded; the summary shows who you are
   h += `<details class="card account"><summary class="section-label">Account<span class="acct-who">${esc(state.myName || (state.user && state.user.email) || '')}</span></summary>
     ${!state.firebase ? '<p>Not set up: everything stays on this phone.</p>' : state.user ? `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>` : ''}
@@ -1729,7 +1728,6 @@ function renderSettings() {
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
-  h += `<p class="small" style="text-align:center">${esc(APP_NAME)} · ${esc(window.APP_VERSION || 'dev')}</p>`;
   view().innerHTML = h;
 }
 
