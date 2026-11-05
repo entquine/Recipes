@@ -646,3 +646,7 @@ details.plan:not([open]) > summary { margin: 0; }
 .swatch { flex-direction: column; justify-content: center; gap: 5px; padding: 8px 4px; min-height: 0; text-align: center; font-size: 14px; }
 .swatch i { width: 24px; height: 24px; }
 body:has(.settop) .card { margin-bottom: 10px; }
+.cookdishrow { align-items: center; margin-top: 12px; }
+.cookdishrow .cookdish { margin: 0; min-width: 0; flex: 1; }
+.cd-name { display: block; font-weight: inherit; text-wrap: balance; }
+.cookingsbtn { min-height: 38px; padding: 0 11px; font-size: 14px; gap: 5px; }

@@ -995,7 +995,7 @@ function renderCook() {
   // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
       <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
-    <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
+    <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span><b class="cd-name">${esc(d.name)}</b></p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
     <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
       <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
@@ -1010,6 +1010,7 @@ function renderCook() {
   const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
   renderTimers();
+  fitCookName();
   sizeWheel(); wheelTo(cook.step, false);
   const w = $('#cookwheel');
   w.addEventListener('scroll', onWheelScroll, { passive: true });
@@ -1018,6 +1019,14 @@ function renderCook() {
   else w.addEventListener('scroll', () => { clearTimeout(settleTimer); settleTimer = setTimeout(settleWheel, 140); }, { passive: true });
   w.addEventListener('touchstart', () => { fingerDown = true; }, { passive: true });
   w.addEventListener('touchend', () => { fingerDown = false; setTimeout(() => { if (Date.now() - lastWheelScroll > 120) settleWheel(); }, 150); }, { passive: true }); // let go without a fling
+}
+function fitCookName() { // shrink the dish name (20px down to 16px) to fit one line; if it still can't, wrap it evenly
+  const el = $('#cookmode .cd-name'); if (!el) return;
+  el.style.fontSize = ''; el.style.whiteSpace = 'nowrap';
+  const ps = getComputedStyle(el.parentElement), avail = el.parentElement.clientWidth - parseFloat(ps.paddingLeft) - parseFloat(ps.paddingRight) - 2;
+  const base = parseFloat(getComputedStyle(el).fontSize), need = el.scrollWidth;
+  if (need > avail) el.style.fontSize = Math.max(16, Math.floor(base * avail / need * 10) / 10) + 'px';
+  el.style.whiteSpace = '';
 }
 function sizeWheel() { // room above the first step and below the last, so each can sit in the middle
   const w = $('#cookwheel'); if (!w) return;
