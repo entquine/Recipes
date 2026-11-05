@@ -650,3 +650,7 @@ body:has(.settop) .card { margin-bottom: 10px; }
 .cookdishrow .cookdish { margin: 0; min-width: 0; flex: 1; }
 .cd-name { display: block; font-weight: inherit; text-wrap: balance; }
 .cookingsbtn { min-height: 38px; padding: 0 11px; font-size: 14px; gap: 5px; }
+/* step timers: a round button in its own column on the right of the step */
+.item.hastimer { grid-template-columns: 44px 1fr 58px; }
+.timerbtn.tb-side { margin: 0; align-self: center; justify-self: end; width: 54px; height: 54px; padding: 0; border-radius: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.timerbtn.tb-side .ic { width: 20px; height: 20px; }

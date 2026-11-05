@@ -951,9 +951,11 @@ function markTimerButtons() {
     const run = runningTimerFor(btn.dataset.step);
     btn.classList.toggle('running', !!run && run[1].ends > now);
     btn.classList.toggle('rang', !!run && run[1].ends <= now);
-    if (!run) { btn.innerHTML = `${ICONS.timer} ${btn.dataset.timer} min`; return; }
-    const left = Math.round((run[1].ends - now) / 1000);
-    btn.innerHTML = left > 0 ? `${ICONS.timer} ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} · tap to cancel` : `${ICONS.bell} Done · tap to clear`;
+    const side = btn.classList.contains('tb-side'); // the round button on the right of a step: short labels
+    if (!run) { btn.innerHTML = side ? `${ICONS.timer}<span>${btn.dataset.timer}m</span>` : `${ICONS.timer} ${btn.dataset.timer} min`; return; }
+    const left = Math.round((run[1].ends - now) / 1000), clock = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+    btn.innerHTML = side ? (left > 0 ? `${ICONS.timer}<span>${clock}</span>` : `${ICONS.bell}<span>Done</span>`)
+      : left > 0 ? `${ICONS.timer} ${clock} · tap to cancel` : `${ICONS.bell} Done · tap to clear`;
   });
 }
 let audioCtx = null;
@@ -1550,7 +1552,7 @@ function renderMeal(id) {
     }
     if (d.steps.length) {
       h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
-        `<span class="body"><span class="num">${esc(s.num)}.</span>${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">${ICONS.timer} ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
+        `<span class="body"><span class="num">${esc(s.num)}.</span>${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>${stepMinutes(s.text) ? `<button class="timerbtn tb-side" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${stepMinutes(s.text)} minute timer">${ICONS.timer}<span>${stepMinutes(s.text)}m</span></button>` : ''}`, stepMinutes(s.text) ? 'hastimer' : '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
     }
     h += '</section>';
   }
