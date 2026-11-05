@@ -807,12 +807,12 @@ function nextTimeCardHtml(meal) { // under the rating: add or edit the note (aft
   if (!x && !ratingInfo(meal.name).mine) return '';
   return `<section class="card nextcard"><p class="section-label">Note for next time</p>${x
     ? `<div class="nt-row"><div><p class="nt-text">${esc(x.text)}</p><p class="small">${nextTimeBy(x)}</p></div><button class="delnote" data-editnext="${esc(meal.id)}" aria-label="Edit note">✎</button></div>`
-    : `<button class="btn ghost" data-editnext="${esc(meal.id)}">＋ Add a note for next time</button><p class="small">e.g. less soy sauce, double the garlic, needs 5 more minutes</p>`}</section>`;
+    : `<button class="btn ghost" data-editnext="${esc(meal.id)}">＋ Add a note for next time</button>`}</section>`;
 }
 async function editNextTime(meal) {
   const x = state.nextTime[meal.rid];
   const r = await formDialog(`<p class="picktitle">Note for next time</p><p class="small" style="margin:0 0 8px">${esc(meal.main.name)}</p>
-    <textarea class="dlg-input" name="text" rows="4" maxlength="400" placeholder="e.g. less soy sauce, double the garlic">${esc(x ? x.text : '')}</textarea>
+    <textarea class="dlg-input" name="text" rows="4" maxlength="400">${esc(x ? x.text : '')}</textarea>
     <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   if (r.value === 'delete') { writeNextTime(meal.rid, null); undoToast('Note deleted', () => writeNextTime(meal.rid, x)); return; }
   if (r.value !== 'save') return;
