@@ -49,10 +49,21 @@ const displayMealName = (s) => norm(s).replace(/^\d+\s*[.):-]?\s*/, '') || norm(
 const stem = (w) => w.toLowerCase().replace(/[^a-z]/g, '').replace(/(es|s)$/, '');
 
 let toastTimer;
+let undoFn = null;
 function toast(msg, ms = 2600) {
-  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  const t = $('#toast'); t.textContent = msg; t.classList.remove('hasundo'); undoFn = null; t.classList.add('show');
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
+// Deleted straight away, with a few seconds to undo it (instead of an "are you sure?" question).
+function undoToast(msg, fn) {
+  const t = $('#toast'); t.innerHTML = `<span>${esc(msg)}</span><button type="button" class="toastundo">Undo</button>`;
+  undoFn = fn; t.classList.add('show', 'hasundo');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.classList.remove('show', 'hasundo'); undoFn = null; }, 6000);
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.toastundo')) return;
+  const f = undoFn; undoFn = null; $('#toast').classList.remove('show', 'hasundo'); if (f) { f(); toast('Restored'); }
+});
 function confirmDialog(text, okLabel = 'Clear') {
   const dlg = $('#confirm');
   $('#confirm-text').textContent = text; $('#confirm-ok').textContent = okLabel;
@@ -70,6 +81,8 @@ const ICONS = {
   camera: IC('M4 8.5h3.2l1.8-2.5h6l1.8 2.5H20V19H4zM12 16.5a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z'),
   warn: IC('M12 4 2.8 19.5h18.4zM12 10v4.2M12 17v.01'),
   bell: IC('M6.5 16.5V11a5.5 5.5 0 0 1 11 0v5.5l1.5 2h-14zM10 21h4'),
+  note: IC('M6 3.5h8.5L19 8v12.5H6zM14 3.5V8h5M9 12h7M9 16h5'),
+  list: IC('M9 6.5h11M9 12h11M9 17.5h11M4.5 6.5v.01M4.5 12v.01M4.5 17.5v.01'),
 };
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.2 4.2L19 7" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
@@ -487,7 +500,7 @@ async function editIdea(id) {
     <label class="field">Recipe name<input class="dlg-input" name="name" maxlength="120" value="${esc(ideaName(x))}" autocomplete="off"></label>
     <label class="field">Link <span class="small">(optional)</span><input class="dlg-input" name="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" value="${esc(x.url || '')}" autocomplete="off"></label>
     <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>${x.sent ? '<button class="btn ghost" value="unsend">Not sent</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
-  if (r.value === 'delete') { writeIdeas({ [id]: null }); toast('Idea deleted'); return; }
+  if (r.value === 'delete') { writeIdeas({ [id]: null }); undoToast('Idea deleted', () => writeIdeas({ [id]: x })); return; }
   if (r.value === 'unsend') { const { sent, ...rest } = x; writeIdeas({ [id]: rest }); toast('Moved back to Ideas'); return; }
   if (r.value !== 'save') return;
   const name = clean(r.form.name.value, 120), url = fixUrl(r.form.url.value);
@@ -549,13 +562,17 @@ function pickPhoto(key) {
   });
   inp.click();
 }
+function removePhoto(key) {
+  const old = state.photos[key]; if (!old) return;
+  savePhoto(key, null); undoToast('Photo removed', () => savePhoto(key, old));
+}
 function savePhoto(key, img) {
   state.photos[key] = img; paintPhotos();
   if (img) makeThumb(img).then((t) => writeThumb(key, t)).catch(() => {}); else writeThumb(key, null);
-  if (!state.firebase) { try { ls.set('local-photos', state.photos); } catch { /* full */ } toast(img ? 'Photo saved' : 'Photo removed'); return; }
+  if (!state.firebase) { try { ls.set('local-photos', state.photos); } catch { /* full */ } if (img) toast('Photo saved'); return; }
   const ref = doc(state.firebase.db, 'photos', key);
   (img ? setDoc(ref, { img, email: myEmail(), at: Date.now() }) : deleteDoc(ref))
-    .then(() => toast(img ? 'Photo saved' : 'Photo removed'))
+    .then(() => { if (img) toast('Photo saved'); })
     .catch((e) => toast('Could not save the photo: ' + (e.code || e.message), 5000));
 }
 async function photoMenu(key, name) {
@@ -565,7 +582,7 @@ async function photoMenu(key, name) {
   $('#formdlg').classList.add('centered');
   const r = await dlg;
   if (r.value === 'replace') pickPhoto(key);
-  else if (r.value === 'remove' && await confirmDialog(`Remove the photo of ${name} for both of you?`, 'Remove')) savePhoto(key, null);
+  else if (r.value === 'remove') removePhoto(key);
 }
 
 // ---------------------------------------------------------------- shopping notes
@@ -605,9 +622,16 @@ function notesListHtml() {
       ? `<button class="delnote" data-editnote="${esc(id)}" aria-label="Edit note">✎</button>`
       : `<button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button>`}`, 'extra note')).join('');
 }
+// Folded, the notes card is one line: the newest note, and how many more. Tap to see and tick them all.
+let notesOpen = false;
+function notesSummaryHtml() {
+  const notes = Object.values(state.notes).sort((a, b) => (b.at || 0) - (a.at || 0)); if (!notes.length) return '';
+  return `${ICONS.note}<span class="ns-closed"><span class="ns-first">${esc(notes[0].text)}</span>${notes.length > 1 ? `<span class="ns-more">+${notes.length - 1} more</span>` : ''}</span><span class="ns-open">Notes (${notes.length})</span>`;
+}
+document.addEventListener('toggle', (e) => { if (e.target.id === 'notescard') notesOpen = e.target.open; }, true);
 function renderNotes() {
   const ul = $('#notelist'); if (!ul) return;
-  ul.innerHTML = notesListHtml();
+  ul.innerHTML = notesListHtml(); $('#notesummary').innerHTML = notesSummaryHtml();
   $('#notescard').hidden = !Object.keys(state.notes).length;
   refreshTicks();
 }
@@ -677,7 +701,7 @@ async function editNote(id) { // your own notes: change the text or delete
   const r = await formDialog(`<p class="picktitle">Edit note</p>
     <input class="dlg-input" name="text" maxlength="200" value="${esc(x.text)}" autocomplete="off">
     <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
-  if (r.value === 'delete') { writeNotes({ [id]: null }); toast('Note deleted'); return; }
+  if (r.value === 'delete') { writeNotes({ [id]: null }); undoToast('Note deleted', () => writeNotes({ [id]: x })); return; }
   if (r.value !== 'save') return;
   const text = clean(r.form.text.value, 200);
   if (!text) { toast('Type the note, or tap Delete'); return; }
@@ -690,7 +714,7 @@ async function editItem(id) { // id null = new item; otherwise edit your own ite
     <label class="field">Amount <span class="small">(optional)</span><input class="dlg-input" name="amount" maxlength="40" placeholder="e.g. 1 pack" value="${esc(x ? x.amount : '')}" autocomplete="off"></label>
     <label class="field">Category<select class="dlg-input" name="section">${[...shopSections(), 'Other'].map((sec) => `<option${(x ? extraSection(x) : 'Other') === sec ? ' selected' : ''}>${esc(sec)}</option>`).join('')}</select></label>
     <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${x ? 'Save' : 'Add item'}</button></div>`);
-  if (r.value === 'delete') { writeExtras({ [id]: null }); toast('Item removed'); return; }
+  if (r.value === 'delete') { writeExtras({ [id]: null }); undoToast(`${x.name} removed`, () => writeExtras({ [id]: x })); return; }
   if (r.value !== 'save') return;
   const name = clean(r.form.name.value, 80), amount = clean(r.form.amount.value, 40), section = r.form.section.value;
   if (!name) { toast('Type the item name'); return; }
@@ -971,7 +995,9 @@ function renderCook() {
   // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
       <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(shortName(x))}</button>`).join('')}</div></div>
-    <p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>
+    <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span>${esc(d.name)}</p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
+    <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
+      <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
       ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
         <p class="cookcount">Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
@@ -1036,8 +1062,10 @@ function onWheelScroll() { // the step nearest the middle becomes the current on
 function cookAction(a) {
   if (!cook) return;
   const meal = mealById(cook.meal); const d = meal.dishes[cook.dish];
-  if (a === 'close') { // back to the recipe, at the dish you were cooking
-    const anchor = d.anchor; cook = null; renderCook(); route();
+  if (a === 'ings') { $('#cooksheet').hidden = false; return; }
+  if (a === 'ingsclose') { $('#cooksheet').hidden = true; return; }
+  if (a === 'close') { // back to the recipe, at the step you were on
+    const cur = d.steps[cook.step], anchor = cur ? `${d.anchor}-s${cur.num}` : d.anchor; cook = null; renderCook(); route();
     const sec = document.getElementById(anchor); if (sec) scrollTo(0, sec.getBoundingClientRect().top + scrollY - 120);
     return;
   }
@@ -1312,6 +1340,13 @@ function bookRowHtml(meal, dish, inPlanned) {
     <span class="bk-meta">${meta}</span></a><button class="bookmore" data-bookmenu="1" data-meal="${esc(meal.id)}" data-dish="${di}" aria-label="More for ${esc(dish.name)}">⋯</button></li>`;
 }
 let bookQuery = '';
+const BOOK_SORTS = [['rated', 'Best rated'], ['made', 'Most made'], ['ago', 'Not made lately']];
+function madeSort() { // how "Made before" is ordered (this phone's choice)
+  const by = ls.get('book-sort', 'rated'), name = (a, b) => a.dish.name.localeCompare(b.dish.name);
+  if (by === 'made') return (a, b) => b.made - a.made || b.stars - a.stars || name(a, b);
+  if (by === 'ago') return (a, b) => (lastMade(a.meal) || '').localeCompare(lastMade(b.meal) || '') || name(a, b); // never on the calendar counts as longest ago
+  return (a, b) => b.stars - a.stars || b.made - a.made || name(a, b);
+}
 function renderPast() {
   setTitle('Planning', false); setTab('planning');
   const m = state.model;
@@ -1324,14 +1359,15 @@ function renderPast() {
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
-    ['made', 'Made before', all.filter((e) => !e.planned && e.made), (a, b) => b.stars - a.stars || b.made - a.made || a.dish.name.localeCompare(b.dish.name)],
+    ['made', 'Made before', all.filter((e) => !e.planned && e.made), madeSort()],
     ['try', 'Want to try', all.filter((e) => !e.planned && !e.made), (a, b) => a.dish.name.localeCompare(b.dish.name)],
   ];
   h += `<div class="booksearch"><input type="search" id="booksearch" placeholder="Search recipes or ingredients" value="${esc(bookQuery)}" autocomplete="off" enterkeyhint="search"></div>`;
   for (const [id, title, list, sort] of groups) {
     if (!list.length) continue;
     const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish, id === 'planned')).join('')}` : '');
-    h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>
+    const sortRow = id === 'made' && list.length > 1 ? `<div class="booksort">${BOOK_SORTS.map(([v, label]) => `<button class="filter${ls.get('book-sort', 'rated') === v ? ' on' : ''}" data-booksort="${v}">${label}</button>`).join('')}</div>` : '';
+    h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>${sortRow}
       <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
@@ -1376,9 +1412,23 @@ function mealCardHtml(meal, tonight) {
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
       ${tonight || nextPlanned(meal.name) ? '' : `<span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span>`}
       <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : timeAndProgress}</div>
+      ${tonight ? (() => { const first = meal.starts.length ? meal.starts[0].dish : meal.dishes.find((x) => x.steps.length); const i = first ? meal.dishes.indexOf(first) : -1;
+        return i < 0 ? '' : `<span class="tonightcook" role="button" tabindex="0" data-tonightcook="${esc(meal.id)}" data-dish="${i}"><span class="tc-main">${ICONS.cook} Start cooking</span>${meal.dishes.length > 1 ? `<span class="tc-sub">${esc(first.name)} first</span>` : ''}</span>`; })() : ''}
       ${tonight && ri.done ? `<p class="small votes"><span class="avg">${starsText(ri.avg)}</span> last time</p>` : ''}
       ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
     </a>`;
+}
+// The next 7 days at a glance. Tap a planned day to open its recipe, or an empty day to pick something.
+function weekStripHtml() {
+  let h = '';
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(); d.setDate(d.getDate() + i);
+    const k = dayKey(d), v = state.plan[k], custom = customText(v), meal = custom ? null : mealByName(v);
+    const label = custom || (meal ? meal.main.name.replace(/\s+with\s+.*$/i, '') : '');
+    h += `<button class="wk${i === 0 ? ' today' : ''}${label ? '' : ' none'}" data-wkday="${k}" data-meal="${meal ? esc(meal.id) : ''}">
+      <span class="wk-d">${i === 0 ? 'Today' : esc(fmtDay(d, { weekday: 'short' }))} <b>${d.getDate()}</b></span><span class="wk-m">${label ? esc(label) : '+ Plan'}</span></button>`;
+  }
+  return `<div class="weekstrip" aria-label="This week">${h}</div>`;
 }
 // The day after a meal (up to 3 days), ask for your rating right on the Meals screen.
 function ratePromptHtml() {
@@ -1413,6 +1463,7 @@ function renderMeals() {
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
+  h += weekStripHtml();
   h += ratePromptHtml();
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
@@ -1503,7 +1554,7 @@ function renderMeal(id) {
     }
     if (d.steps.length) {
       h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
-        `<span class="body"><span class="num">${esc(s.num)}.</span>${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${prepOf.has(s.key) ? `<br><a href="#" class="toprep" data-jump="${esc(prepOf.get(s.key))}">In prep list ↑</a>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">${ICONS.timer} ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
+        `<span class="body"><span class="num">${esc(s.num)}.</span>${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${stepMinutes(s.text) ? `<br><button class="timerbtn" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}">${ICONS.timer} ${stepMinutes(s.text)} min</button>` : ''}</span>`, '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
     }
     h += '</section>';
   }
@@ -1595,12 +1646,14 @@ async function pickMeal(day) {
   const current = state.plan[day], currentCustom = customText(current);
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
+  const sgIds = new Set(suggestions(day).map((x) => x.rid)), many = m.meals.length + (m.past || []).length > 8;
   dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
+    ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
     ${(() => { const sg = suggestions(day); return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
-    <div class="picklist">${[...m.meals].sort((a, b) => ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
+    <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
-    }).join('')}${(m.past || []).length ? `<p class="section-label pastlabel">Recipe Book</p>${m.past.map((x) => {
+    }).join('')}${(m.past || []).filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${m.past.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div>
@@ -1610,7 +1663,11 @@ async function pickMeal(day) {
     </div>
     <div class="row-btns">${current ? '<button class="btn outline-danger" value="__none" style="width:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button></div></form>`;
   dlg.returnValue = '';
-  const input = $('#customtext', dlg);
+  const input = $('#customtext', dlg), srch = $('.pksearch', dlg);
+  if (srch) { // filter the list as you type; Enter mustn't pick the first meal
+    srch.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.preventDefault(); });
+    srch.addEventListener('input', () => { const q = srch.value.trim().toLowerCase(); dlg.querySelectorAll('.picklist .pickopt').forEach((b) => { b.hidden = !!q && !b.textContent.toLowerCase().includes(q); }); dlg.querySelectorAll('.pastlabel').forEach((l) => { l.hidden = !!q; }); });
+  }
   input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); $('#customsave', dlg).click(); } });
   const choice = await new Promise((resolve) => { dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }); dlg.showModal(); });
   if (choice === '__custom') {
@@ -1627,8 +1684,8 @@ function renderShopping() {
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   let h = banners();
-  h += `<section class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}><p class="section-label">Notes</p>
-    <ul id="notelist" class="list notelist">${notesListHtml()}</ul></section>`;
+  h += `<details class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}${notesOpen ? ' open' : ''}><summary id="notesummary">${notesSummaryHtml()}</summary>
+    <ul id="notelist" class="list notelist">${notesListHtml()}</ul></details>`;
   h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>
     <div class="shoptools"><label class="switch hidetoggle"><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}><span>Hide ticked</span></label><button class="btn ghost addinline" id="addinline">＋ Add item</button></div>
     <p class="donemsg" id="donemsg" hidden></p>`;
@@ -1664,13 +1721,6 @@ function renderSettings() {
   setTitle('Settings', false); setTab('settings');
   const info = state.recipeInfo || {};
   let h = banners();
-  h += '<section class="card"><p class="section-label">Sharing</p>';
-  if (!state.firebase) h += '<p>Not set up: everything stays on this phone.</p>';
-  else if (state.user) h += `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>`;
-  h += `<form id="nameform"><label class="field">Your name
-    <div class="customrow"><input type="text" id="myname" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off"><button class="btn" type="submit">Save</button></div></label></form>`;
-  h += '</section>';
-
   h += `<section class="card"><p class="section-label">While cooking</p>
     <label class="switch"><span>Keep screen on in a meal</span><input type="checkbox" id="wake" ${ls.get('wake', true) ? 'checked' : ''}></label></section>`;
   const cur = ls.get('color-theme', 'teal');
@@ -1678,6 +1728,11 @@ function renderSettings() {
   h += `<section class="card"><p class="section-label">Updates</p>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}
     <button class="btn ghost" type="button" id="update">Check for updates</button></section>`;
+  // Account: rarely needed, so folded; the summary shows who you are
+  h += `<details class="card account"><summary class="section-label">Account<span class="acct-who">${esc(state.myName || (state.user && state.user.email) || '')}</span></summary>
+    ${!state.firebase ? '<p>Not set up: everything stays on this phone.</p>' : state.user ? `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>` : ''}
+    <form id="nameform"><label class="field">Your name <span class="small">(on your notes, items and ideas; saves by itself)</span>
+    <input type="text" id="myname" class="dlg-input" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off" enterkeyhint="done"></label></form></details>`;
   if (state.firebase && state.user) {
     const row = (what, n) => { const x = syncInfo[what]; return `<li>${esc(what)}: ${x ? (x.ok ? `${n} ${x.server ? '✓' : '(from this phone, not yet confirmed)'}` : `<span class="err">error: ${esc(x.error)}</span>`) : 'not loaded yet'}</li>`; };
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
@@ -1732,7 +1787,7 @@ function refreshTicks() {
     let done = countDone(scope, keys), total = keys.length;
     if (isShopScope(scope) && autoShop()) [done, total] = autoCounts();
     el.querySelector('b').style.width = total ? (100 * done / total) + '%' : 0;
-    el.querySelector('.pct').textContent = `${done} / ${total}`;
+    el.querySelector('.pct').textContent = isShopScope(scope) ? (total - done ? `${total - done} to buy` : 'All bought') : `${done} of ${total} steps`;
     if (isShopScope(scope)) showDoneMessage(total > 0 && done === total);
   });
   // shopping list: optionally hide ticked items (this phone only), and any card left with nothing showing
@@ -1813,6 +1868,10 @@ document.addEventListener('click', async (e) => {
   if (qr) { const meal = mealById(qr.dataset.meal); if (meal) { const n = +qr.dataset.quickrate; setRating(meal, n); toast(`You gave ${n} star${n > 1 ? 's' : ''}`); } return; }
   const rd = e.target.closest('[data-ratedismiss]');
   if (rd) { const d = ls.get('rate-dismissed', {}); d[rd.dataset.ratedismiss] = 1; ls.set('rate-dismissed', d); route(); return; }
+  const tc = e.target.closest('[data-tonightcook]');
+  if (tc) { e.preventDefault(); const id = tc.dataset.tonightcook, i = +tc.dataset.dish; addEventListener('hashchange', () => openCook(id, i), { once: true }); location.hash = '#/meal/' + id; return; }
+  const wkd = e.target.closest('[data-wkday]');
+  if (wkd) { if (wkd.dataset.meal) location.hash = '#/meal/' + wkd.dataset.meal; else pickMeal(wkd.dataset.wkday); return; }
   const pd = e.target.closest('[data-pickday]');
   if (pd) { e.preventDefault(); const meal = mealById(pd.dataset.pickday); if (meal) pickDayFor(meal); return; }
   const hk = e.target.closest('[data-hintok]');
@@ -1820,7 +1879,7 @@ document.addEventListener('click', async (e) => {
   const rp = e.target.closest('[data-replacephoto]');
   if (rp) { pickPhoto(rp.dataset.replacephoto); return; }
   const xp = e.target.closest('[data-removephoto]');
-  if (xp) { if (await confirmDialog(`Remove the photo of ${xp.dataset.name} for both of you?`, 'Remove')) savePhoto(xp.dataset.removephoto, null); return; }
+  if (xp) { removePhoto(xp.dataset.removephoto); return; }
   const bm = e.target.closest('[data-bookmenu]');
   if (bm) { const meal = mealById(bm.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+bm.dataset.dish]); return; }
   const ap = e.target.closest('[data-addphoto]');
@@ -1831,19 +1890,21 @@ document.addEventListener('click', async (e) => {
   if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
   if (e.target.id === 'addidea') { addIdea(); return; }
-  if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length && await confirmDialog(`Delete the ${n.length} sent idea${n.length === 1 ? '' : 's'} for both of you?`, 'Delete')) writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); return; }
+  if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length) { writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); undoToast(`${n.length} sent idea${n.length === 1 ? '' : 's'} cleared`, () => writeIdeas(Object.fromEntries(n))); } return; }
   const ei = e.target.closest('[data-editidea]');
   if (ei) { editIdea(ei.dataset.editidea); return; }
   const di = e.target.closest('[data-delidea]');
-  if (di) { if (await confirmDialog('Delete this idea for both of you?', 'Delete')) writeIdeas({ [di.dataset.delidea]: null }); return; }
+  if (di) { const id = di.dataset.delidea, x = state.ideas[id]; if (x) { writeIdeas({ [id]: null }); undoToast('Idea deleted', () => writeIdeas({ [id]: x })); } return; }
   const en = e.target.closest('[data-editnote]');
   if (en) { editNote(en.dataset.editnote); return; }
   const ex = e.target.closest('[data-editextra]');
   if (ex) { editItem(ex.dataset.editextra); return; }
   const dx = e.target.closest('[data-delextra]');
-  if (dx) { const x = state.extras[dx.dataset.delextra]; if (x && await confirmDialog(`Remove "${x.name}" from the shopping list for both of you?`, 'Remove')) writeExtras({ [dx.dataset.delextra]: null }); return; }
+  if (dx) { const id = dx.dataset.delextra, x = state.extras[id]; if (x) { writeExtras({ [id]: null }); undoToast(`${x.name} removed`, () => writeExtras({ [id]: x })); } return; }
   const dn = e.target.closest('[data-delnote]');
-  if (dn) { if (await confirmDialog('Delete this note for both of you?', 'Delete')) writeNotes({ [dn.dataset.delnote]: null }); return; }
+  if (dn) { const id = dn.dataset.delnote, x = state.notes[id]; if (x) { writeNotes({ [id]: null }); undoToast('Note deleted', () => writeNotes({ [id]: x })); } return; }
+  const bsrt = e.target.closest('[data-booksort]');
+  if (bsrt) { ls.set('book-sort', bsrt.dataset.booksort); route(); return; }
   const pf = e.target.closest('[data-pastfilter]');
   if (pf) { ls.set('past-filter', pf.dataset.pastfilter); route(); return; }
   const rm = e.target.closest('[data-ratemeal]');
@@ -1923,16 +1984,21 @@ document.addEventListener('keydown', (e) => {
   if ((e.key === ' ' || e.key === 'Enter') && e.target.matches('.item[data-key], .item.gline')) { e.preventDefault(); e.target.click(); }
 });
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.ideasent')) ideasSentOpen = e.target.open; }, true);
-document.addEventListener('submit', async (e) => {
-  if (e.target.id === 'nameform') {
-    e.preventDefault();
-    const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
-    state.myName = name;
+function saveName() { // the Your name box saves itself when you leave it
+  const name = $('#myname').value.replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (name === state.myName) return;
+  state.myName = name;
     if (state.user) { if (name) state.names[myEmail()] = name; else delete state.names[myEmail()]; }
     renderNotes(); renderExtras();
     if (state.firebase && state.user) setDoc(doc(state.firebase.db, 'profiles', state.user.uid), { name, email: state.user.email }, { merge: true }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
     else ls.set('local-name', name);
     toast(name ? `Saved. Your notes and items will show "${name}"` : 'Saved. Your notes and items will show your email');
+  const who = $('.acct-who'); if (who) who.textContent = name || (state.user && state.user.email) || '';
+}
+document.addEventListener('change', (e) => { if (e.target.id === 'myname') saveName(); });
+document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'nameform') {
+    e.preventDefault(); $('#myname').blur(); // saving happens on change (below)
     return;
   }
   if (e.target.id === 'loginform') {
