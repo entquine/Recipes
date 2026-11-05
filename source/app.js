@@ -1715,8 +1715,8 @@ function renderShopping() {
     <p class="donemsg" id="donemsg" hidden></p>`;
   if (autoShop()) {
     h += renderAutoShopping(m);
-    h += '<p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>';
-    h += `<div class="shopfoot"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div>`;
+    h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>
+      <div class="shopbtns"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div></div>`;
     view().innerHTML = h;
     fitShopPage();
     refreshTicks();

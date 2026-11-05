@@ -656,7 +656,9 @@ body:has(.settop) .card { margin-bottom: 10px; }
 .timerbtn.tb-side .ic { width: 20px; height: 20px; }
 /* shopping: buttons at the bottom of the page */
 main:has(.shopfoot) { display: flex; flex-direction: column; }
-.shopfoot { margin-top: auto; padding-top: 6px; display: flex; gap: 10px; }
-.shopfoot .btn { flex: 1; margin: 0; }
-body:has(.shopfoot) .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
+.shopfoot { margin-top: auto; padding-top: 6px; }
+.shopfoot .staplehint { margin: 0 0 10px; }
+.shopbtns { display: flex; gap: 10px; }
+.shopbtns .btn { flex: 1; margin: 0; }
+body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); }
 .toast.hasundo { white-space: nowrap; }
