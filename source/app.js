@@ -1418,18 +1418,6 @@ function mealCardHtml(meal, tonight) {
       ${!ri.done && ri.count ? `<p class="small votes">${ri.mine ? 'You rated it. Waiting for the other vote.' : 'Rated by the other person. Add your vote.'}</p>` : ''}
     </a>`;
 }
-// The next 7 days at a glance. Tap a planned day to open its recipe, or an empty day to pick something.
-function weekStripHtml() {
-  let h = '';
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(); d.setDate(d.getDate() + i);
-    const k = dayKey(d), v = state.plan[k], custom = customText(v), meal = custom ? null : mealByName(v);
-    const label = custom || (meal ? meal.main.name.replace(/\s+with\s+.*$/i, '') : '');
-    h += `<button class="wk${i === 0 ? ' today' : ''}${label ? '' : ' none'}" data-wkday="${k}" data-meal="${meal ? esc(meal.id) : ''}">
-      <span class="wk-d">${i === 0 ? 'Today' : esc(fmtDay(d, { weekday: 'short' }))} <b>${d.getDate()}</b></span><span class="wk-m">${label ? esc(label) : '+ Plan'}</span></button>`;
-  }
-  return `<div class="weekstrip" aria-label="This week">${h}</div>`;
-}
 // The day after a meal (up to 3 days), ask for your rating right on the Meals screen.
 function ratePromptHtml() {
   const today = dayKey(new Date()), dismissed = ls.get('rate-dismissed', {});
@@ -1463,7 +1451,6 @@ function renderMeals() {
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
-  h += weekStripHtml();
   h += ratePromptHtml();
   const tonightCustom = customText(state.plan[dayKey(new Date())]);
   if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
@@ -1647,16 +1634,16 @@ async function pickMeal(day) {
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
   const sgIds = new Set(suggestions(day).map((x) => x.rid)), many = m.meals.length + (m.past || []).length > 8;
-  dlg.innerHTML = `<form method="dialog"><p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
+  dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
-    ${(() => { const sg = suggestions(day); return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
+    <div class="pk-body">${(() => { const sg = suggestions(day); return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}${(m.past || []).filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${m.past.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
-    }).join('')}` : ''}</div>
+    }).join('')}` : ''}</div></div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
       <div class="customrow"><input type="text" id="customtext" maxlength="80" placeholder="e.g. Chipotle + Leftovers" value="${esc(currentCustom)}" autocomplete="off"><button class="btn" value="__custom" id="customsave">Save</button></div>
@@ -1870,8 +1857,6 @@ document.addEventListener('click', async (e) => {
   if (rd) { const d = ls.get('rate-dismissed', {}); d[rd.dataset.ratedismiss] = 1; ls.set('rate-dismissed', d); route(); return; }
   const tc = e.target.closest('[data-tonightcook]');
   if (tc) { e.preventDefault(); const id = tc.dataset.tonightcook, i = +tc.dataset.dish; addEventListener('hashchange', () => openCook(id, i), { once: true }); location.hash = '#/meal/' + id; return; }
-  const wkd = e.target.closest('[data-wkday]');
-  if (wkd) { if (wkd.dataset.meal) location.hash = '#/meal/' + wkd.dataset.meal; else pickMeal(wkd.dataset.wkday); return; }
   const pd = e.target.closest('[data-pickday]');
   if (pd) { e.preventDefault(); const meal = mealById(pd.dataset.pickday); if (meal) pickDayFor(meal); return; }
   const hk = e.target.closest('[data-hintok]');

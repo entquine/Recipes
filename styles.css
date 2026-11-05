@@ -614,20 +614,9 @@ details.plan:not([open]) > summary { margin: 0; }
 .account > summary { cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 0; }
 .acct-who { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
 .account[open] > summary { margin-bottom: 10px; }
-/* 13: week strip */
-.weekstrip { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px 14px; padding: 2px 16px; }
-.weekstrip::-webkit-scrollbar { display: none; }
-.wk { flex: none; width: 104px; display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 9px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--text); cursor: pointer; }
-.wk.today { border: 2px solid var(--accent); }
-.wk-d { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.wk-d b { color: var(--text); font-size: 13px; }
-.wk-m { font-size: 13.5px; font-weight: 650; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.wk.none .wk-m { color: var(--accent); font-weight: 600; }
 /* 12: wide screens */
 @media (min-width: 760px) {
   #view:has(.meal-card) { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 1100px; margin-left: auto; margin-right: auto; }
-  .weekstrip { margin-left: 0; margin-right: 0; padding: 2px 0; }
-  .wk { flex: 1; width: auto; }
 }
 .tonightcook { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border-radius: 14px; padding: 9px 16px; }
 .tc-main { display: inline-flex; align-items: center; gap: 6px; }
@@ -636,3 +625,13 @@ details.plan:not([open]) > summary { margin: 0; }
 .account > summary::-webkit-details-marker { display: none; }
 .account > summary::before { content: "▸"; font-size: 13px; margin-right: 2px; }
 .account[open] > summary::before { content: "▾"; }
+/* day picker: one scrolling list between a fixed top and bottom */
+#picker { padding: 16px 16px 14px; }
+#picker form { display: flex; flex-direction: column; max-height: calc(100dvh - 84px); }
+#picker { overflow: hidden; }
+#picker .pk-body { flex: 1; min-height: 0; overflow-y: auto; margin: 6px -6px 0; padding: 0 6px 4px; }
+#picker .picklist { max-height: none; overflow: visible; }
+#picker .pickopt { padding: 9px 12px; }
+#picker .custom { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+#picker .row-btns { margin-top: 10px; }
+#picker .picktitle:focus { outline: none; }
