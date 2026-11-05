@@ -579,7 +579,7 @@ function nameFor(email, fallback) {
   if (e === 'local') return state.myName || 'Me';
   return state.names[e] || (e === myEmail() && state.myName) || email;
 }
-const fmtWhen = (at) => (at ? new Date(at).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '');
+const fmtWhen = (at) => (at ? new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''); // just the date, e.g. "Nov 5"
 function writeNotes(changes) {
   for (const [id, v] of Object.entries(changes)) { if (v) state.notes[id] = v; else delete state.notes[id]; }
   renderNotes();
@@ -601,7 +601,7 @@ function notesListHtml() {
   // notes tick like shopping items (stored with the shopping ticks, not counted in the shopping progress)
   return notes.map(([id, x]) => itemHtml(SHOP(), 'n-' + id,
     `<span class="body"><span class="notetext">${esc(x.text)}</span>
-    <span class="sub">${esc(nameFor(x.email, x.by))}${x.at ? ` · ${esc(fmtWhen(x.at))}` : ''}</span></span>${(x.email || '').toLowerCase() === myEmail()
+    <span class="sub">${esc(nameFor(x.email, x.by))}${x.at ? `<span class="notedate"> – ${esc(fmtWhen(x.at))}</span>` : ''}</span></span>${(x.email || '').toLowerCase() === myEmail()
       ? `<button class="delnote" data-editnote="${esc(id)}" aria-label="Edit note">✎</button>`
       : `<button class="delnote" data-delnote="${esc(id)}" aria-label="Delete note">×</button>`}`, 'extra note')).join('');
 }

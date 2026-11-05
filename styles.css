@@ -572,3 +572,4 @@ details.plan:not([open]) > summary { margin: 0; }
 .cookfoot .btn[hidden] { display: none; }
 #formdlg.mid { margin: auto; }
 .addidea { display: block; width: 100%; margin-bottom: 14px; }
+.notedate { color: var(--muted); font-size: 12.5px; }
