@@ -299,10 +299,10 @@ function setTick(scope, key, value) {
 // Shopping ticks are saved per list (the Shopping tab's List date), so a new weekly list starts unticked.
 const SHOP = () => (autoShop() ? 'shopping-auto' : state.model && state.model.shopList ? 'shopping-' + state.model.shopList : 'shopping');
 const isShopScope = (scope) => scope === 'shopping' || scope.startsWith('shopping-');
-async function clearScope(scope) {
-  if (!state.firebase) { state.ticks[scope] = {}; ls.set('local-ticks', state.ticks); refreshTicks(); return; }
-  state.ticks[scope] = {}; refreshTicks();
-  setDoc(doc(state.firebase.db, 'ticks', scope), { k: {}, at: serverTimestamp() })
+async function clearScope(scope, k = {}) { // k: the ticks to put back (for Undo); empty clears them
+  if (!state.firebase) { state.ticks[scope] = { ...k }; ls.set('local-ticks', state.ticks); refreshTicks(); return; }
+  state.ticks[scope] = { ...k }; refreshTicks();
+  setDoc(doc(state.firebase.db, 'ticks', scope), { k: { ...k }, at: serverTimestamp() })
     .catch((e) => toast('Could not clear: ' + (e.code || e.message)));
 }
 function startFirestore() {
@@ -1952,13 +1952,11 @@ document.addEventListener('click', async (e) => {
   if (gl) { toggleLine(gl.dataset.line); return; }
   if (e.target.id === 'markall') { markAllBought(); return; }
   const ca2 = e.target.closest('[data-clearauto]');
-  if (ca2) {
-    if (await confirmDialog('Untick everything on the shopping list? This clears it on both phones.')) {
-      state.bought = {}; clearScope(SHOP());
-      if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: {} }).catch((err) => toast('Could not clear: ' + (err.code || err.message)));
-      else ls.set('local-bought', state.bought);
-      toast('Ticks cleared'); route();
-    }
+  if (ca2) { // clear straight away, with Undo
+    const beforeB = JSON.parse(JSON.stringify(state.bought)), beforeT = { ...(state.ticks[SHOP()] || {}) };
+    const saveBought = () => { if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }).catch((err) => toast('Could not save: ' + (err.code || err.message))); else ls.set('local-bought', state.bought); };
+    state.bought = {}; saveBought(); clearScope(SHOP()); route();
+    undoToast('All ticks cleared', () => { state.bought = beforeB; saveBought(); clearScope(SHOP(), beforeT); route(); });
     return;
   }
   const item = e.target.closest('.item[data-key]');
