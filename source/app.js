@@ -240,6 +240,7 @@ const state = {
   notes: {},               // shopping notes: id -> { text, by, at }
   thumbs: {},              // photos/_thumbs: dish ID -> tiny JPEG for the Recipe Book list
   photos: {},              // photos/<dish ID>: dish ID -> shrunk JPEG (data URL), or null when there's none
+  nextTime: {},            // notes/nexttime: main dish ID -> { text, email, at } (note for next time)
   madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
@@ -254,7 +255,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
-let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, unsubThumbs = null, thumbsLoaded = false, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
+let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, unsubNext = null, unsubThumbs = null, thumbsLoaded = false, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 // The shopping page fills at least the screen, so its buttons sit just above the tabs when the list is short
 // (and after the last item, as usual, when it's long).
@@ -376,6 +377,10 @@ function startFirestore() {
     state.thumbs = { ...((snap.exists() && snap.data().t) || {}) }; if (!snap.metadata.fromCache) thumbsLoaded = true;
     if (changed('thumbs', state.thumbs) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
   }), (err) => listenerFailed('photos', err));
+  unsubNext = onSnapshot(doc(db, 'notes', 'nexttime'), { includeMetadataChanges: true }, safely('next-time notes', (snap) => {
+    state.nextTime = { ...((snap.exists() && snap.data().n) || {}) }; syncLoaded('next-time notes', snap);
+    if (changed('next-time notes', state.nextTime) && /^#\/meal\//.test(location.hash)) route();
+  }), (err) => listenerFailed('next-time notes', err));
   unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
     state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; syncLoaded('times made', snap);
     if (changed('times made', state.madeAdjust) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
@@ -421,7 +426,7 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = null; }
+function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs, unsubNext]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = unsubNext = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -782,6 +787,38 @@ function setRating(meal, stars) {
     name: meal.name, main: meal.main.name, sides: meal.sides.map((d) => d.name),
     votes: { [myId()]: stars || deleteField() }, at: serverTimestamp(),
   }, { merge: true }).catch((e) => toast('Could not save rating: ' + (e.code || e.message)));
+}
+// ---------------------------------------------------------------- notes for next time
+// One shared note per recipe (keyed on the main dish's ID). Written under the rating once you've rated;
+// from the next day on it also shows at the top of the recipe, so you read it before cooking.
+function writeNextTime(rid, v) {
+  if (v) state.nextTime[rid] = v; else delete state.nextTime[rid];
+  route();
+  if (!state.firebase) { ls.set('local-nexttime', state.nextTime); return; }
+  setDoc(doc(state.firebase.db, 'notes', 'nexttime'), { n: { [rid]: v || deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+const nextTimeBy = (x) => `${esc(nameFor(x.email))}<span class="notedate"> – ${esc(new Date(x.at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }))}</span>`;
+function nextTimeTopHtml(meal) { // shown at the top once the note is from an earlier day
+  const x = state.nextTime[meal.rid]; if (!x || !x.text || dayKey(new Date(x.at)) >= dayKey(new Date())) return '';
+  return `<section class="card nexttop">${ICONS.note}<div><p class="section-label">From last time</p><p class="nt-text">${esc(x.text)}</p><p class="small">${nextTimeBy(x)}</p></div></section>`;
+}
+function nextTimeCardHtml(meal) { // under the rating: add or edit the note (after you've rated, or if there already is one)
+  const x = state.nextTime[meal.rid];
+  if (!x && !ratingInfo(meal.name).mine) return '';
+  return `<section class="card nextcard"><p class="section-label">Note for next time</p>${x
+    ? `<div class="nt-row"><div><p class="nt-text">${esc(x.text)}</p><p class="small">${nextTimeBy(x)}</p></div><button class="delnote" data-editnext="${esc(meal.id)}" aria-label="Edit note">✎</button></div>`
+    : `<button class="btn ghost" data-editnext="${esc(meal.id)}">＋ Add a note for next time</button><p class="small">e.g. less soy sauce, double the garlic, needs 5 more minutes</p>`}</section>`;
+}
+async function editNextTime(meal) {
+  const x = state.nextTime[meal.rid];
+  const r = await formDialog(`<p class="picktitle">Note for next time</p><p class="small" style="margin:0 0 8px">${esc(meal.main.name)}</p>
+    <textarea class="dlg-input" name="text" rows="4" maxlength="400" placeholder="e.g. less soy sauce, double the garlic">${esc(x ? x.text : '')}</textarea>
+    <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  if (r.value === 'delete') { writeNextTime(meal.rid, null); undoToast('Note deleted', () => writeNextTime(meal.rid, x)); return; }
+  if (r.value !== 'save') return;
+  const text = String(r.form.text.value || '').replace(/[ \t]+/g, ' ').trim().slice(0, 400);
+  if (!text) { if (x) { writeNextTime(meal.rid, null); undoToast('Note deleted', () => writeNextTime(meal.rid, x)); } return; }
+  if (!x || text !== x.text) { writeNextTime(meal.rid, { text, email: myEmail(), at: Date.now() }); toast('Saved for next time'); }
 }
 function ratingCardHtml(meal) {
   const info = ratingInfo(meal.name);
@@ -1563,6 +1600,7 @@ function renderMeal(id) {
   h += banners();
   if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
   { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
+  h += nextTimeTopHtml(meal);
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
@@ -1604,6 +1642,7 @@ function renderMeal(id) {
   }
   h += '</div>';
   h += ratingCardHtml(meal);
+  h += nextTimeCardHtml(meal);
   h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
   refreshTicks();
@@ -1782,7 +1821,7 @@ function renderSettings() {
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
       ${row('calendar', Object.keys(state.plan).length + ' days')}${row('ratings', Object.keys(state.ratings).length + ' rated')}
-      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}${row('times made', Object.keys(state.madeAdjust).length + ' changed')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
+      ${row('names', Object.keys(state.names).length + ' names')}${row('cooking', Object.keys(state.session.timers || {}).length + ' timers')}${row('staples', Object.keys(state.staples).length + ' staples')}${row('bought', Object.keys(state.bought).length + ' meals')}${row('ideas', Object.keys(state.ideas).length + ' ideas')}${row('times made', Object.keys(state.madeAdjust).length + ' changed')}${row('next-time notes', Object.keys(state.nextTime).length + ' notes')}<li>shopping list: ${autoShop() ? 'automatic, from the recipes' : 'from the Shopping tab (not every dish has shopping details yet)'}</li></ul>
       <p class="small">If this phone is missing things the other phone shows, reload everything from Firebase. Close any other copy of the app (e.g. a Chrome tab on the same address) first.</p>
       <button class="btn ghost" type="button" id="resetcache">Reload all data from Firebase</button></details>`;
   }
@@ -1930,6 +1969,8 @@ document.addEventListener('click', async (e) => {
   const ct = e.target.closest('[data-colortheme]');
   if (ct) { ls.set('color-theme', ct.dataset.colortheme); applyColor(); route(); return; }
   if (e.target.id === 'copyideas') { copyIdeas(); return; }
+  const enx = e.target.closest('[data-editnext]');
+  if (enx) { const meal = mealById(enx.dataset.editnext); if (meal) editNextTime(meal); return; }
   if (e.target.id === 'addidea') { addIdea(); return; }
   if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length) { writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); undoToast(`${n.length} sent idea${n.length === 1 ? '' : 's'} cleared`, () => writeIdeas(Object.fromEntries(n))); } return; }
   const ei = e.target.closest('[data-editidea]');
@@ -2207,6 +2248,7 @@ function start() {
     state.staples = ls.get('local-staples', {});
     state.bought = ls.get('local-bought', {});
     state.ideas = ls.get('local-ideas', {});
+    state.nextTime = ls.get('local-nexttime', {});
     state.madeAdjust = ls.get('local-adjust', {});
     state.photos = ls.get('local-photos', {});
     state.thumbs = ls.get('local-thumbs', {}); thumbsLoaded = true;

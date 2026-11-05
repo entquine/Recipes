@@ -664,3 +664,11 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .toast.hasundo { white-space: nowrap; }
 .cooktabs { gap: 6px; } .cooktabs button { padding: 6px 10px; font-size: 15px; }
 .jump { gap: 5px; padding-left: 12px; padding-right: 12px; } .jump a { padding: 6px 9px; font-size: 14.5px; }
+/* notes for next time */
+.nexttop { display: flex; gap: 12px; align-items: flex-start; border: 2px solid #e3a42b; background: var(--warn-bg); }
+.nexttop > .ic { flex: none; width: 24px; height: 24px; color: #b77b0f; margin-top: 2px; }
+.nexttop .section-label { color: var(--warn-ink); margin-bottom: 2px; }
+.nt-text { font-size: 17px; font-weight: 600; white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 2px; }
+.nextcard .btn { width: 100%; }
+.nextcard .small { margin-top: 6px; }
+.nt-row { display: flex; gap: 10px; align-items: flex-start; } .nt-row > div { flex: 1; min-width: 0; }
