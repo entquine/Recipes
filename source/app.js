@@ -1833,7 +1833,7 @@ const DONE_MESSAGES = [
   "It's in the bag 🛍️", 'Groceries: handled 🥕', "Shopping done. Dinner's on its way 🍽️", 'Nailed it! 🎉', 'Every last thing. Nice work 🙌',
   "That's a wrap 🛒", 'Fridge, prepare yourself 😄', 'List conquered 💪', 'All set. Time to cook 🧑‍🍳', 'Look at you go ✨',
   'Cart: full. Mission: complete 🚀', 'Pantry restocked like a pro 🏆', 'Shopping champion of the week 🥇', 'The fridge thanks you 🧊',
-  'Done and dusted 🧹', 'Groceries secured. Snacks earned 🍪', "Chef's kiss on that shop 👨‍🍳", 'Smooth shopping, smooth sailing ⛵',
+  'Done and dusted 🧹', 'Groceries secured. Snacks earned 🍪', 'Flawless grocery run 👌', 'Smooth shopping, smooth sailing ⛵',
   'Everything ticked. High five ✋', 'Bags packed, dinner sorted 🥡',
 ];
 // keep the same message while you're on the screen (ticks redraw the list); pick a new one on each visit
