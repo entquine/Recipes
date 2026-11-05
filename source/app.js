@@ -699,7 +699,10 @@ function formDialog(html) { // shows a small form dialog; resolves with the subm
   dlg.querySelectorAll('input').forEach((inp) => inp.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') { ev.preventDefault(); const save = dlg.querySelector('button[value="save"]'); if (save) save.click(); }
   }));
-  return new Promise((resolve) => { dlg.addEventListener('close', () => resolve({ value: dlg.returnValue, form: dlg.querySelector('form') }), { once: true }); dlg.showModal(); });
+  // Nothing to type in? Then no keyboard will open, so it sits in the middle of the screen with nothing focused.
+  const typing = dlg.querySelector('input:not([type=checkbox]):not([readonly]), textarea:not([readonly]), select');
+  if (!typing) dlg.classList.add('mid');
+  return new Promise((resolve) => { dlg.addEventListener('close', () => resolve({ value: dlg.returnValue, form: dlg.querySelector('form') }), { once: true }); dlg.showModal(); if (!typing && document.activeElement) document.activeElement.blur(); });
 }
 const clean = (v, max) => String(v || '').replace(/\s+/g, ' ').trim().slice(0, max);
 async function addMenu() {
