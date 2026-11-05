@@ -256,6 +256,32 @@ const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ?
 // ---------------------------------------------------------------- ticks store
 let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, unsubThumbs = null, thumbsLoaded = false, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
+// The shopping page fills at least the screen, so its buttons sit just above the tabs when the list is short
+// (and after the last item, as usual, when it's long).
+function fitShopPage() {
+  const bar = document.querySelector('.topbar'), pad = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
+  view().style.minHeight = `calc(100dvh - ${Math.round((bar ? bar.offsetHeight : 56) + pad)}px)`;
+}
+addEventListener('resize', () => { if (document.querySelector('.shopfoot')) fitShopPage(); });
+// Tick everything on the shopping list at once (staples stay as they are), with Undo.
+function markAllBought() {
+  const before = JSON.parse(JSON.stringify(state.bought)), today = dayKey(new Date()), ticked = [];
+  for (const l of shopLines()) {
+    if (l.done || isStaple(l.item)) continue;
+    for (const x of l.open) {
+      const old = state.bought[x.rid], cur = !old || cooked(x.rid) ? { since: today, i: {} } : { since: old.since || today, i: { ...(old.i || {}) } };
+      cur.i[l.key] = true; state.bought[x.rid] = cur;
+    }
+  }
+  const t = state.ticks[SHOP()] || {};
+  for (const [id, x] of Object.entries(state.extras)) if (!isStaple(x.name) && !t[extraKey(id)]) ticked.push(extraKey(id));
+  const saveBought = () => {
+    if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
+    else ls.set('local-bought', state.bought);
+  };
+  saveBought(); ticked.forEach((k) => setTick(SHOP(), k, true)); route();
+  undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
+}
 function setTick(scope, key, value) {
   if (!state.firebase) {
     const t = state.ticks[scope] || (state.ticks[scope] = {});
@@ -1690,8 +1716,9 @@ function renderShopping() {
   if (autoShop()) {
     h += renderAutoShopping(m);
     h += '<p class="small staplehint">Tip: press and hold an item to mark it as something you usually have.</p>';
-    h += `<button class="btn outline-danger" data-clearauto="1">Clear shopping ticks</button>`;
+    h += `<div class="shopfoot"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div>`;
     view().innerHTML = h;
+    fitShopPage();
     refreshTicks();
     return;
   }
@@ -1923,6 +1950,7 @@ document.addEventListener('click', async (e) => {
   if (pt) { const on = !pt.classList.contains('done'); pt.dataset.prepkeys.split(',').forEach((k) => setTick(pt.dataset.scope, k, on)); return; }
   const gl = e.target.closest('.item.gline');
   if (gl) { toggleLine(gl.dataset.line); return; }
+  if (e.target.id === 'markall') { markAllBought(); return; }
   const ca2 = e.target.closest('[data-clearauto]');
   if (ca2) {
     if (await confirmDialog('Untick everything on the shopping list? This clears it on both phones.')) {
@@ -2111,6 +2139,7 @@ function route() {
   if (!keepScroll) doneMsg = ''; // a new visit to a screen gets a new cheer
   const y = scrollY;
   $('#addbtn').hidden = true; // adding is the "+ Add item" button on the list itself
+  view().style.minHeight = ''; // only the shopping page stretches to fill the screen
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
   else if (page === 'shopping') renderShopping();
