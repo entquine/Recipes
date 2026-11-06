@@ -687,3 +687,8 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .mchip.on { background: var(--ok); border-color: var(--ok); color: #fff; }
 .day .date .addslot { margin: 6px 0 0; width: 26px; height: 26px; font-size: 15px; }
 .day.today .date .addslot { background: transparent; border-color: rgba(255,255,255,.6); color: inherit; }
+/* calendar: the new week slides in from the side you swiped from */
+.days.slide-next { animation: wkNext .22s ease-out; }
+.days.slide-prev { animation: wkPrev .22s ease-out; }
+@keyframes wkNext { from { transform: translateX(40px); opacity: .3; } to { transform: none; opacity: 1; } }
+@keyframes wkPrev { from { transform: translateX(-40px); opacity: .3; } to { transform: none; opacity: 1; } }

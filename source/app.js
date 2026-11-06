@@ -1721,7 +1721,7 @@ function renderCalendar() {
     <button class="btn ghost" data-week="-1" aria-label="Previous week">‹</button>
     <div><strong>${esc(fmtDay(start, { month: 'short', day: 'numeric' }))} – ${esc(fmtDay(end, { month: 'short', day: 'numeric' }))}</strong>${label ? `<span class="small">${label}</span>` : '<button class="linkbtn" data-week="0">Back to this week</button>'}</div>
     <button class="btn ghost" data-week="1" aria-label="Next week">›</button></div>`;
-  h += '<ul class="days">';
+  h += `<ul class="days${weekSlide ? ' slide-' + weekSlide : ''}">`; weekSlide = '';
   for (let i = 0; i < 7; i++) {
     const d = new Date(start); d.setDate(d.getDate() + i);
     const k = dayKey(d), custom = customText(state.plan[k]), name = custom ? '' : state.plan[k], meal = name ? mealByName(name) : null;
@@ -2180,6 +2180,19 @@ document.addEventListener('visibilitychange', () => { updateWakeLock(); if (docu
 // ---------------------------------------------------------------- calendar drag and drop
 // Press and hold a planned day (~0.35 s), then drag it onto another day. Works with touch and mouse.
 let drag = null, suppressClick = false;
+// Swipe the calendar left/right to go to the next/previous week (not while dragging a meal).
+let weekSlide = '', calSwipe = null;
+document.addEventListener('touchstart', (e) => {
+  calSwipe = e.touches.length === 1 && /^#\/calendar/.test(location.hash) && !e.target.closest('dialog') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!calSwipe || (drag && drag.active)) { calSwipe = null; return; }
+  const t = e.changedTouches[0], dx = t.clientX - calSwipe.x, dy = t.clientY - calSwipe.y, quick = Date.now() - calSwipe.t < 700; calSwipe = null;
+  if (!quick || Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+  state.calWeek += dx < 0 ? 1 : -1; weekSlide = dx < 0 ? 'next' : 'prev';
+  suppressClick = true; setTimeout(() => { suppressClick = false; }, 350);
+  route();
+}, { passive: true });
 function dragCleanup() {
   if (!drag) return;
   clearTimeout(drag.timer); clearTimeout(drag.weekTimer);
