@@ -497,7 +497,7 @@ function renderPlanning() {
 }
 let ideasSentOpen = false;
 function ideasMessage(list) {
-  return `Recipe ideas from the app's Planning tab. Please add each as a new meal in recipes.xlsx, following CLAUDE.md (a Main with a side or two that suit it, Shop columns, Timer and Prep task columns), then run the checker and push. For a link, open the page and use that recipe. If an idea is too vague, suggest a recipe and check with me first.\n\n`
+  return `Recipe ideas from the app's Planning tab. Please add each to the Archive tab of recipes.xlsx (not Recipes), so it shows in the app's Recipe Book under "Want to try", following the "Recipe ideas from the app" section of CLAUDE.md: the Main as its own entry with every column filled (Shop, Timer, Prep task), plus any side as a separate entry, using the idea's name in the dish name. Then run the checker and push. For a link, open the page and use that recipe. If an idea is too vague, suggest a recipe and check with me first.\n\n`
     + list.map(([, x], n) => `${n + 1}. ${ideaName(x).replace(/\n+/g, ' / ')}${x.url ? ` - ${x.url}` : ''} (from ${nameFor(x.email)})`).join('\n');
 }
 async function copyIdeas() {
