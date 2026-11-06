@@ -1691,7 +1691,14 @@ function renderMeal(id) {
   // ---- steps all together, in cooking order (when the meal has a combined order and that view is chosen)
   const combinedView = !!meal.combined && ls.get('combined-view', true);
   if (meal.combined) h += `<nav class="seg viewseg" aria-label="Steps"><a href="#" data-stepview="split" class="${combinedView ? '' : 'on'}">By dish</a><a href="#" data-stepview="combined" class="${combinedView ? 'on' : ''}">Combined</a></nav>`;
-  if (combinedView) h += `<section class="card combined" id="${S}-combined"><p class="section-label">All steps, in order</p><ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></section>`;
+  if (combinedView) {
+    const ingAnchor = `${S}-combined`; // all the dishes' ingredients, grouped by dish, folded like each dish's own list
+    const ings = meal.dishes.filter((x) => x.groups.length).map((x) => x.groups.map((g) => `<h4><span class="stepdish chip-${x.color}">${esc(cookTabName(meal, x))}</span>${g.name ? esc(g.name) : ''}</h4><ul class="list ings">${g.items.map((it) =>
+      `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')).join('');
+    h += `<section class="card combined" id="${S}-combined"><div class="combhead"><p class="section-label">All steps, in order</p><button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="-1">${ICONS.cook} Cook mode</button></div>
+      ${ings ? `<details class="ingfold" data-ings="${ingAnchor}"${openIngs.has(ingAnchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>${ings}</details>` : ''}
+      <h3>Steps</h3><ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></section>`;
+  }
 
   // ---- dishes (side by side on wide screens)
   h += `<div class="dishes cols-${meal.dishes.length}">`;

@@ -698,3 +698,7 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .stepdish { display: inline-block; font-size: 12px; font-weight: 750; padding: 1px 7px; border-radius: 6px; margin-right: 6px; vertical-align: 1px; white-space: nowrap; }
 .cw-dish { display: inline-block; font-size: 12px; font-weight: 750; padding: 1px 7px; border-radius: 6px; margin-right: 8px; letter-spacing: 0; text-transform: none; }
 .cooktabs .chip-all { background: var(--surface-2); color: var(--text); }
+.combhead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.combhead .section-label { margin: 0; }
+.combhead .cookdishbtn { margin-top: 0; flex: none; }
+.card.combined h4 { display: flex; align-items: center; gap: 4px; margin: 12px 0 4px; }
