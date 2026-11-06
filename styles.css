@@ -568,7 +568,7 @@ details.plan:not([open]) > summary { margin: 0; }
 .cw-step.cw-d3 { opacity: .18; transform: scale(.6); }
 .cw-step:not(.cw-d0) { cursor: pointer; }
 .cw-step:not(.cw-d0) * { pointer-events: none; }
-.cw-step.ticked:not(.cw-d0) .cooktext, .cw-step.ticked:not(.cw-d0) .cookcount { color: var(--ok); }
+.cw-step.ticked .cooktext, .cw-step.ticked .cookcount { color: var(--ok); } /* done steps stay green, the current one too */
 .cw-step:not(.ticked) .cw-donemark { display: none; }
 .cw-end .cookdone { margin: 0; }
 .cookfoot .btn[hidden] { display: none; }
@@ -755,3 +755,6 @@ details.plan[open] > summary.plan-sum { margin-bottom: 10px; }
 .plantime { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 15.5px; background: var(--surface-2); border-radius: 999px; padding: 3px 11px; color: var(--text); }
 .planextra { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
 details.plan > summary.plan-sum::after { top: 50% !important; transform: translateY(-50%); }
+/* cook mode: un-tick the current step */
+.cw-untick { display: none; margin-top: 10px; width: auto; padding: 8px 16px; font-size: 15px; }
+.cw-step.ticked.cw-d0 .cw-untick { display: inline-flex; }

@@ -1107,7 +1107,8 @@ function renderCook() {
       ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
         <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
         <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
-        ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}</div>`; }).join('')}
+        ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
+        <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
       <div class="cw-pad"></div></div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
@@ -1204,6 +1205,7 @@ function cookAction(a) {
   if (a === 'back') { wheelTo(Math.max(0, cook.step - 1), true); return; }
   const st = d.steps[cook.step]; if (!st) return;
   if (a === 'timer') { timerTap(timerLabel(...stepDish(d, st)), stepMinutes(st.text), meal.id, st.key); return; }
+  if (a === 'untick') { setTick(meal.id, st.key, false); markWheel(cook.step); return; }
   if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); wheelTo(cook.step + 1, true); }
 }
 
