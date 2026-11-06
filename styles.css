@@ -673,3 +673,17 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .nextcard .small { margin-top: 6px; }
 .nt-row { display: flex; gap: 10px; align-items: flex-start; } .nt-row > div { flex: 1; min-width: 0; }
 .sentbtns { display: flex; gap: 10px; margin-top: 10px; } .sentbtns .btn { flex: 1; margin: 0; }
+/* calendar: breakfast / lunch / dessert under dinner, and the + */
+.xslots { display: flex; flex-direction: column; gap: 1px; margin-top: 4px; }
+.xslot { font-size: 13.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.xslot b { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); margin-right: 4px; }
+.day .pick { min-width: 0; }
+.addslot { flex: none; align-self: center; width: 32px; height: 32px; margin-right: 6px; border-radius: 50%; border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; padding: 0; }
+.day.noplan .addslot { width: 28px; height: 28px; font-size: 16px; }
+/* shopping: mark a whole meal as shopped for */
+.mealchips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 12px; }
+.mealchips .small { width: 100%; }
+.mchip { border: 1.5px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-weight: 650; cursor: pointer; }
+.mchip.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+.day .date .addslot { margin: 6px 0 0; width: 26px; height: 26px; font-size: 15px; }
+.day.today .date .addslot { background: transparent; border-color: rgba(255,255,255,.6); color: inherit; }

@@ -236,7 +236,8 @@ const state = {
   firebase: null,          // { auth, db } when configured
   authReady: false,
   dbError: '',
-  plan: {},                // 'YYYY-MM-DD' -> meal name (shared calendar)
+  plan: {},
+  planX: {},               // calendar/plan .x: day -> { breakfast, lunch, dessert } (dinner is in plan)                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
   thumbs: {},              // photos/_thumbs: dish ID -> tiny JPEG for the Recipe Book list
@@ -327,7 +328,8 @@ function startFirestore() {
   });
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
-    if (changed('calendar', state.plan) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
+    state.planX = { ...((snap.exists() && snap.data().x) || {}) }; // breakfast / lunch / dessert per day
+    if (changed('calendar', [state.plan, state.planX]) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
   }), (err) => listenerFailed('calendar', err));
   unsubRatings = onSnapshot(collection(db, 'ratings'), { includeMetadataChanges: true }, safely('ratings', (snap) => {
     const r = {}; snap.forEach((d) => { r[d.id] = d.data(); });
@@ -843,8 +845,24 @@ const allMeals = () => (state.model ? [...state.model.meals, ...(state.model.pas
 const mealByName = (v) => (v && typeof v === 'string' ? allMeals().find((x) => x.rid === v || x.name === v) || null : null); // by ID (or name)
 const planKey = (v) => { const meal = mealByName(v); return meal ? meal.rid : v; }; // calendar value -> meal ID
 const mealById = (id) => allMeals().find((x) => x.id === id) || null;
-function setPlan(day, mealName) { // mealName: recipe meal name, { text } for a custom entry, or null to remove
-  writePlan({ [day]: mealName || null });
+// A day holds dinner (state.plan, as always) plus optional breakfast, lunch and dessert (state.planX).
+const SLOTS = [['breakfast', 'Breakfast'], ['lunch', 'Lunch'], ['dinner', 'Dinner'], ['dessert', 'Dessert']];
+const slotName = (slot) => (SLOTS.find((x) => x[0] === slot) || [, 'Dinner'])[1];
+const slotValue = (day, slot) => (slot === 'dinner' ? state.plan[day] : (state.planX[day] || {})[slot]);
+function planList() { // every planned thing: [day, value, slot]
+  const out = Object.entries(state.plan).map(([k, v]) => [k, v, 'dinner']);
+  for (const [k, slots] of Object.entries(state.planX)) for (const [slot, v] of Object.entries(slots || {})) if (v) out.push([k, v, slot]);
+  return out;
+}
+function setPlan(day, mealName, slot = 'dinner') { // mealName: recipe meal name or ID, { text } for a custom entry, or null to remove
+  if (slot === 'dinner') { writePlan({ [day]: mealName || null }); return; }
+  const cur = { ...(state.planX[day] || {}) };
+  if (mealName) cur[slot] = mealName; else delete cur[slot];
+  if (Object.keys(cur).length) state.planX[day] = cur; else delete state.planX[day];
+  route();
+  if (!state.firebase) { ls.set('local-planx', state.planX); return; }
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { x: { [day]: { [slot]: mealName || deleteField() } }, at: serverTimestamp() }, { merge: true })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
 function writePlan(changes) { // { 'YYYY-MM-DD': value or null }, saved together
   const d = {};
@@ -864,7 +882,7 @@ function movePlan(from, to) { // drag and drop: move, or swap if the target day 
 function nextPlanned(mealName) { // soonest date (today or later) this meal is planned for
   const today = dayKey(new Date());
   const key = planKey(mealName);
-  return Object.keys(state.plan).filter((k) => k >= today && planKey(state.plan[k]) === key).sort()[0] || null;
+  return planList().filter(([k, v]) => k >= today && planKey(v) === key).map(([k]) => k).sort()[0] || null;
 }
 
 function updateSync(fromCache) {
@@ -1173,7 +1191,7 @@ function cookAction(a) {
 
 // Last made and times made: calendar days before today, plus the dish's "Made" row in the spreadsheet
 // (times made before the calendar). A side served in a current meal also counts that meal's calendar days.
-const pastDays = (rid) => { const today = dayKey(new Date()); return Object.keys(state.plan).filter((k) => k < today && planKey(state.plan[k]) === rid).sort(); };
+const pastDays = (rid) => { const today = dayKey(new Date()); return [...new Set(planList().filter(([k, v]) => k < today && planKey(v) === rid).map(([k]) => k))].sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
 // calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
 const countedMade = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
@@ -1276,7 +1294,7 @@ function shopMeals() {
   const today = dayKey(new Date()), seen = new Set(), out = [];
   const add = (m) => { if (m && !seen.has(m.rid)) { seen.add(m.rid); out.push(m); } };
   state.model.meals.filter(isPlannedMeal).forEach(add); // made meals drop off until they're planned again
-  Object.keys(state.plan).filter((k) => k >= today).sort().forEach((k) => add(mealByName(state.plan[k])));
+  planList().filter(([k]) => k >= today).sort((a, b) => a[0].localeCompare(b[0])).forEach(([, v]) => add(mealByName(v)));
   return out;
 }
 // The automatic list is used once every included dish has shopping details on all its ingredients.
@@ -1288,7 +1306,7 @@ const shopKey = (item) => 'i-' + slug(item);
 function cooked(rid) { // a calendar day for this meal has passed since it was bought for
   const b = state.bought[rid]; if (!b) return false;
   const today = dayKey(new Date());
-  return Object.keys(state.plan).some((k) => k >= (b.since || '') && k < today && planKey(state.plan[k]) === rid);
+  return planList().some(([k, v]) => k >= (b.since || '') && k < today && planKey(v) === rid);
 }
 const isBought = (rid, key) => !!(state.bought[rid] && state.bought[rid].i && state.bought[rid].i[key]) && !cooked(rid);
 function shopLines() {
@@ -1307,6 +1325,31 @@ function shopLines() {
     l.partly = !l.done && l.open.length < l.parts.length;
   }
   return [...lines.values()];
+}
+// Mark a whole meal as shopped for: all its items count as bought (until its calendar day has passed), with Undo.
+function mealShopKeys(rid) { return shopLines().filter((l) => l.parts.some((x) => x.rid === rid)).map((l) => l.key); }
+function mealShopped(rid) { const ks = mealShopKeys(rid); return ks.length > 0 && ks.every((k) => isBought(rid, k)); }
+function saveMealBought(rid) {
+  if (!state.firebase) { ls.set('local-bought', state.bought); return; }
+  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: { [rid]: state.bought[rid] || deleteField() } }, { mergeFields: [new FieldPath('b', rid)] })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+function toggleMealShopped(rid) {
+  const meal = allMeals().find((x) => x.rid === rid); if (!meal) return;
+  const before = state.bought[rid] ? JSON.parse(JSON.stringify(state.bought[rid])) : null, on = !mealShopped(rid);
+  if (on) {
+    const old = state.bought[rid], today = dayKey(new Date());
+    const cur = !old || cooked(rid) ? { since: today, i: {} } : { since: old.since || today, i: { ...(old.i || {}) } };
+    for (const k of mealShopKeys(rid)) cur.i[k] = true;
+    state.bought[rid] = cur;
+  } else delete state.bought[rid];
+  saveMealBought(rid); route();
+  undoToast(on ? `${mealLabel(meal)}: all bought` : `${mealLabel(meal)} back on the list`, () => { if (before) state.bought[rid] = before; else delete state.bought[rid]; saveMealBought(rid); route(); });
+}
+function mealChipsHtml() {
+  const meals = shopMeals().filter((x) => mealShopKeys(x.rid).length); if (!meals.length) return '';
+  return `<div class="mealchips"><span class="small">Shopped for a meal? Tap it:</span>${meals.map((x) => { const on = mealShopped(x.rid);
+    return `<button class="mchip${on ? ' on' : ''}" data-mealshopped="${esc(x.rid)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(mealLabel(x))}</button>`; }).join('')}</div>`;
 }
 const FRACTIONS = [[0.25, '¼'], [0.5, '½'], [0.75, '¾'], [1 / 3, '⅓'], [2 / 3, '⅔']];
 function fmtQty(q) {
@@ -1516,11 +1559,12 @@ function mealCardHtml(meal, tonight) {
 // The day after a meal (up to 3 days), ask for your rating right on the Meals screen.
 function ratePromptHtml() {
   const today = dayKey(new Date()), dismissed = ls.get('rate-dismissed', {});
-  for (const k of Object.keys(state.plan).filter((x) => x < today).sort().reverse()) {
+  for (const [k, v, slot] of planList().filter(([x]) => x < today).sort((a, b) => b[0].localeCompare(a[0]) || (a[2] === 'dinner' ? -1 : 1))) {
     const ago = Math.round((keyToDate(today) - keyToDate(k)) / 86400000); if (ago > 3) break;
-    const meal = mealByName(state.plan[k]); if (!meal || dismissed[k] || ratingInfo(meal.name).mine) continue;
-    const when = ago === 1 ? 'last night' : 'on ' + fmtDay(keyToDate(k), { weekday: 'long' });
-    return `<section class="card rateprompt"><button class="rp-x" data-ratedismiss="${k}" aria-label="Not now">×</button>
+    const dk = slot === 'dinner' ? k : `${k}-${slot}`;
+    const meal = mealByName(v); if (!meal || dismissed[dk] || ratingInfo(meal.name).mine) continue;
+    const when = ago === 1 ? (slot === 'dinner' ? 'last night' : 'yesterday') : 'on ' + fmtDay(keyToDate(k), { weekday: 'long' });
+    return `<section class="card rateprompt"><button class="rp-x" data-ratedismiss="${dk}" aria-label="Not now">×</button>
       <p class="rp-q">How was <strong>${esc(meal.main.name)}</strong> ${esc(when)}?</p>
       <div class="menustars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-quickrate="${n}" data-meal="${esc(meal.id)}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div></section>`;
   }
@@ -1682,8 +1726,10 @@ function renderCalendar() {
     const d = new Date(start); d.setDate(d.getDate() + i);
     const k = dayKey(d), custom = customText(state.plan[k]), name = custom ? '' : state.plan[k], meal = name ? mealByName(name) : null;
     const past = k < today;
-    h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}${state.plan[k] ? '' : ' noplan'}">
-      <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b></div>
+    const extras = SLOTS.filter(([sl]) => sl !== 'dinner' && slotValue(k, sl)).map(([sl, label]) => { const v = slotValue(k, sl), mm = mealByName(v);
+      return `<span class="xslot" role="button" tabindex="0" data-slotpick="${k}|${sl}"><b>${label}</b> ${esc(customText(v) || (mm ? mm.main.name.replace(/\s+with\s+.*$/i, '') : 'No longer in the recipes'))}</span>`; }).join('');
+    h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}${state.plan[k] || extras ? '' : ' noplan'}">
+      <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b>${state.plan[k] || extras ? `<button class="addslot" data-addslot="${k}" aria-label="Add breakfast, lunch or dessert">＋</button>` : ''}</div>
       <button class="pick" data-day="${k}">${custom
         ? `<strong>${esc(custom)}</strong>`
         : name
@@ -1693,8 +1739,9 @@ function renderCalendar() {
           const sides = meal ? meal.sides.map((x) => x.name) : rec && rec.sides ? rec.sides : [];
           return `${meal && meal.kind !== 'Main' ? kindBadge(meal) : ''}<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
         })()
-        : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
+        : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}${extras ? `<span class="xslots">${extras}</span>` : ''}</button>
       ${meal && k <= today ? (() => { const ri = ratingInfo(meal.name); return `<button class="ratebtn${ri.mine ? ' voted' : ''}" data-rateday="${k}" aria-label="Rate this meal">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button>`; })() : ''}
+      ${state.plan[k] || extras ? '' : `<button class="addslot" data-addslot="${k}" aria-label="Add breakfast, lunch or dessert">＋</button>`}
       ${meal ? `<a class="open" href="#/meal/${meal.id}" aria-label="Open recipe">›</a>` : ''}
     </li>`;
   }
@@ -1707,7 +1754,7 @@ const customText = (v) => (v && typeof v === 'object' && v.text ? String(v.text)
 function plannedElsewhere(mealName, day) {
   const today = dayKey(new Date());
   const key = planKey(mealName);
-  return Object.keys(state.plan).filter((k) => k !== day && k >= today && planKey(state.plan[k]) === key).sort()[0] || null;
+  return planList().filter(([k, v]) => k !== day && k >= today && planKey(v) === key).map(([k]) => k).sort()[0] || null;
 }
 async function rateDialog(meal) {
   const ri = ratingInfo(meal.name);
@@ -1725,19 +1772,27 @@ async function rateDialog(meal) {
   if (v === 'clear') setRating(meal, null);
   else if (/^[1-5]$/.test(v)) { setRating(meal, Number(v)); toast(`You gave ${v} star${v > 1 ? 's' : ''}`); }
 }
-async function pickMeal(day) {
+async function pickSlot(day) { // the + on a calendar day: which meal?
+  const r = await formDialog(`<p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
+    <div class="picklist">${SLOTS.map(([sl, label]) => { const v = slotValue(day, sl), mm = mealByName(v);
+      return `<button class="pickopt" value="${sl}"><strong>${label}</strong>${v ? `<span class="small">${esc(customText(v) || (mm ? mm.main.name : ''))}</span>` : ''}</button>`; }).join('')}</div>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  if (r.value) pickMeal(day, r.value);
+}
+async function pickMeal(day, slot = 'dinner') {
   const m = state.model; if (!m) return;
-  const current = state.plan[day], currentCustom = customText(current);
+  const current = slotValue(day, slot), currentCustom = customText(current);
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
-  const sgIds = new Set(suggestions(day).map((x) => x.rid)), many = m.meals.length + (m.past || []).length > 8;
-  dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
+  const sgIds = new Set(slot === 'dinner' ? suggestions(day).map((x) => x.rid) : []), many = m.meals.length + (m.past || []).length > 8;
+  const pastSorted = [...(m.past || [])].sort((a, b) => (slot === 'dessert' ? (a.kind !== 'Dessert') - (b.kind !== 'Dessert') : (a.kind === 'Dessert') - (b.kind === 'Dessert'))); // desserts first for dessert, last otherwise
+  dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}${slot === 'dinner' ? '' : ` · ${slotName(slot)}`}</p>
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
-    <div class="pk-body">${(() => { const sg = suggestions(day); return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
+    <div class="pk-body">${(() => { const sg = slot === 'dinner' ? suggestions(day) : []; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
-    }).join('')}${(m.past || []).filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${m.past.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
+    }).join('')}${pastSorted.filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${pastSorted.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div></div>
@@ -1756,11 +1811,11 @@ async function pickMeal(day) {
   const choice = await new Promise((resolve) => { dlg.addEventListener('close', () => resolve(dlg.returnValue), { once: true }); dlg.showModal(); });
   if (choice === '__custom') {
     const text = input.value.replace(/\s+/g, ' ').trim().slice(0, 80);
-    if (text && text !== currentCustom) setPlan(day, { text });
+    if (text && text !== currentCustom) setPlan(day, { text }, slot);
     return;
   }
-  if (choice === '__none') setPlan(day, null);
-  else if (choice && choice !== planKey(current) && !plannedElsewhere(choice, day)) setPlan(day, choice);
+  if (choice === '__none') setPlan(day, null, slot);
+  else if (choice && choice !== planKey(current) && !plannedElsewhere(choice, day)) setPlan(day, choice, slot);
 }
 
 function renderShopping() {
@@ -1774,6 +1829,7 @@ function renderShopping() {
     <div class="shoptools"><label class="switch hidetoggle"><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}><span>Hide ticked</span></label><button class="btn ghost addinline" id="addinline">＋ Add item</button></div>
     <p class="donemsg" id="donemsg" hidden></p>`;
   if (autoShop()) {
+    h += mealChipsHtml();
     h += renderAutoShopping(m);
     h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold items you usually have at home</p>
       <div class="shopbtns"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div></div>`;
@@ -1998,6 +2054,10 @@ document.addEventListener('click', async (e) => {
   if (rm) { const meal = mealById(rm.dataset.ratemeal); if (meal) rateDialog(meal); return; }
   const rb = e.target.closest('[data-rateday]');
   if (rb) { const meal = mealByName(state.plan[rb.dataset.rateday]); if (meal) rateDialog(meal); return; }
+  const sp = e.target.closest('[data-slotpick]');
+  if (sp) { if (!suppressClick) { const [d, sl] = sp.dataset.slotpick.split('|'); pickMeal(d, sl); } return; }
+  const as = e.target.closest('[data-addslot]');
+  if (as) { pickSlot(as.dataset.addslot); return; }
   const pick = e.target.closest('.pick[data-day]');
   if (pick) { if (!suppressClick) pickMeal(pick.dataset.day); return; }
   if (e.target.closest('.delnote')) return;
@@ -2017,6 +2077,8 @@ document.addEventListener('click', async (e) => {
   const gl = e.target.closest('.item.gline');
   if (gl) { toggleLine(gl.dataset.line); return; }
   if (e.target.id === 'markall') { markAllBought(); return; }
+  const msh = e.target.closest('[data-mealshopped]');
+  if (msh) { toggleMealShopped(msh.dataset.mealshopped); return; }
   const ca2 = e.target.closest('[data-clearauto]');
   if (ca2) { // clear straight away, with Undo
     const beforeB = JSON.parse(JSON.stringify(state.bought)), beforeT = { ...(state.ticks[SHOP()] || {}) };
@@ -2245,6 +2307,7 @@ function start() {
   } else {
     state.ticks = ls.get('local-ticks', {});
     state.plan = ls.get('local-plan', {});
+    state.planX = ls.get('local-planx', {});
     state.ratings = ls.get('local-ratings', {});
     state.notes = ls.get('local-notes', {});
     state.myName = ls.get('local-name', '');
