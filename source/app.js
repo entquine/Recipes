@@ -490,7 +490,7 @@ function renderPlanning() {
     <button class="btn" type="button" id="copyideas">Copy for recipe Claude</button></section>`;
   if (sent.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">Sent to Claude (${sent.length})</summary>
     <ul class="list idealist">${sent.map(ideaRowHtml).join('')}</ul>
-    <button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></details>`;
+    <div class="sentbtns"><button class="btn ghost" type="button" id="unsendall">Move all back to Ideas</button><button class="btn outline-danger" type="button" id="clearsent">Clear sent ideas</button></div></details>`;
   if (added.length) h += `<details class="card ideasent"${ideasSentOpen ? ' open' : ''}><summary class="section-label">In the Recipe Book ✓ (${added.length})</summary>
     <ul class="list idealist">${added.map(([id, x]) => { const meal = ideaRecipe(x); return ideaRowHtml([id, x]).replace('<span class="ideaname">', `<a class="ideaadded" href="#/meal/${esc(meal.id)}">Open recipe ›</a><span class="ideaname">`); }).join('')}</ul></details>`;
   view().innerHTML = h;
@@ -532,7 +532,7 @@ async function editIdea(id) {
     <label class="field">Link <span class="small">(optional)</span><input class="dlg-input" name="url" type="text" inputmode="url" autocapitalize="off" spellcheck="false" maxlength="${IDEA_MAX}" value="${esc(x.url || '')}" autocomplete="off"></label>
     <div class="row-btns"><button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>${x.sent ? '<button class="btn ghost" value="unsend">Not sent</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   if (r.value === 'delete') { writeIdeas({ [id]: null }); undoToast('Idea deleted', () => writeIdeas({ [id]: x })); return; }
-  if (r.value === 'unsend') { const { sent, ...rest } = x; writeIdeas({ [id]: rest }); toast('Moved back to Ideas'); return; }
+  if (r.value === 'unsend') { writeIdeas({ [id]: { ...x, sent: null } }); toast('Moved back to Ideas'); return; } // null, not left out: a saved merge would keep the old date
   if (r.value !== 'save') return;
   const name = clean(r.form.name.value, 120), url = fixUrl(r.form.url.value);
   if (!name) { toast('Type the recipe name, or tap Delete'); return; }
@@ -1972,6 +1972,10 @@ document.addEventListener('click', async (e) => {
   const enx = e.target.closest('[data-editnext]');
   if (enx) { const meal = mealById(enx.dataset.editnext); if (meal) editNextTime(meal); return; }
   if (e.target.id === 'addidea') { addIdea(); return; }
+  if (e.target.id === 'unsendall') { // every sent idea back to the Ideas list (anyone's), with Undo
+    const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (!n.length) return;
+    writeIdeas(Object.fromEntries(n.map(([id, x]) => [id, { ...x, sent: null }])));
+    undoToast(`${n.length} idea${n.length === 1 ? '' : 's'} moved back`, () => writeIdeas(Object.fromEntries(n))); return; }
   if (e.target.id === 'clearsent') { const n = ideaList(true).filter(([, x]) => !ideaRecipe(x)); if (n.length) { writeIdeas(Object.fromEntries(n.map(([id]) => [id, null]))); undoToast(`${n.length} sent idea${n.length === 1 ? '' : 's'} cleared`, () => writeIdeas(Object.fromEntries(n))); } return; }
   const ei = e.target.closest('[data-editidea]');
   if (ei) { editIdea(ei.dataset.editidea); return; }

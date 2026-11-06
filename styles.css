@@ -672,3 +672,4 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .nextcard .btn { width: 100%; }
 .nextcard .small { margin-top: 6px; }
 .nt-row { display: flex; gap: 10px; align-items: flex-start; } .nt-row > div { flex: 1; min-width: 0; }
+.sentbtns { display: flex; gap: 10px; margin-top: 10px; } .sentbtns .btn { flex: 1; margin: 0; }
