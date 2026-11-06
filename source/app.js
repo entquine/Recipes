@@ -1127,14 +1127,14 @@ function renderCook() {
 // Cook mode's dish tabs use just the key food word: "Lemon-Herb Chicken Cutlets" → "Chicken", "Roasted Baby
 // Potatoes" → "Potatoes", "Chicken Pot Pie with Biscuit Topping" → "Pot Pie". If two dishes in the meal would
 // get the same word, they keep their longer names.
-const TAB_PAIRS = ['green beans', 'pot pie', 'garlic bread', 'lettuce wraps', 'sweet potatoes', 'sweet potato', 'fried rice', 'black beans', 'brussels sprouts', 'mashed potatoes', 'french fries', 'mac and cheese'];
-const TAB_SHAPES = new Set(['cutlets', 'bites', 'skewers', 'strips', 'fillets', 'filets', 'tenders', 'medallions', 'kebabs', 'chunks', 'slices', 'pieces', 'patties', 'thighs', 'breasts']);
+const TAB_PAIRS = ['green beans', 'pot pie', 'garlic bread', 'lettuce wraps', 'pork belly', 'sweet potatoes', 'sweet potato', 'fried rice', 'black beans', 'brussels sprouts', 'mashed potatoes', 'french fries', 'mac and cheese'];
+const TAB_SHAPES = new Set(['wedges', 'fries', 'cutlets', 'bites', 'skewers', 'strips', 'fillets', 'filets', 'tenders', 'medallions', 'kebabs', 'chunks', 'slices', 'pieces', 'patties', 'thighs', 'breasts']);
 const titleCase = (t) => t.replace(/\b\w/g, (c) => c.toUpperCase());
 function keyWord(name) {
-  const n = name.replace(/\s+with\s+.*$/i, '').split(',')[0].trim(), low = n.toLowerCase();
+  const w = name.replace(/\s+with\s+.*$/i, '').split(',')[0].trim().split(/\s+/);
+  while (w.length > 1 && TAB_SHAPES.has(w[w.length - 1].toLowerCase())) w.pop(); // "Steak Bites" → "Steak", "Potato Wedges" → "Potato"
+  const n = w.join(' '), low = n.toLowerCase();
   for (const p of TAB_PAIRS) if (low.endsWith(p)) return titleCase(n.slice(n.length - p.length));
-  const w = n.split(/\s+/);
-  while (w.length > 1 && TAB_SHAPES.has(w[w.length - 1].toLowerCase())) w.pop();
   return titleCase(w[w.length - 1].replace(/^[^A-Za-z]+|[^A-Za-z]+$/g, '')) || shortName({ name });
 }
 function cookTabName(meal, d) {
@@ -1686,6 +1686,7 @@ function renderMeal(id) {
   const S = meal.id;
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
+    (meal.combined && ls.get('combined-view', true) ? '<a href="#" class="jump-all" data-jump="' + S + '-combined">All</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
@@ -1718,7 +1719,7 @@ function renderMeal(id) {
     const ingAnchor = `${S}-combined`; // all the dishes' ingredients, grouped by dish, folded like each dish's own list
     const ings = meal.dishes.filter((x) => x.groups.length).map((x) => x.groups.map((g) => `<h4><span class="stepdish chip-${x.color}">${esc(cookTabName(meal, x))}</span>${g.name ? esc(g.name) : ''}</h4><ul class="list ings">${g.items.map((it) =>
       `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')).join('');
-    h += `<section class="card combined" id="${S}-combined"><div class="combhead"><p class="section-label">All steps, in order</p><button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="-1">${ICONS.cook} Cook mode</button></div>
+    h += `<section class="card combined" id="${S}-combined"><div class="dish-head comb-head"><p class="section-label">Combined</p><h2>All steps, in order</h2><div class="dishbtns"><button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="-1">${ICONS.cook} Cook mode</button></div></div>
       ${ings ? `<details class="ingfold" data-ings="${ingAnchor}"${openIngs.has(ingAnchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>${ings}</details>` : ''}
       <h3>Steps</h3><ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></section>`;
   }
@@ -1746,6 +1747,7 @@ function renderMeal(id) {
   h += nextTimeCardHtml(meal);
   h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
+  fitJumpBar();
   refreshTicks();
 }
 // Plan card folds once every dish has been started; Prep list folds once everything on it is ticked.
@@ -1768,6 +1770,12 @@ function stepItemHtml(meal, d, s, prepOf, tagged) {
     `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : ''}`,
     mins ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
 }
+function fitJumpBar() { // keep every top button on screen: shrink the text a little (down to 12.5px) if they don't fit
+  const bar = document.querySelector('.jump'); if (!bar) return;
+  bar.style.removeProperty('--jump-font');
+  for (let f = 14.5; f >= 12.5 && bar.scrollWidth > bar.clientWidth + 1; f -= 0.5) bar.style.setProperty('--jump-font', f + 'px');
+}
+addEventListener('resize', fitJumpBar);
 function shortName(d) { // short label for the jump bar
   const n = d.name.replace(/\s+with\s+.*$/i, '');
   return n.length > 26 ? n.slice(0, 24) + '…' : n;

@@ -712,3 +712,10 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .aheadnote { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); font-size: 14.5px; }
 .aheadnote .ic { flex: none; color: #b77b0f; margin-top: 2px; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .aheadwhen { color: #ffd98a; } }
+/* top buttons shrink to fit; combined card headed like a dish card */
+.jump a { font-size: var(--jump-font, 14.5px); padding-left: calc(var(--jump-font, 14.5px) * .62); padding-right: calc(var(--jump-font, 14.5px) * .62); }
+.jump-all { background: var(--surface-2); font-weight: 700; }
+.dish-head.comb-head { border-color: var(--text); }
+.dish-head.comb-head .section-label { color: var(--text); }
+.card.combined .ingfold > summary h3, .card.combined > h3 { margin: 16px 0 6px; }
+.card.combined h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; }
