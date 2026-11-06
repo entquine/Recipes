@@ -1649,7 +1649,7 @@ function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
   return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
-    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<br><span class="used">${esc(st.amount)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
 // A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
 // "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually
