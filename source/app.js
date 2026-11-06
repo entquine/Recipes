@@ -1541,13 +1541,13 @@ function fitSides() {
   });
 }
 addEventListener('resize', fitSides);
-function mealCardHtml(meal, tonight) {
+function mealCardHtml(meal, tonight, label = 'Tonight') { // tonight: today's highlighted card; label: Tonight / For lunch / Dessert ...
   const ri = ratingInfo(meal.name);
   const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
   const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
   const timeAndProgress = `${time ? `<span class="time">${ICONS.timer} ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
   return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
-      <div class="eyebrow">${tonight ? '<span class="tonight-label">Tonight</span>' : `${esc(meal.title)}${plannedChip(meal)}`}</div>
+      <div class="eyebrow">${tonight ? `<span class="tonight-label">${esc(label)}</span>` : `${esc(meal.title)}${plannedChip(meal)}`}</div>
       <h2>${esc(meal.main.name)}</h2>
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
@@ -1594,14 +1594,21 @@ function renderMeals() {
   let h = banners();
   if (!state.firebase) h += '<div class="banner">Sharing is not set up yet, so ticks stay on this phone. See SETUP.md.</div>';
   h += ratePromptHtml();
-  const tonightCustom = customText(state.plan[dayKey(new Date())]);
-  if (tonightCustom) h += `<a class="card tonight" href="#/calendar"><span class="section-label">Tonight</span><strong>${esc(tonightCustom)}</strong></a>`;
-  // Tonight's meal gets the full card at the top (time, progress, rating) and isn't repeated below.
-  const tonight = mealByName(state.plan[dayKey(new Date())]);
-  if (tonight) h += mealCardHtml(tonight, true);
+  // Everything planned for today gets a highlighted card at the top (and isn't repeated below).
+  // Just one thing: "Tonight" for dinner, "For lunch" etc. Several: a "Today" heading and each card says which meal.
+  const todayK = dayKey(new Date()), todays = SLOTS.map(([sl, name]) => [sl, name, slotValue(todayK, sl)]).filter((x) => x[2]);
+  const one = todays.length === 1;
+  if (!one && todays.length) h += '<p class="section-label todaylabel">Today</p>';
+  const shownToday = new Set();
+  for (const [sl, name, v] of todays) {
+    const label = one ? (sl === 'dinner' ? 'Tonight' : `For ${name.toLowerCase()}`) : name, mm = mealByName(v);
+    if (mm && !shownToday.has(mm)) { shownToday.add(mm); h += mealCardHtml(mm, true, label); }
+    else if (customText(v)) h += `<a class="card tonight" href="#/calendar"><span class="section-label">${esc(label)}</span><strong>${esc(customText(v))}</strong></a>`;
+  }
+  const tonight = todays.length ? true : null;
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
   const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };
-  const sorted = [...m.meals, ...(m.past || [])].filter((meal) => meal !== tonight && isPlannedMeal(meal)).map((meal, i) => ({ meal, i, r: rank(meal) }))
+  const sorted = [...m.meals, ...(m.past || [])].filter((meal) => !shownToday.has(meal) && isPlannedMeal(meal)).map((meal, i) => ({ meal, i, r: rank(meal) }))
     .sort((a, b) => a.r[0] - b.r[0] || a.r[1].localeCompare(b.r[1]) || a.i - b.i).map((x) => x.meal);
   for (const meal of sorted) h += mealCardHtml(meal, false);
   if (!sorted.length && !tonight) h += '<p class="empty">Nothing planned right now.<br><span class="small">Pick something from Planning → Recipe Book and put it on the calendar.</span></p>';
