@@ -1681,7 +1681,7 @@ function renderMeal(id) {
     h += `<section class="card dish" id="${d.anchor}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
-      h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${foldedIngs.has(d.anchor) ? '' : ' open'}><summary><h3>Ingredients</h3></summary>`;
+      h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${openIngs.has(d.anchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>`;
       for (const g of d.groups) {
         if (g.name) h += `<h4>${esc(g.name)}</h4>`;
         h += '<ul class="list ings">' + g.items.map((it) =>
@@ -1704,7 +1704,7 @@ function renderMeal(id) {
 }
 // Plan card folds once every dish has been started; Prep list folds once everything on it is ticked.
 // (Only when that happens, so you can open them again.) Ingredient lists fold by hand and stay folded.
-const foldedIngs = new Set(), lastFoldDone = {};
+const openIngs = new Set(), lastFoldDone = {}; // ingredient lists start folded (the steps show each amount); remember the ones opened
 function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.dishes.filter((d) => d.steps.length).every((d) => d.steps.some((x) => t[x.key])); }
 function autoFold() {
   document.querySelectorAll('details[data-autofold]').forEach((el) => {
@@ -1714,7 +1714,7 @@ function autoFold() {
     lastFoldDone[el.id] = done;
   });
 }
-document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) foldedIngs.delete(el.dataset.ings); else foldedIngs.add(el.dataset.ings); } }, true);
+document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) openIngs.add(el.dataset.ings); else openIngs.delete(el.dataset.ings); } }, true);
 function shortName(d) { // short label for the jump bar
   const n = d.name.replace(/\s+with\s+.*$/i, '');
   return n.length > 26 ? n.slice(0, 24) + '…' : n;
