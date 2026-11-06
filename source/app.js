@@ -1268,7 +1268,8 @@ function suggestions(day) {
 }
 
 // whether the folded "Usually have" card is open, kept across redraws (ticking redraws the list)
-let staplesOpen = false;
+let staplesOpen = false, shoppedOpen = false;
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.shoppedcard')) shoppedOpen = e.target.open; }, true);
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.staples')) staplesOpen = e.target.open; }, true);
 // Staples: items we usually have. They sit in their own folded card and don't count toward the list.
 const stapleId = (name) => 's-' + slug(name);
@@ -1344,6 +1345,10 @@ function shopLines() {
     l.done = l.open.length === 0;
     l.partly = !l.done && l.open.length < l.parts.length;
   }
+  // meals marked as shopped for (every item bought): their lines leave the list and the counter
+  const rids = new Set([...lines.values()].flatMap((l) => l.parts.map((x) => x.rid)));
+  const shopped = new Set([...rids].filter((rid) => [...lines.values()].every((l) => !l.parts.some((x) => x.rid === rid) || isBought(rid, l.key))));
+  for (const l of lines.values()) l.mealDone = l.parts.every((x) => shopped.has(x.rid));
   return [...lines.values()];
 }
 // Mark a whole meal as shopped for: all its items count as bought (until its calendar day has passed), with Undo.
@@ -1430,10 +1435,13 @@ function renderAutoShopping(m) {
     <span class="sub">For: ${esc([...new Set((l.done ? l.parts : l.open).map((x) => mealLabel(x.meal)))].join(', '))}</span></span></li>`;
   let h = '';
   for (const sec of sections) {
-    const mine = lines.filter((l) => l.section === sec && !isStaple(l.item)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
+    const mine = lines.filter((l) => l.section === sec && !isStaple(l.item) && !l.mealDone).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
     const rows = mine.map(row).join('') + extrasListHtml(sec);
     if (rows) h += `<section class="card"><p class="section-label">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
+  const got = lines.filter((l) => l.mealDone && !isStaple(l.item)).sort((a, b) => a.item.localeCompare(b.item));
+  if (got.length) h += `<details class="card shoppedcard"${shoppedOpen ? ' open' : ''}><summary class="section-label">Already shopped for (${got.length})</summary>
+    <p class="small">Items for meals you marked as shopped for. They don't count toward the list.</p><ul class="list">${got.map(row).join('')}</ul></details>`;
   const staples = lines.filter((l) => isStaple(l.item)).sort((a, b) => a.item.localeCompare(b.item));
   const stapleExtras = extrasListHtml(null, true);
   if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
@@ -1442,7 +1450,7 @@ function renderAutoShopping(m) {
   return h;
 }
 function autoCounts() { // [done, total] for the counter: list lines (not staples) and items you added (not staples)
-  const lines = shopLines().filter((l) => !isStaple(l.item));
+  const lines = shopLines().filter((l) => !isStaple(l.item) && !l.mealDone);
   const extras = Object.entries(state.extras).filter(([, x]) => !isStaple(x.name));
   const t = state.ticks[SHOP()] || {};
   return [lines.filter((l) => l.done).length + extras.filter(([id]) => t[extraKey(id)]).length, lines.length + extras.length];
