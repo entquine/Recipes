@@ -1733,9 +1733,11 @@ function renderMeal(id) {
     const ingAnchor = `${S}-combined`; // all the dishes' ingredients, grouped by dish, folded like each dish's own list
     const ings = meal.dishes.filter((x) => x.groups.length).map((x) => x.groups.map((g) => `<h4><span class="stepdish chip-${x.color}">${esc(cookTabName(meal, x))}</span>${g.name ? esc(g.name) : ''}</h4><ul class="list ings">${g.items.map((it) =>
       `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')).join('');
-    h += `<section class="card combined" id="${S}-combined"><div class="dish-head comb-head"><p class="section-label">Combined</p><h2>All steps, in order</h2><div class="dishbtns"><button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="-1">${ICONS.cook} Cook mode</button></div></div>
+    const allDone = meal.combined.every((x) => (state.ticks[meal.id] || {})[x.s.key]);
+    h += `<details class="card combined" id="${S}-combined" data-autofold="all" data-meal="${esc(meal.id)}"${allDone ? '' : ' open'}><summary class="comb-sum"><div class="dish-head comb-head"><p class="section-label">Combined</p><h2>All steps, in order</h2></div></summary>
+      <div class="dishbtns"><button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="-1">${ICONS.cook} Cook mode</button></div>
       ${ings ? `<details class="ingfold" data-ings="${ingAnchor}"${openIngs.has(ingAnchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>${ings}</details>` : ''}
-      <h3>Steps</h3><ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></section>`;
+      ${stepsHeadHtml(meal, meal.combined.map((x) => x.s.key))}<ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></details>`;
   }
 
   // ---- dishes (side by side on wide screens)
@@ -1753,7 +1755,7 @@ function renderMeal(id) {
       }
       h += '</details>';
     }
-    if (d.steps.length && !combinedView) h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => stepItemHtml(meal, d, s, prepOf, false)).join('') + '</ul>';
+    if (d.steps.length && !combinedView) h += stepsHeadHtml(meal, d.steps.map((x) => x.key)) + '<ul class="list">' + d.steps.map((x) => stepItemHtml(meal, d, x, prepOf, false)).join('') + '</ul>';
     h += '</section>';
   }
   h += '</div>';
@@ -1777,6 +1779,8 @@ function autoFold() {
   });
 }
 document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) openIngs.add(el.dataset.ings); else openIngs.delete(el.dataset.ings); } }, true);
+// "STEPS  2/37 ▬▬▬" on one line: how many of these steps are ticked (kept up to date by refreshTicks)
+const stepsHeadHtml = (meal, keys) => `<div class="stepshead"><h3>Steps</h3><span class="stepprog" data-stepscope="${esc(meal.id)}" data-stepkeys="${esc(keys.join(','))}"><span class="sp-n"></span><span class="bar"><b></b></span></span></div>`;
 // One step of a recipe. In the combined list each step is tagged with its dish and numbered as in that dish.
 function stepItemHtml(meal, d, s, prepOf, tagged) {
   const mins = stepMinutes(s.text);
@@ -2005,6 +2009,11 @@ function refreshTicks() {
     const want = [...items].sort((a, b) => a.classList.contains('done') - b.classList.contains('done') || a.dataset.i - b.dataset.i);
     if (want.some((li, i) => li !== items[i])) want.forEach((li) => ul.appendChild(li));
   });
+  document.querySelectorAll('[data-stepkeys]').forEach((el) => { // per-list step counts under "Steps"
+    const t = state.ticks[el.dataset.stepscope] || {}, keys = el.dataset.stepkeys.split(',').filter(Boolean), done = keys.filter((k) => t[k]).length;
+    el.querySelector('.sp-n').textContent = `${done}/${keys.length}`; el.querySelector('b').style.width = keys.length ? (100 * done / keys.length) + '%' : 0;
+    el.classList.toggle('complete', keys.length > 0 && done === keys.length);
+  });
   document.querySelectorAll('[data-progress]').forEach((el) => {
     const scope = el.dataset.progress, m = state.model; if (!m) return;
     let keys = isShopScope(scope) ? shopCountKeys() : (mealById(scope) || {}).keys || [];
@@ -2054,10 +2063,16 @@ document.addEventListener('click', async (e) => {
     e.preventDefault();
     const target = document.getElementById(jump.dataset.jump) || document.getElementById(jump.dataset.jump.replace(/-s\d+$/, ''));
     if (target) {
-      const prep = target.closest('details.prep'); if (prep) prep.open = true;
+      for (let f = target.closest('details'); f; f = f.parentElement && f.parentElement.closest('details')) f.open = true; // open any folded card it's in
       // a dish column that scrolls on its own (wide screens): scroll inside it; otherwise scroll the page
+      // All, and the first dish in By dish view: bring the By dish / Combined switch into view too
+      const seg = document.querySelector('.viewseg');
+      const toSeg = seg && (jump.classList.contains('jump-all') || (!ls.get('combined-view', true) && jump === jump.parentElement.querySelector('[class*="chip-"]')));
       const col = target.closest('.dishes .card.dish');
-      if (col && col.scrollHeight > col.clientHeight + 2) {
+      if (toSeg) {
+        scrollTo({ top: seg.getBoundingClientRect().top + scrollY - 118, behavior: 'smooth' });
+        if (col) col.scrollTo({ top: 0, behavior: 'smooth' });
+      } else if (col && col.scrollHeight > col.clientHeight + 2) {
         col.scrollTo({ top: col.scrollTop + target.getBoundingClientRect().top - col.getBoundingClientRect().top - col.clientHeight / 3, behavior: 'smooth' });
         const ct = col.getBoundingClientRect().top; if (ct < 56 || ct > innerHeight / 2) scrollTo({ top: ct + scrollY - 130, behavior: 'smooth' });
       } else {

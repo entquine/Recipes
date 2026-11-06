@@ -720,3 +720,16 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .card.combined .ingfold > summary h3, .card.combined > h3 { margin: 16px 0 6px; }
 .card.combined h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; }
 .aheadsum { margin: 6px 0 2px; font-weight: 650; color: var(--warn-ink); }
+/* steps heading with count and bar; the combined card folds from its heading */
+.stepshead { display: flex; align-items: center; gap: 10px; margin: 18px 0 2px; }
+.stepshead h3 { margin: 0; }
+.stepprog { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stepprog .bar { flex: 1; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.stepprog .bar b { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s; }
+.stepprog.complete { color: var(--ok); }
+details.combined > summary.comb-sum { list-style: none; cursor: pointer; }
+details.combined > summary.comb-sum::-webkit-details-marker { display: none; }
+details.combined > summary .comb-head { position: relative; padding-right: 26px; margin-bottom: 0; }
+details.combined > summary .comb-head::after { content: "▾"; position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; }
+details.combined:not([open]) > summary .comb-head::after { content: "▸"; }
+details.combined[open] > .dishbtns { margin: 10px 0 0 18px; }
