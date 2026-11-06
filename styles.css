@@ -749,3 +749,9 @@ details.plan > summary.plan-sum h2 { margin: 0; }
 details.plan > summary.plan-sum::after { content: "▾"; position: absolute; right: 0; top: -2px; color: var(--muted); font-size: 18px; }
 details.plan:not([open]) > summary.plan-sum::after { content: "▸"; }
 details.plan[open] > summary.plan-sum { margin-bottom: 10px; }
+/* plan heading: the total time as a badge, extra words (if any) underneath */
+.planhead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.planhead .section-label { margin: 0 !important; }
+.plantime { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; font-size: 15.5px; background: var(--surface-2); border-radius: 999px; padding: 3px 11px; color: var(--text); }
+.planextra { margin: 6px 0 0; color: var(--muted); font-size: 15px; }
+details.plan > summary.plan-sum::after { top: 50% !important; transform: translateY(-50%); }

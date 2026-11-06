@@ -1709,7 +1709,7 @@ function renderMeal(id) {
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
-    h += `<details class="card plan" id="${S}-plan" data-autofold="plan" data-meal="${esc(S)}"${planStarted(meal) ? '' : ' open'}><summary class="plan-sum"><p class="section-label">The plan</p><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2></summary>`;
+    h += `<details class="card plan" id="${S}-plan" data-autofold="plan" data-meal="${esc(S)}"${planStarted(meal) ? '' : ' open'}><summary class="plan-sum">${planHeadHtml(meal)}</summary>`;
     if (meal.planFirst) h += `<div class="startfirst"><strong>${ICONS.warn} Start first</strong>${esc(meal.planFirst)}</div>`;
     if (meal.starts.length > 1) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
@@ -1769,6 +1769,13 @@ function renderMeal(id) {
 // Plan card folds once every dish has been started; Prep list folds once everything on it is ticked.
 // (Only when that happens, so you can open them again.) Ingredient lists fold by hand and stay folded.
 const openIngs = new Set(), lastFoldDone = {}; // ingredient lists start folded (the steps show each amount); remember the ones opened
+// "THE PLAN  (clock) About 1 hour", then whatever the Plan total row says beyond the time ("all in one skillet"), if anything
+function planHeadHtml(meal) {
+  const m = String(meal.planTotal || '').trim().match(/^([^.,;]*)[.,;]?\s*(.*)$/);
+  const time = (m && m[1].trim()) || (meal.totalMin != null ? `About ${fmtDuration(meal.totalMin)}` : '');
+  let extra = m ? m[2].trim() : ''; if (extra) extra = extra[0].toUpperCase() + extra.slice(1);
+  return `<div class="planhead"><p class="section-label">The plan</p>${time ? `<span class="plantime">${ICONS.timer} ${esc(time)}</span>` : ''}</div>${extra ? `<p class="planextra">${esc(extra)}</p>` : ''}`;
+}
 function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.dishes.filter((d) => d.steps.length).every((d) => d.steps.some((x) => t[x.key])); }
 function autoFold() {
   document.querySelectorAll('details[data-autofold]').forEach((el) => {

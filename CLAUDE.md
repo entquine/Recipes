@@ -37,6 +37,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Ahead | **Step rows only, optional.** For a step that has to happen **well before cooking starts** (marinate, brine, soak skewers, thaw, bring steak to room temperature, chill dough): how long before, e.g. `30 min`, `1 hour`, `4 hours`, `overnight`. The app shows these in a **Head start** card above the Prep list (longest first) and as a reminder on today's meal card, and leaves them out of the Prep list |
 
 - Plan rows (`Plan total`, `Plan first`, `Plan`) go on the **Main** dish's rows only.
+- `Plan total`: Text starts with the total time, e.g. `About 1 hour.` The app shows that time as a badge next to "The plan". Anything after the first period or comma shows as a short note under it, so add more only when it says something the `Plan first` text and the start order don't already cover (e.g. `About 30 minutes, all in one skillet.`).
 - `Plan first` says which dish to start first. This matters when a side takes longer than the main.
 - Plan text can reference steps like `(Carrot steps 2-6)`, `(Main step 3)` or `(Side step 1)`. The word before "step" must be `Main`, `Side`, or a word from the dish's name. The app uses these to build the "Start order" list.
 - Keep amounts and Plan times as **text** (e.g. `0:27`, not a spreadsheet time value).
