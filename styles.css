@@ -702,3 +702,13 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .combhead .section-label { margin: 0; }
 .combhead .cookdishbtn { margin-top: 0; flex: none; }
 .card.combined h4 { display: flex; align-items: center; gap: 4px; margin: 12px 0 4px; }
+/* head start: steps to do well before cooking */
+.card.headstart { border: 2px solid #e3a42b; background: var(--warn-bg); }
+.card.headstart > summary { cursor: pointer; display: flex; align-items: center; gap: 6px; color: var(--warn-ink); }
+.card.headstart > summary .ic { color: #b77b0f; }
+.card.headstart .item { border-color: rgba(183,123,15,.25); }
+.aheadwhen { display: inline-block; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: #8a5a00; background: rgba(227,164,43,.25); border-radius: 6px; padding: 1px 7px; margin: 0 0 3px; }
+.aheaditem .body strong { display: block; }
+.aheadnote { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; padding: 8px 10px; border-radius: 10px; background: var(--warn-bg); color: var(--warn-ink); font-size: 14.5px; }
+.aheadnote .ic { flex: none; color: #b77b0f; margin-top: 2px; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .aheadwhen { color: #ffd98a; } }

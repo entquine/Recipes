@@ -138,7 +138,7 @@ function buildMeals(recipes) {
         if (!g) { g = { name: r.group, items: [] }; dish.groups.push(g); }
         g.items.push({ amount: r.amount, text: r.text, shop: shopInfo(r) }); break;
       }
-      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), seq }); break;
+      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), ahead: r.ahead || '', seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
@@ -1567,6 +1567,7 @@ function mealCardHtml(meal, tonight, label = 'Tonight') { // tonight: today's hi
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
       ${tonight || nextPlanned(meal.name) ? '' : `<span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span>`}
       <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : timeAndProgress}</div>
+      ${tonight ? headStartReminder(meal) : ''}
       ${tonight ? (() => { const first = meal.starts.length ? meal.starts[0].dish : meal.dishes.find((x) => x.steps.length); const i = first ? meal.dishes.indexOf(first) : -1;
         return i < 0 ? '' : `<span class="tonightcook" role="button" tabindex="0" data-tonightcook="${esc(meal.id)}" data-dish="${i}"><span class="tc-main">${ICONS.cook} Start cooking</span>${meal.dishes.length > 1 ? `<span class="tc-sub">${esc(first.name)} first</span>` : ''}</span>`; })() : ''}
       ${tonight && ri.done ? `<p class="small votes"><span class="avg">${starsText(ri.avg)}</span> last time</p>` : ''}
@@ -1633,10 +1634,30 @@ function renderMeals() {
 
 // Prep list: steps marked with a Prep task, gathered across the main and sides and combined by task
 // ("Mince garlic: 2 cloves · Chicken + 3 cloves · Garlic bread"). Ticking a task ticks those steps in each dish.
+// ---------------------------------------------------------------- Head start: steps to do well before cooking
+// Steps with an "Ahead" time in the spreadsheet (marinate 1 hour, soak skewers 30 min, thaw overnight), longest first.
+function aheadMinutes(t) {
+  const x = String(t || '').toLowerCase();
+  if (/overnight/.test(x)) return 12 * 60;
+  const n = parseFloat((x.match(/\d+(\.\d+)?/) || [])[0]); if (isNaN(n)) return 0;
+  return /day/.test(x) ? n * 1440 : /h(ou)?r/.test(x) ? n * 60 : n;
+}
+const aheadLabel = (t) => { const x = String(t).trim(); return /overnight/i.test(x) ? 'The night before' : `${x} before`; };
+function headStart(meal) { return meal.dishes.flatMap((d) => d.steps.filter((st) => st.ahead).map((st) => ({ d, st }))).sort((a, b) => aheadMinutes(b.st.ahead) - aheadMinutes(a.st.ahead)); }
+function headStartHtml(meal) {
+  const list = headStart(meal); if (!list.length) return '';
+  const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
+  return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<br><span class="used">${esc(st.amount)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+}
+function headStartReminder(meal) { // for today's card on Meals: the first early step not done yet
+  const t = state.ticks[meal.id] || {}, x = headStart(meal).find((y) => !t[y.st.key]);
+  return x ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(x.st.text)} <span class="small">· ${esc(aheadLabel(x.st.ahead).toLowerCase())}</span></span></p>` : '';
+}
 function prepTasks(meal) {
   const tasks = new Map();
   meal.dishes.forEach((d) => d.steps.forEach((st) => {
-    if (!st.prep) return;
+    if (!st.prep || st.ahead) return; // head-start steps have their own card
     const k = st.prep.trim().toLowerCase();
     if (!tasks.has(k)) tasks.set(k, { name: st.prep.trim(), parts: [] });
     tasks.get(k).parts.push({ dish: d, amount: st.prepAmt, key: st.key, num: st.num });
@@ -1685,8 +1706,10 @@ function renderMeal(id) {
     h += '</details>';
   }
 
+  h += headStartHtml(meal);
   h += prepCardHtml(meal);
   const prepOf = new Map(); prepTasks(meal).forEach((t, ti) => t.parts.forEach((x) => prepOf.set(x.key, `${meal.id}-p${ti}`)));
+  headStart(meal).forEach(({ st }) => prepOf.set(st.key, `${meal.id}-ahead`)); // the ↑ on a head-start step goes to that card
 
   // ---- steps all together, in cooking order (when the meal has a combined order and that view is chosen)
   const combinedView = !!meal.combined && ls.get('combined-view', true);
@@ -1732,7 +1755,7 @@ function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.d
 function autoFold() {
   document.querySelectorAll('details[data-autofold]').forEach((el) => {
     const meal = mealById(el.dataset.meal); if (!meal) return;
-    const done = el.dataset.autofold === 'plan' ? planStarted(meal) : [...el.querySelectorAll('.preptask')].every((x) => x.classList.contains('done'));
+    const done = el.dataset.autofold === 'plan' ? planStarted(meal) : [...el.querySelectorAll('.item')].every((x) => x.classList.contains('done'));
     if (done && lastFoldDone[el.id] === false) el.open = false;
     lastFoldDone[el.id] = done;
   });
