@@ -165,6 +165,9 @@ function buildMeals(recipes) {
     meal.sides = dishes.filter((d) => d !== meal.main);
     meal.kind = meal.main.type; // 'Main' or 'Side' (past entries are one dish each)
     meal.rid = meal.main.id || 'd-' + slug(meal.main.name); // ratings and calendar entries are keyed on the main dish's ID
+    // A meal named after its dish (Recipe Book entries) gets a short title, like "Chicken Pot Pie" for a planned meal:
+    // "Apple Muffins with Cinnamon Crumb" → "Apple Muffins". The dish keeps its full name.
+    if (meal.title === meal.main.name) meal.title = meal.title.replace(/\s+with\s+.*$/i, '') || meal.title;
     const mins = meal.plan.map((p) => p.min).filter((m) => m != null);
     meal.totalMin = mins.length ? Math.max(...mins) : null;
     meal.keys = dishes.flatMap((d) => d.steps.map((s) => s.key));
@@ -1374,7 +1377,7 @@ function amountText(parts) {
   if (loose && !bits.length) bits.push('as needed');
   return bits.join(' + ');
 }
-const mealLabel = (m) => (m.kind !== 'Main' ? m.main.name : m.title);
+const mealLabel = (m) => m.title; // short meal name, e.g. "Chicken Pot Pie", "Apple Muffins"
 function toggleLine(key) {
   const l = shopLines().find((x) => x.key === key); if (!l) return;
   const today = dayKey(new Date()), changes = {};
