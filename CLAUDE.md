@@ -19,7 +19,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Recipe | Dish name, e.g. `Garlic Butter Ribeye Steak Bites` |
 | Type | `Main`, `Side` or `Dessert`. Each meal has exactly one Main and usually one or two Sides (a meal may also include a Dessert, shown last). Use `Dessert` for sweets and baking (muffins, cookies, cakes, pies): a dessert is never a Main |
 | Meal | Groups dishes into a meal, e.g. `4 Steak Bites`. The leading number sets the order in the app and is hidden. New meals take the next number |
-| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, or `Made` |
+| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, `Made`, or `Ahead` |
 | Group | Optional ingredient sub-group, e.g. `Teriyaki sauce` |
 | Order | Step number, or the order of Plan rows |
 | Amount | Ingredient rows: quantity (`1¼ lb`). Step rows: the "amount used" in that step (`2 chicken breasts`). Plan rows: time from the start, `0:27`, or `Before` |
@@ -88,6 +88,7 @@ For every meal in the Recipes tab that has sides, fill the **Combined order** co
 
 ### Head start (column `Ahead`)
 Mark a step with **Ahead** only when it genuinely needs a lead time before cooking: marinating, brining, soaking wooden skewers, thawing, letting meat come to room temperature, chilling. Write it as the time before cooking starts (`30 min`, `1 hour`, `overnight`), and put the waiting time in the step text too (e.g. "Marinate the steak in the sauce for 30 minutes to 1 hour"). Quick knife work stays a Prep task instead. Check every current meal and every new one for such steps.
+- Also add **one `Ahead` row** (Section `Ahead`, on the Main's rows) that sums up the head start in a few words, for the Meals card reminder: **Amount** = the lead time (`1 hour`, `30 min`, `overnight`), **Text** = what to do, starting with a verb and naming the food, e.g. `Marinate the steak`, `Take the steaks out of the fridge`, `Make the marinade and marinate the chicken`. Other columns blank. The app shows it as "Head start: Marinate the steak · about 1 hour ahead". A meal with early steps on more than one dish can have one `Ahead` row per thing.
 
 ### Prep list
 Steps with a **Prep task** appear in a "Prep list" at the top of the meal, gathered across the main and its sides and combined by task name, e.g. "Mince garlic: 2 cloves · Chicken + 3 cloves · Garlic bread". Ticking a prep task ticks those steps in each dish. Only mark steps that can really be done up front: not cooking steps, and not prep that has to happen mid-cook (e.g. "slice the rested steak").

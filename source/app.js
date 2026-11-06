@@ -140,6 +140,7 @@ function buildMeals(recipes) {
       }
       case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), ahead: r.ahead || '', seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
+      case 'ahead': if (r.text) (meal.aheadNotes || (meal.aheadNotes = [])).push({ when: r.amount || '', text: r.text }); break;
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
     }
@@ -1647,12 +1648,25 @@ function headStart(meal) { return meal.dishes.flatMap((d) => d.steps.filter((st)
 function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
-  return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>
+  return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
     <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<br><span class="used">${esc(st.amount)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
-function headStartReminder(meal) { // for today's card on Meals: the first early step not done yet
-  const t = state.ticks[meal.id] || {}, x = headStart(meal).find((y) => !t[y.st.key]);
-  return x ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(x.st.text)} <span class="small">· ${esc(aheadLabel(x.st.ahead).toLowerCase())}</span></span></p>` : '';
+// A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
+// "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually
+// waits (marinate / rest / thaw), plus how many other early steps go with it.
+const aheadWhen = (t) => (/overnight/i.test(t) ? 'the night before' : t ? `about ${String(t).trim()} ahead` : '');
+function headStartSummary(meal) {
+  if (meal.aheadNotes && meal.aheadNotes.length) return meal.aheadNotes.map((n) => `${n.text}${n.when ? ` · ${aheadWhen(n.when)}` : ''}`).join('; ');
+  const list = headStart(meal); if (!list.length) return '';
+  const waits = list.find(({ st }) => /\b(marinat|thaw|soak|chill|brine)/i.test(st.text)) || list.find(({ st }) => stepMinutes(st.text))
+    || list.find(({ st }) => /\b(rest|sit)\b(?! of)/i.test(st.text)) || list[0];
+  const others = list.length - 1, first = waits.st.text.replace(/\s*\(.*?\)\s*/g, ' ').split(/(?<=\.)\s/)[0].replace(/\s+/g, ' ').replace(/\.$/, '').trim();
+  return `${first}${others ? ` (+${others} more step${others > 1 ? 's' : ''})` : ''} · ${aheadWhen(waits.st.ahead)}`;
+}
+function headStartReminder(meal) { // today's card on Meals: until every early step is ticked
+  const t = state.ticks[meal.id] || {}; if (headStart(meal).every((y) => t[y.st.key])) return '';
+  const sum = headStartSummary(meal);
+  return sum ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(sum)}</span></p>` : '';
 }
 function prepTasks(meal) {
   const tasks = new Map();

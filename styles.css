@@ -719,3 +719,4 @@ body:has(.shopfoot) .toast { bottom: calc(196px + env(safe-area-inset-bottom)); 
 .dish-head.comb-head .section-label { color: var(--text); }
 .card.combined .ingfold > summary h3, .card.combined > h3 { margin: 16px 0 6px; }
 .card.combined h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; }
+.aheadsum { margin: 6px 0 2px; font-weight: 650; color: var(--warn-ink); }

@@ -8,7 +8,7 @@ import sys
 
 import openpyxl
 
-SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made"}
+SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made", "ahead"}
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
