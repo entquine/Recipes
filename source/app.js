@@ -1268,8 +1268,7 @@ function suggestions(day) {
 }
 
 // whether the folded "Usually have" card is open, kept across redraws (ticking redraws the list)
-let staplesOpen = false, shoppedOpen = false;
-document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.shoppedcard')) shoppedOpen = e.target.open; }, true);
+let staplesOpen = false;
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.staples')) staplesOpen = e.target.open; }, true);
 // Staples: items we usually have. They sit in their own folded card and don't count toward the list.
 const stapleId = (name) => 's-' + slug(name);
@@ -1439,9 +1438,6 @@ function renderAutoShopping(m) {
     const rows = mine.map(row).join('') + extrasListHtml(sec);
     if (rows) h += `<section class="card"><p class="section-label">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
-  const got = lines.filter((l) => l.mealDone && !isStaple(l.item)).sort((a, b) => a.item.localeCompare(b.item));
-  if (got.length) h += `<details class="card shoppedcard"${shoppedOpen ? ' open' : ''}><summary class="section-label">Already shopped for (${got.length})</summary>
-    <p class="small">Items for meals you marked as shopped for. They don't count toward the list.</p><ul class="list">${got.map(row).join('')}</ul></details>`;
   const staples = lines.filter((l) => isStaple(l.item)).sort((a, b) => a.item.localeCompare(b.item));
   const stapleExtras = extrasListHtml(null, true);
   if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>

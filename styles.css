@@ -758,4 +758,3 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 /* cook mode: un-tick the current step */
 .cw-untick { display: none; margin-top: 10px; width: auto; padding: 8px 16px; font-size: 15px; }
 .cw-step.ticked.cw-d0 .cw-untick { display: inline-flex; }
-.card.shoppedcard summary { cursor: pointer; margin: 0; }
