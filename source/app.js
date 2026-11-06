@@ -1709,7 +1709,7 @@ function renderMeal(id) {
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
-    h += `<details class="card plan" id="${S}-plan" data-autofold="plan" data-meal="${esc(S)}"${planStarted(meal) ? '' : ' open'}><summary class="section-label">The plan</summary><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2>`;
+    h += `<details class="card plan" id="${S}-plan" data-autofold="plan" data-meal="${esc(S)}"${planStarted(meal) ? '' : ' open'}><summary class="plan-sum"><p class="section-label">The plan</p><h2>Total time: ${esc(meal.planTotal || fmtDuration(meal.totalMin))}</h2></summary>`;
     if (meal.planFirst) h += `<div class="startfirst"><strong>${ICONS.warn} Start first</strong>${esc(meal.planFirst)}</div>`;
     if (meal.starts.length > 1) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
@@ -1744,7 +1744,7 @@ function renderMeal(id) {
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     const pk = dishKey(d);
-    h += `<section class="card dish" id="${d.anchor}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head c${d.color}"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
+    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${openIngs.has(d.anchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>`;
@@ -1777,7 +1777,16 @@ function autoFold() {
     if (done && lastFoldDone[el.id] === false) el.open = false;
     lastFoldDone[el.id] = done;
   });
+  // each dish card folds once all its steps are ticked (and starts folded when they already are)
+  document.querySelectorAll('.card.dish[data-dishkeys]').forEach((el) => {
+    const t = state.ticks[el.dataset.meal] || {}, keys = el.dataset.dishkeys.split(',').filter(Boolean);
+    const done = keys.length > 0 && keys.every((k) => t[k]);
+    if (done && lastFoldDone[el.id] !== true) setDishFold(el, true);
+    lastFoldDone[el.id] = done;
+  });
 }
+const foldedDishes = new Set(); // dish cards folded by hand or when finished; kept while the app is open
+function setDishFold(el, fold) { el.classList.toggle('folded', fold); if (fold) foldedDishes.add(el.id); else foldedDishes.delete(el.id); }
 document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) openIngs.add(el.dataset.ings); else openIngs.delete(el.dataset.ings); } }, true);
 // "STEPS  2/37 ▬▬▬" on one line: how many of these steps are ticked (kept up to date by refreshTicks)
 const stepsHeadHtml = (meal, keys) => `<div class="stepshead"><h3>Steps</h3><span class="stepprog" data-stepscope="${esc(meal.id)}" data-stepkeys="${esc(keys.join(','))}"><span class="sp-n"></span><span class="bar"><b></b></span></span></div>`;
@@ -2064,6 +2073,7 @@ document.addEventListener('click', async (e) => {
     const target = document.getElementById(jump.dataset.jump) || document.getElementById(jump.dataset.jump.replace(/-s\d+$/, ''));
     if (target) {
       for (let f = target.closest('details'); f; f = f.parentElement && f.parentElement.closest('details')) f.open = true; // open any folded card it's in
+      { const dc = target.closest('.card.dish.folded'); if (dc) setDishFold(dc, false); }
       // a dish column that scrolls on its own (wide screens): scroll inside it; otherwise scroll the page
       // All, and the first dish in By dish view: bring the By dish / Combined switch into view too
       const seg = document.querySelector('.viewseg');
@@ -2082,6 +2092,8 @@ document.addEventListener('click', async (e) => {
     }
     return;
   }
+  const dh = e.target.closest('.card.dish > .dish-head.foldable');
+  if (dh && !e.target.closest('button, a')) { const card = dh.parentElement; setDishFold(card, !card.classList.contains('folded')); return; }
   const wk = e.target.closest('[data-week]');
   if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
   const star = e.target.closest('[data-rate]');

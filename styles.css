@@ -733,3 +733,19 @@ details.combined > summary .comb-head { position: relative; padding-right: 26px;
 details.combined > summary .comb-head::after { content: "▾"; position: absolute; right: 0; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 18px; }
 details.combined:not([open]) > summary .comb-head::after { content: "▸"; }
 details.combined[open] > .dishbtns { margin: 10px 0 0 18px; }
+/* dish cards fold from their heading, like the combined card */
+.dish-head.foldable { position: relative; padding-right: 26px; cursor: pointer; }
+.dish-head.foldable > h2::after { content: "▾"; position: absolute; right: 0; top: 14px; color: var(--muted); font-size: 18px; font-weight: 400; }
+.card.dish.folded > h2::after, .card.dish.folded > .dish-head.foldable > h2::after { content: "▸"; }
+.card.dish.folded > :not(.dish-head) { display: none; }
+.card.dish.folded > .dish-head { margin-bottom: 0; }
+.card.dish.folded .dish-head .makes, .card.dish.folded .cookdishbtn { display: none; }
+.card.dish.folded .dishbtns:not(:has(.photobtn:not([hidden]))) { display: none; }
+/* the plan folds from its heading and total time */
+details.plan > summary.plan-sum { list-style: none; position: relative; padding-right: 26px; }
+details.plan > summary.plan-sum::-webkit-details-marker { display: none; }
+details.plan > summary.plan-sum .section-label { margin: 0 0 2px; }
+details.plan > summary.plan-sum h2 { margin: 0; }
+details.plan > summary.plan-sum::after { content: "▾"; position: absolute; right: 0; top: -2px; color: var(--muted); font-size: 18px; }
+details.plan:not([open]) > summary.plan-sum::after { content: "▸"; }
+details.plan[open] > summary.plan-sum { margin-bottom: 10px; }
