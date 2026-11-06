@@ -17,7 +17,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Column | Meaning |
 |---|---|
 | Recipe | Dish name, e.g. `Garlic Butter Ribeye Steak Bites` |
-| Type | `Main` or `Side`. Each meal has exactly one Main and usually one or two Sides |
+| Type | `Main`, `Side` or `Dessert`. Each meal has exactly one Main and usually one or two Sides (a meal may also include a Dessert, shown last). Use `Dessert` for sweets and baking (muffins, cookies, cakes, pies): a dessert is never a Main |
 | Meal | Groups dishes into a meal, e.g. `4 Steak Bites`. The leading number sets the order in the app and is hidden. New meals take the next number |
 | Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, or `Made` |
 | Group | Optional ingredient sub-group, e.g. `Teriyaki sauce` |
@@ -48,7 +48,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 - The checker reports missing, mixed or duplicate IDs.
 
 ### Tab "Archive" (past recipes): one entry per dish
-Same columns as **Recipes**, but each entry is a **single dish**: one Main, or one Side on its own. The entry's **Meal** value is its key, shown in the app under **Planning → Recipe Book** with a Main or Side label (from **Type**). (In the app, the **Meals** tab lists what's planned: Recipes-tab meals not made yet, plus anything on the calendar for today or later; the Recipe Book shows every recipe, current and archived, each dish (main or side) on its own line, grouped as Planned / Made before / Want to try, with how many times each has been made.) Archived entries keep their ratings and calendar history, open as full recipes, and can be planned again from the calendar.
+Same columns as **Recipes**, but each entry is a **single dish**: one Main, one Side, or one Dessert on its own (a Dessert entry has Meal = its own name, no number, and may have Plan total / Plan rows for its own steps, like a Main). The entry's **Meal** value is its key, shown in the app under **Planning → Recipe Book** with a Main or Side label (from **Type**). (In the app, the **Meals** tab lists what's planned: Recipes-tab meals not made yet, plus anything on the calendar for today or later; the Recipe Book shows every recipe, current and archived, each dish (main or side) on its own line, grouped as Planned / Made before / Want to try, with how many times each has been made.) Archived entries keep their ratings and calendar history, open as full recipes, and can be planned again from the calendar.
 - **Archive a current meal** ("archive the pot pie") splits it into one entry per dish:
   - The **Main** keeps its **ID** (that's what carries the ratings and calendar history over) and, by convention, its original **Meal** name, leading number included (e.g. `2 Chicken Pot Pie`). Keep its Makes / Plan total / Plan first / Plan rows, but **rewrite the Plan rows to drop the sides**: remove any `Side step` references and any steps, times or "start first" notes that only concern a side. Renumber the Plan `Order` if rows are removed.
   - Each **Side** becomes its own entry with **Meal = the dish's own name** (e.g. `Roasted Broccoli`) and no number, keeping its own **ID**. A Side keeps its Makes, Ingredient, Step and Tip rows, and has **no Plan rows**.
@@ -75,6 +75,7 @@ The app shows how many times each recipe has been made: every past day it was on
 The app's **Planning** tab collects recipe ideas from both people: a recipe name and an optional link. Its "Copy for recipe Claude" button makes a message starting "Recipe ideas from the app's Planning tab". When the owner pastes one, add each idea to the **Archive** tab (not Recipes), so it shows in the app's Recipe Book under **Want to try** and doesn't go on the Planned list or the shopping list until it's put on the calendar:
 - Add the idea's **Main** as its own Archive entry: **Meal = the dish's own name** (no number), new Dish ID, every column filled (Makes, Ingredient with all Shop columns, Step with Timer and Prep task / Prep amount, Tip). A Main may have Plan total / Plan rows for its own steps only (no `Side step` references).
 - If the recipe comes with a side (or a side would clearly suit it), add that side as a **separate** Archive entry the same way (Meal = the side's own name, Type `Side`, no Plan rows). Don't pair it with the Main.
+- A sweet or baked idea (muffins, cookies, cake) is a **Dessert**: add it as its own Archive entry with Type `Dessert` (Plan rows for its own steps are fine, e.g. bake times) and no side.
 - For a link, fetch the page and follow that recipe; if it can't be read, say so. For a vague idea, propose a recipe and confirm before adding it.
 - **Use the idea's name as (or inside) the dish's Recipe name** (e.g. idea "Fish tacos" → `Baja Fish Tacos`): the app ticks an idea off as "In the Recipe Book" when a dish name contains it.
 - Only put an idea in the Recipes tab (as a numbered meal with sides and a full Plan) if the owner asks to plan it as a meal now.

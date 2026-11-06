@@ -59,8 +59,8 @@ def check_meals(ws, tab, errors, warnings):
             errors.append(f"{where}: Recipe and Section are required"); continue
         if str(section).strip().lower() not in SECTIONS:
             errors.append(f"{where}: unknown Section {section!r}")
-        if str(typ or "").strip() not in ("Main", "Side"):
-            errors.append(f"{where}: Type must be Main or Side, found {typ!r}")
+        if str(typ or "").strip() not in ("Main", "Side", "Dessert"):
+            errors.append(f"{where}: Type must be Main, Side or Dessert, found {typ!r}")
         m = meals.setdefault(str(meal or recipe).strip(), {})
         d = m.setdefault(str(recipe).strip(), {"type": str(typ or "").strip(), "steps": 0, "ings": 0, "plan": 0, "planrows": 0, "sideref": False, "ids": set()})
         rid = str(rid or "").strip()
@@ -120,6 +120,7 @@ def check_meals(ws, tab, errors, warnings):
     for meal, dishes in meals.items():
         mains = [n for n, d in dishes.items() if d["type"] == "Main"]
         sides = [n for n, d in dishes.items() if d["type"] == "Side"]
+        desserts = [n for n, d in dishes.items() if d["type"] == "Dessert"]
         if tab == "Archive":
             # Archive: one entry per dish. An entry is a single Main or a single Side.
             if len(dishes) != 1:
@@ -127,7 +128,7 @@ def check_meals(ws, tab, errors, warnings):
             for n in sides:
                 if dishes[n]["plan"] or dishes[n]["planrows"]:
                     errors.append(f"Archive entry {meal!r}: a Side can't have Plan rows")
-            for n in mains:
+            for n in mains + desserts:
                 if dishes[n]["sideref"]:
                     warnings.append(f"Archive entry {meal!r}: Plan text still mentions a side step; rewrite it without the side")
         else:

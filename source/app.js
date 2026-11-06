@@ -124,7 +124,7 @@ function buildMeals(recipes) {
     let meal = meals.get(mealName);
     if (!meal) { meal = { name: mealName, title: displayMealName(mealName), id: 'm-' + slug(mealName), dishes: new Map(), planTotal: '', planFirst: '', plan: [] }; meals.set(mealName, meal); }
     let dish = meal.dishes.get(recipe);
-    if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
+    if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : /dessert/i.test(r.type) ? 'Dessert' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
     if (!dish.id && r.id) dish.id = r.id;
     if (/^(yes|y|true)$/i.test(r['hide from recipe book'] || '')) dish.hideBook = true; // simple sides kept out of the Recipe Book
     const order = r.order === '' ? NaN : parseFloat(r.order);
@@ -148,7 +148,8 @@ function buildMeals(recipes) {
 
   const out = [];
   for (const meal of meals.values()) {
-    const dishes = [...meal.dishes.values()].sort((a, b) => (a.type === b.type ? a.seq - b.seq : a.type === 'Main' ? -1 : 1));
+    const ORDER = { Main: 0, Side: 1, Dessert: 2 };
+    const dishes = [...meal.dishes.values()].sort((a, b) => ORDER[a.type] - ORDER[b.type] || a.seq - b.seq);
     meal.dishes = dishes;
     const used = new Map();
     const uniq = (base) => { const n = (used.get(base) || 0) + 1; used.set(base, n); return hash(n > 1 ? `${base}#${n}` : base); };
@@ -1222,7 +1223,7 @@ function lastMadeText(meal, dish = meal.main) {
 // Suggestions for a day: well rated, and not had in a while (never made counts as a while)
 function suggestions(day) {
   const today = keyToDate(dayKey(new Date()));
-  return allMeals().filter((x) => x.kind !== 'Side' && !plannedElsewhere(x.rid, day) && planKey(state.plan[day]) !== x.rid)
+  return allMeals().filter((x) => x.kind === 'Main' && !plannedElsewhere(x.rid, day) && planKey(state.plan[day]) !== x.rid)
     .map((x) => { const k = lastMade(x), ri = ratingInfo(x.name); const weeks = k ? (today - keyToDate(k)) / 604800000 : 8;
       return { x, score: (ri.done ? ri.avg : 3.5) + Math.min(weeks, 8) * 0.3 }; })
     .sort((a, b) => b.score - a.score).slice(0, 3).map((o) => o.x);
@@ -1330,7 +1331,7 @@ function amountText(parts) {
   if (loose && !bits.length) bits.push('as needed');
   return bits.join(' + ');
 }
-const mealLabel = (m) => (m.kind === 'Side' ? m.main.name : m.title);
+const mealLabel = (m) => (m.kind !== 'Main' ? m.main.name : m.title);
 function toggleLine(key) {
   const l = shopLines().find((x) => x.key === key); if (!l) return;
   const today = dayKey(new Date()), changes = {};
@@ -1413,7 +1414,7 @@ function planningSwitch(active) {
 // Planned = on the calendar for today or later, or a current meal (Recipes tab) that hasn't been made yet.
 // Used by the Meals list, the Recipe Book's Planned section and the shopping list.
 const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal));
-const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : 0}">${meal.kind === 'Side' ? 'Side' : 'Main'}</span>`;
+const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : 0}">${meal.kind}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">${ICONS.cal} ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
@@ -1447,8 +1448,8 @@ function renderPast() {
   if (!m) { view().innerHTML = '<p class="loading">Loading recipes…</p>'; return; }
   let h = banners() + planningSwitch('book');
   // one entry per dish: current meals give their main and each side; archived entries are one dish already
-  const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, side: d.type === 'Side' }))),
-    ...(m.past || []).map((x) => ({ meal: x, dish: x.main, side: x.kind === 'Side' }))].filter((e) => !e.dish.hideBook);
+  const all = [...m.meals.flatMap((meal) => meal.dishes.map((d) => ({ meal, dish: d, kind: d.type }))),
+    ...(m.past || []).map((x) => ({ meal: x, dish: x.main, kind: x.kind }))].filter((e) => !e.dish.hideBook);
   all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = isPlannedMeal(e.meal); // on the calendar soon, or its meal is on the Planned list and hasn't been made yet (a side skipped when the meal was made goes to Want to try)
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
   const groups = [
@@ -1462,7 +1463,7 @@ function renderPast() {
     const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish, id === 'planned')).join('')}` : '');
     const sortRow = id === 'made' && list.length > 1 ? `<div class="booksort">${BOOK_SORTS.map(([v, label]) => `<button class="filter${ls.get('book-sort', 'rated') === v ? ' on' : ''}" data-booksort="${v}">${label}</button>`).join('')}</div>` : '';
     h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>${sortRow}
-      <ul class="booklist">${part('Mains', list.filter((e) => !e.side))}${part('Sides', list.filter((e) => e.side))}</ul></details>`;
+      <ul class="booklist">${part('Mains', list.filter((e) => e.kind === 'Main'))}${part('Sides', list.filter((e) => e.kind === 'Side'))}${part('Desserts', list.filter((e) => e.kind === 'Dessert'))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
   h += '<p class="small staplehint">Tip: tap ⋯ (or press and hold a recipe) to rate it, add a photo or change how many times it’s been made.</p>';
@@ -1690,7 +1691,7 @@ function renderCalendar() {
           const ri = ratingInfo(name), rec = ri.record;
           const main = meal ? meal.main.name : rec && rec.main ? rec.main : displayMealName(name);
           const sides = meal ? meal.sides.map((x) => x.name) : rec && rec.sides ? rec.sides : [];
-          return `${meal && meal.kind === 'Side' ? kindBadge(meal) : ''}<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
+          return `${meal && meal.kind !== 'Main' ? kindBadge(meal) : ''}<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
         })()
         : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}</button>
       ${meal && k <= today ? (() => { const ri = ratingInfo(meal.name); return `<button class="ratebtn${ri.mine ? ' voted' : ''}" data-rateday="${k}" aria-label="Rate this meal">${ri.mine ? `★ ${ri.mine}` : '☆ Rate'}</button>`; })() : ''}
