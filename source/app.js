@@ -1700,7 +1700,7 @@ function renderMeal(id) {
   const S = meal.id;
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
-    (meal.combined && ls.get('combined-view', true) ? '<a href="#" class="jump-all" data-jump="' + S + '-combined">All</a>' : '') +
+    (meal.combined ? '<a href="#" class="jump-all" data-jump="' + S + '-combined">All</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
@@ -2077,6 +2077,11 @@ document.addEventListener('click', async (e) => {
   const jump = e.target.closest('[data-jump]');
   if (jump) {
     e.preventDefault();
+    if (jump.classList.contains('jump-all') && !document.getElementById(jump.dataset.jump)) { // in By dish view: switch to Combined, then go there
+      ls.set('combined-view', true); const y = scrollY; route(); scrollTo(0, y);
+      const again = document.querySelector('.jump-all'); if (again) setTimeout(() => again.click(), 30);
+      return;
+    }
     const target = document.getElementById(jump.dataset.jump) || document.getElementById(jump.dataset.jump.replace(/-s\d+$/, ''));
     if (target) {
       for (let f = target.closest('details'); f; f = f.parentElement && f.parentElement.closest('details')) f.open = true; // open any folded card it's in
