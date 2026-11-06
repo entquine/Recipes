@@ -33,6 +33,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Prep task | **Step rows only, optional.** Marks a step that's pure preparation and can be done before cooking starts (chopping, mincing, zesting, measuring a sauce). A short, generic task name, e.g. `Mince garlic`, `Chop parsley`, `Zest and juice lemon`, `Whisk teriyaki sauce`. Use the **same wording** across dishes so the app combines them |
 | Prep amount | **Step rows only, optional.** What this step should produce, as the recipe needs it, since it's all the Prep list shows: e.g. `2 cloves`, `¼ cup`, `1 tsp zest + 2 tbsp juice (1 lemon)` (not just `1 lemon`), and for a sauce the quantities going in. If the step preps more than one thing (garlic and parsley), name both in the Prep task (`Mince garlic and chop parsley`) and the amount (`2 cloves + 1 tbsp parsley`) |
 | Hide from Recipe Book | **Optional.** `yes` on a dish's rows keeps that dish out of the app's Recipe Book list and its counts. It still shows in its meal on the Planned list (and on the calendar, shopping list, etc.). Meant for simple sides like "rice, as directed on the package" that are worth offering as a side but not worth listing as a recipe. The checker warns if it's set on a Main |
+| Combined order | **Step rows only, optional.** For a meal with sides: this step's position when cooking **all the dishes together**, numbered 1, 2, 3 … across the Main and its sides (e.g. potatoes step 1 = `1`, chicken step 1 = `3`). Fill it on **every** step of the meal or none. The app then offers a **By dish / Combined** switch on the recipe page and an **All** tab in cook mode, showing the same steps (same ticks) in this order |
 
 - Plan rows (`Plan total`, `Plan first`, `Plan`) go on the **Main** dish's rows only.
 - `Plan first` says which dish to start first. This matters when a side takes longer than the main.
@@ -80,6 +81,9 @@ The app's **Planning** tab collects recipe ideas from both people: a recipe name
 - **Use the idea's name as (or inside) the dish's Recipe name** (e.g. idea "Fish tacos" → `Baja Fish Tacos`): the app ticks an idea off as "In the Recipe Book" when a dish name contains it.
 - Only put an idea in the Recipes tab (as a numbered meal with sides and a full Plan) if the owner asks to plan it as a meal now.
 Then check and push as usual, and list the dishes added.
+
+### Combined order (cooking all the dishes together)
+For every meal in the Recipes tab that has sides, fill the **Combined order** column on every Step row of every dish in the meal: the order you'd actually do them in when cooking the whole meal at once, following the Plan rows' timing (start the slowest dish first, slot the quick steps in while things roast or simmer). Number across the whole meal (1, 2, 3 …; decimals like `4.5` are fine for inserting later). Prep steps that are on the Prep list can come first. Don't change the steps themselves: the combined view reuses them, so their ticks stay shared. Archive entries (single dishes) don't need it.
 
 ### Prep list
 Steps with a **Prep task** appear in a "Prep list" at the top of the meal, gathered across the main and its sides and combined by task name, e.g. "Mince garlic: 2 cloves · Chicken + 3 cloves · Garlic bread". Ticking a prep task ticks those steps in each dish. Only mark steps that can really be done up front: not cooking steps, and not prep that has to happen mid-cook (e.g. "slice the rested steak").

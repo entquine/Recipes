@@ -138,7 +138,7 @@ function buildMeals(recipes) {
         if (!g) { g = { name: r.group, items: [] }; dish.groups.push(g); }
         g.items.push({ amount: r.amount, text: r.text, shop: shopInfo(r) }); break;
       }
-      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', seq }); break;
+      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
@@ -171,6 +171,11 @@ function buildMeals(recipes) {
     const mins = meal.plan.map((p) => p.min).filter((m) => m != null);
     meal.totalMin = mins.length ? Math.max(...mins) : null;
     meal.keys = dishes.flatMap((d) => d.steps.map((s) => s.key));
+    // Combined plan: every step of every dish in cooking order (the spreadsheet's "Combined order" column).
+    // The same steps (same ticks) as the dish-by-dish view; steps without a number go last, dish by dish.
+    const all = dishes.flatMap((d, di) => d.steps.map((st) => ({ d, s: st, di })));
+    meal.combined = all.some((x) => !isNaN(x.s.combo)) && dishes.length > 1
+      ? all.sort((a, b) => (isNaN(a.s.combo) ? 1e9 : a.s.combo) - (isNaN(b.s.combo) ? 1e9 : b.s.combo) || a.di - b.di || a.s.num - b.s.num) : null;
     computeStarts(meal);
     out.push(meal);
   }
@@ -1065,9 +1070,18 @@ function alarm(label, mine) {
 
 // Cook mode: one step at a time, big text
 let cook = null; // { meal, dish }
+// Cook mode's "All" tab (dish -1): the combined order as one list, each step still the dish's own (same ticks).
+function combinedDish(meal) {
+  return { name: 'All dishes', type: 'Combined', color: 0, anchor: `${meal.id}-combined`, combined: true,
+    steps: meal.combined.map((x, i) => ({ ...x.s, num: i + 1, dishNum: x.s.num, dish: x.d })),
+    groups: meal.dishes.flatMap((x) => x.groups.map((g) => ({ name: `${cookTabName(meal, x)}${g.name ? ' · ' + g.name : ''}`, items: g.items }))) };
+}
+const cookDishOf = (meal) => (cook.dish === -1 && meal.combined ? combinedDish(meal) : meal.dishes[Math.max(0, cook.dish)]);
+const stepDish = (d, st) => (st.dish ? [st.dish, { ...st, num: st.dishNum }] : [d, st]); // the real dish and step behind a combined step
 function openCook(mealId, dish = 0) {
   const meal = mealById(mealId); if (!meal) return;
-  cook = { meal: meal.id, dish: Math.min(dish, meal.dishes.length - 1), step: null };
+  if (dish === -1 && !meal.combined) dish = 0;
+  cook = { meal: meal.id, dish: dish === -1 ? -1 : Math.min(dish, meal.dishes.length - 1), step: null };
   renderCook();
 }
 function renderCook() {
@@ -1076,7 +1090,7 @@ function renderCook() {
   const meal = mealById(cook.meal); if (!meal) { cook = null; renderCook(); return; }
   if (!el) { el = document.createElement('div'); el.id = 'cookmode'; document.body.appendChild(el); }
   document.body.classList.add('cooking');
-  const d = meal.dishes[cook.dish], ticks = state.ticks[meal.id] || {}, n = d.steps.length;
+  const d = cookDishOf(meal), ticks = state.ticks[meal.id] || {}, n = d.steps.length;
   if (cook.step == null) { const i = d.steps.findIndex((x) => !ticks[x.key]); cook.step = i < 0 ? n : i; }
   const others = meal.dishes.length > 1 ? `<div class="cooknext"><p class="small">Cook another part of the meal:</p>${meal.dishes.map((x, i) => { if (i === cook.dish || !x.steps.length) return '';
     const left = x.steps.filter((st2) => !ticks[st2.key]).length;
@@ -1084,13 +1098,13 @@ function renderCook() {
   // A wheel of steps: the current one in the middle at full size; the ones around it smaller and fainter
   // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
-      <div class="cooktabs">${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(cookTabName(meal, x))}</button>`).join('')}</div></div>
+      <div class="cooktabs">${meal.combined ? `<button class="chip-all${cook.dish === -1 ? ' on' : ''}" data-cook="dish:-1">All</button>` : ''}${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(cookTabName(meal, x))}</button>`).join('')}</div></div>
     <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span><b class="cd-name">${esc(d.name)}</b></p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
     <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
       <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
       ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
-        <p class="cookcount">Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
+        <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
         <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}</div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
@@ -1177,18 +1191,18 @@ function onWheelScroll() { // the step nearest the middle becomes the current on
 }
 function cookAction(a) {
   if (!cook) return;
-  const meal = mealById(cook.meal); const d = meal.dishes[cook.dish];
+  const meal = mealById(cook.meal); const d = cookDishOf(meal);
   if (a === 'ings') { $('#cooksheet').hidden = false; return; }
   if (a === 'ingsclose') { $('#cooksheet').hidden = true; return; }
   if (a === 'close') { // back to the recipe, at the step you were on
-    const cur = d.steps[cook.step], anchor = cur ? `${d.anchor}-s${cur.num}` : d.anchor; cook = null; renderCook(); route();
+    const cur = d.steps[cook.step], anchor = cur ? (cur.dish ? `${cur.dish.anchor}-s${cur.dishNum}` : `${d.anchor}-s${cur.num}`) : d.combined ? `${meal.id}-combined` : d.anchor; cook = null; renderCook(); route();
     const sec = document.getElementById(anchor); if (sec) scrollTo(0, sec.getBoundingClientRect().top + scrollY - 120);
     return;
   }
   if (a.startsWith('dish:')) { cook.dish = +a.slice(5); cook.step = null; renderCook(); return; }
   if (a === 'back') { wheelTo(Math.max(0, cook.step - 1), true); return; }
   const st = d.steps[cook.step]; if (!st) return;
-  if (a === 'timer') { timerTap(timerLabel(d, st), stepMinutes(st.text), meal.id, st.key); return; }
+  if (a === 'timer') { timerTap(timerLabel(...stepDish(d, st)), stepMinutes(st.text), meal.id, st.key); return; }
   if (a === 'done') { if (!(state.ticks[meal.id] || {})[st.key]) setTick(meal.id, st.key, true); wheelTo(cook.step + 1, true); }
 }
 
@@ -1674,6 +1688,11 @@ function renderMeal(id) {
   h += prepCardHtml(meal);
   const prepOf = new Map(); prepTasks(meal).forEach((t, ti) => t.parts.forEach((x) => prepOf.set(x.key, `${meal.id}-p${ti}`)));
 
+  // ---- steps all together, in cooking order (when the meal has a combined order and that view is chosen)
+  const combinedView = !!meal.combined && ls.get('combined-view', true);
+  if (meal.combined) h += `<nav class="seg viewseg" aria-label="Steps"><a href="#" data-stepview="split" class="${combinedView ? '' : 'on'}">By dish</a><a href="#" data-stepview="combined" class="${combinedView ? 'on' : ''}">Combined</a></nav>`;
+  if (combinedView) h += `<section class="card combined" id="${S}-combined"><p class="section-label">All steps, in order</p><ul class="list">${meal.combined.map((x) => stepItemHtml(meal, x.d, x.s, prepOf, true)).join('')}</ul></section>`;
+
   // ---- dishes (side by side on wide screens)
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
@@ -1689,10 +1708,7 @@ function renderMeal(id) {
       }
       h += '</details>';
     }
-    if (d.steps.length) {
-      h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => itemHtml(S, s.key,
-        `<span class="body"><span class="num">${esc(s.num)}.</span>${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>${stepMinutes(s.text) ? `<button class="timerbtn tb-side" data-timer="${stepMinutes(s.text)}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${stepMinutes(s.text)} minute timer">${ICONS.timer}<span>${stepMinutes(s.text)}m</span></button>` : ''}`, stepMinutes(s.text) ? 'hastimer' : '', `${d.anchor}-s${s.num}`)).join('') + '</ul>';
-    }
+    if (d.steps.length && !combinedView) h += '<h3>Steps</h3><ul class="list">' + d.steps.map((s) => stepItemHtml(meal, d, s, prepOf, false)).join('') + '</ul>';
     h += '</section>';
   }
   h += '</div>';
@@ -1715,6 +1731,13 @@ function autoFold() {
   });
 }
 document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches && el.matches('details.ingfold')) { if (el.open) openIngs.add(el.dataset.ings); else openIngs.delete(el.dataset.ings); } }, true);
+// One step of a recipe. In the combined list each step is tagged with its dish and numbered as in that dish.
+function stepItemHtml(meal, d, s, prepOf, tagged) {
+  const mins = stepMinutes(s.text);
+  return itemHtml(meal.id, s.key,
+    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : ''}`,
+    mins ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
+}
 function shortName(d) { // short label for the jump bar
   const n = d.name.replace(/\s+with\s+.*$/i, '');
   return n.length > 26 ? n.slice(0, 24) + '…' : n;
@@ -2018,7 +2041,7 @@ document.addEventListener('click', async (e) => {
   const rd = e.target.closest('[data-ratedismiss]');
   if (rd) { const d = ls.get('rate-dismissed', {}); d[rd.dataset.ratedismiss] = 1; ls.set('rate-dismissed', d); route(); return; }
   const tc = e.target.closest('[data-tonightcook]');
-  if (tc) { e.preventDefault(); const id = tc.dataset.tonightcook, i = +tc.dataset.dish; addEventListener('hashchange', () => openCook(id, i), { once: true }); location.hash = '#/meal/' + id; return; }
+  if (tc) { e.preventDefault(); const id = tc.dataset.tonightcook, tm = mealById(id), i = tm && tm.combined && ls.get('combined-view', true) ? -1 : +tc.dataset.dish; addEventListener('hashchange', () => openCook(id, i), { once: true }); location.hash = '#/meal/' + id; return; }
   const pd = e.target.closest('[data-pickday]');
   if (pd) { e.preventDefault(); const meal = mealById(pd.dataset.pickday); if (meal) pickDayFor(meal); return; }
   const hk = e.target.closest('[data-hintok]');
@@ -2058,6 +2081,8 @@ document.addEventListener('click', async (e) => {
   if (dn) { const id = dn.dataset.delnote, x = state.notes[id]; if (x) { writeNotes({ [id]: null }); undoToast('Note deleted', () => writeNotes({ [id]: x })); } return; }
   const bsrt = e.target.closest('[data-booksort]');
   if (bsrt) { ls.set('book-sort', bsrt.dataset.booksort); route(); return; }
+  const sv = e.target.closest('[data-stepview]');
+  if (sv) { e.preventDefault(); ls.set('combined-view', sv.dataset.stepview === 'combined'); route(); return; }
   const pf = e.target.closest('[data-pastfilter]');
   if (pf) { ls.set('past-filter', pf.dataset.pastfilter); route(); return; }
   const rm = e.target.closest('[data-ratemeal]');

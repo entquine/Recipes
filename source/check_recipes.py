@@ -12,7 +12,7 @@ SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
-SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount", "Hide from Recipe Book"]
+SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount", "Hide from Recipe Book", "Combined order"]
 SHOP_SECTIONS = {"Meat", "Produce", "Dairy", "Frozen", "Bakery", "Pantry", "Other"}
 SHOP_SEEN = {}     # shop item (lower case) -> (section, unit set, where)
 SHOP_MISSING = []  # dishes with ingredients that have no shopping details yet
@@ -51,7 +51,7 @@ def check_meals(ws, tab, errors, warnings):
         errors.append(f"{tab}: columns after ID must be {SHOP_COLS_NEW}, found {extra}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt, hide = (list(row) + [None] * 17)[:17]
+        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt, hide, combo = (list(row) + [None] * 18)[:18]
         if not any(row):
             continue
         where = f"{tab} row {i}"
@@ -107,6 +107,17 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: has a Prep amount but no Prep task")
             elif len(str(prep)) > 40:
                 warnings.append(f"{where}: Prep task is long; keep it short like 'Mince garlic'")
+        if combo not in (None, ""):
+            if s != "step":
+                errors.append(f"{where}: Combined order is only used on Step rows")
+            else:
+                try:
+                    float(combo)
+                    m.setdefault("_combo", []).append((float(combo), where))
+                except (TypeError, ValueError):
+                    errors.append(f"{where}: Combined order must be a number, found {combo!r}")
+        elif s == "step":
+            m.setdefault("_nocombo", []).append(where)
         if hide not in (None, ""):
             hv = str(hide).strip().lower()
             if hv not in ("yes", "no", "y", "n", "true", "false"):
@@ -117,7 +128,14 @@ def check_meals(ws, tab, errors, warnings):
             check_shop(where, tab, str(recipe).strip(), s_item, s_qty, s_unit, s_sec, errors)
         elif any(v not in (None, "") for v in (s_item, s_qty, s_unit, s_sec)):
             warnings.append(f"{where}: shopping columns are only used on Ingredient rows")
-    for meal, dishes in meals.items():
+    for meal, dishes in list(meals.items()):
+        combos, missing = dishes.pop("_combo", []), dishes.pop("_nocombo", [])
+        if combos:
+            if missing:
+                warnings.append(f"Meal {meal!r}: has a Combined order but {len(missing)} step(s) don't (first: {missing[0]}); give every step a number")
+            nums = [n for n, _ in combos]
+            if len(nums) != len(set(nums)):
+                warnings.append(f"Meal {meal!r}: two steps share the same Combined order number")
         mains = [n for n, d in dishes.items() if d["type"] == "Main"]
         sides = [n for n, d in dishes.items() if d["type"] == "Side"]
         desserts = [n for n, d in dishes.items() if d["type"] == "Dessert"]
