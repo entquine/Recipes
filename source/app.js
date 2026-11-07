@@ -1531,7 +1531,7 @@ function bookRowHtml(meal, dish, inPlanned) {
   const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
   const di = meal.dishes.indexOf(dish), th = state.thumbs[dishKey(dish)];
-  return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
+  return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}${meal.dishes.length > 1 ? '/' + di : ''}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
     <span class="bk-name">${esc(dish.name)}</span>${starsHtml}
     <span class="bk-meta">${meta}</span></a><button class="bookmore" data-bookmenu="1" data-meal="${esc(meal.id)}" data-dish="${di}" aria-label="More for ${esc(dish.name)}">⋯</button></li>`;
 }
@@ -1788,10 +1788,13 @@ function prepCardHtml(meal) {
       <button class="prepgo" data-prepgo="${esc(prepByDish(t).map(([d]) => `${d.anchor}-s${t.parts.find((x) => x.dish === d).num}|${d.type + ': ' + d.name.replace(/;|\|/g, ' ')}`).join(';'))}" aria-label="Go to the step">↓</button></li>`).join('')}</ul></details>`;
 }
 
-function renderMeal(id) {
-  const meal = mealById(id);
-  if (!meal) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
-  setTitle(meal.title, true); setTab('meals');
+function renderMeal(id, only) {
+  const full = mealById(id);
+  if (!full) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
+  // #/meal/<id>/<n>: just one dish of the meal (from the Recipe Book). Same ticks; the meal's plan and rating stay with the whole meal.
+  const one = only != null && full.dishes.length > 1 ? full.dishes[+only] : null;
+  const meal = one ? Object.assign(Object.create(full), { dishes: [one], combined: null, starts: [], planTotal: '', planFirst: '', aheadNotes: one === full.main ? full.aheadNotes : [], keys: one.steps.map((x) => x.key) }) : full;
+  setTitle(one ? one.name : meal.title, true); setTab('meals');
   const S = meal.id;
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
@@ -1799,8 +1802,9 @@ function renderMeal(id) {
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
   if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
-  { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
-  h += nextTimeTopHtml(meal);
+  if (one) h += `<a class="partof" href="#/meal/${esc(full.id)}">${one === full.main ? 'Served with' : 'Part of'} <b>${esc(one === full.main ? full.sides.map((x) => x.name).join(' & ') : full.title)}</b><span>See the whole meal ›</span></a>`;
+  else { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
+  if (!one || one === full.main) h += nextTimeTopHtml(meal);
 
   // ---- Plan first
   if (meal.planTotal || meal.planFirst || meal.starts.length > 1) {
@@ -1839,7 +1843,7 @@ function renderMeal(id) {
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     const pk = dishKey(d);
-    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
+    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(d.makes)}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${full.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${openIngs.has(d.anchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>`;
@@ -1854,9 +1858,8 @@ function renderMeal(id) {
     h += '</section>';
   }
   h += '</div>';
-  h += ratingCardHtml(meal);
-  h += nextTimeCardHtml(meal);
-  h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
+  if (!one) { h += ratingCardHtml(meal); h += nextTimeCardHtml(meal); }
+  if (!one) h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
   fitJumpBar();
   refreshTicks();
@@ -2517,14 +2520,14 @@ function route() {
   if (state.firebase && !state.user) { renderLogin(); return; }
   $('#tabs').hidden = false;
   const hash = location.hash.replace(/^#\/?/, '');
-  const [page, arg] = hash.split('/');
+  const [page, arg, sub] = hash.split('/');
   const keepScroll = hash === lastRoute;
   if (!keepScroll) doneMsg = ''; // a new visit to a screen gets a new cheer
   const y = scrollY;
   $('#addbtn').hidden = true; // adding is the "+ Add item" button on the list itself
   view().style.minHeight = ''; // only the shopping page stretches to fill the screen
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
-  if (page === 'meal') renderMeal(decodeURIComponent(arg || ''));
+  if (page === 'meal') renderMeal(decodeURIComponent(arg || ''), sub);
   else if (page === 'shopping') renderShopping();
   else if (page === 'calendar') renderCalendar();
   else if (page === 'past' || page === 'planning') renderPast(); // Recipe Book (Planning tab)

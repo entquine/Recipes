@@ -797,3 +797,6 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .mealfold[open] > summary::before { transform: rotate(90deg); }
 .mealfold > summary .small { margin-left: auto; color: var(--ok); font-weight: 700; }
 .mealfold .mealchips { margin: 6px 0 0; }
+/* one dish of a meal, opened from the Recipe Book */
+.partof { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); color: var(--text); text-decoration: none; font-size: 14.5px; }
+.partof span { margin-left: auto; color: var(--c0); font-weight: 700; white-space: nowrap; }
