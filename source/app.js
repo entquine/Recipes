@@ -1106,7 +1106,7 @@ function renderCook() {
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
       ${d.steps.map((st, i) => { const cu = countUpStep(meal.id, st.key), mins = cu ? 0 : stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
         <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
-        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}${sinceHtml(meal, st.key)}${cu ? countBtnHtml(meal, st.key, true) : ''}
+        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}${cu ? `<div class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</div>` : ''}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
         <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
@@ -1673,19 +1673,19 @@ function sinceText(v, limit, short) {
   const m = Math.max(0, Math.floor((Date.now() - v) / 60000)), over = limit && m >= limit;
   if (short) return over ? `${Math.round(limit / 60) || limit}+${limit % 60 ? 'm' : 'h'}` : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
   const when = new Date(v), at = (dayKey(when) === dayKey(new Date()) ? '' : when.toLocaleDateString([], { weekday: 'short' }) + ' ') + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-  return `Started ${at} · ${over ? fmtLimit(limit) : fmtSpan(m)}`;
+  return `\u0001Started \u0002${at} · ${over ? fmtLimit(limit) : fmtSpan(m)}`;
 }
 function refreshSince() {
   document.querySelectorAll('[data-since]').forEach((el) => {
     const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.since)];
     const show = typeof v === 'number' && !t[el.dataset.since]; el.hidden = !show; if (!show) return;
-    el.innerHTML = `${ICONS.timer} ${esc(sinceText(v, +el.dataset.limit || 0))}`;
+    el.innerHTML = `${ICONS.timer} <span>${esc(sinceText(v, +el.dataset.limit || 0)).replace('\u0001', '<span class="sl">').replace('\u0002', '</span>')}</span>`; // "Started" drops when the line is narrow
   });
   document.querySelectorAll('[data-countup]').forEach((el) => {
     const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.countup)], x = countUpStep(el.dataset.scope, el.dataset.countup);
     const run = typeof v === 'number' && !t[el.dataset.countup], big = el.classList.contains('cubig');
     el.classList.toggle('running', run); el.hidden = !!t[el.dataset.countup];
-    el.querySelector('span').textContent = run ? (big ? 'Stop counting' : sinceText(v, x ? x.st.countUp : 0, true)) : big ? 'Start counting' : 'Start';
+    el.querySelector('span').textContent = run ? (big ? 'Stop' : sinceText(v, x ? x.st.countUp : 0, true)) : big ? 'Start counting' : 'Start';
     el.setAttribute('aria-label', run ? 'Stop counting' : 'Start counting');
   });
 }
@@ -1699,7 +1699,7 @@ function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
   return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
-    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}${sinceHtml(meal, st.key)}<span class="sub">${st.countUp ? countBtnHtml(meal, st.key, true) : ''}<span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}${st.countUp ? `<span class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
 // A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
 // "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually

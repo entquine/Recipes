@@ -771,3 +771,13 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .cubig { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 8px 0 4px; padding: 7px 16px; font-size: 15px; }
 .cubig.running { color: var(--ok); }
 .aheaditem .sub .cubig { display: flex; width: fit-content; }
+/* count-up: "Started 4:36 PM · 22 min" and the Stop button share one line */
+.curow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.curow .since { flex: 1 1 auto; min-width: 0; margin: 0; width: auto; }
+.curow .cubig { flex: none; margin: 0; white-space: nowrap; }
+.curow .cubig.running { padding: 6px 12px; }
+.cw-step .curow .since { font-size: clamp(14px, 4.4vw, 18px); }
+.curow { container-type: inline-size; }
+.curow .since { white-space: nowrap; }
+@container (max-width: 290px) { .curow .since .sl { display: none; } .curow .cubig.running { padding: 6px 10px; } }
+@container (max-width: 290px) { .curow .cubig.running span { display: none; } .curow .cubig.running { padding: 7px 9px; } .curow .since { font-size: 13.5px; } }
