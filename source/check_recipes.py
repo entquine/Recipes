@@ -18,6 +18,32 @@ SHOP_SEEN = {}     # shop item (lower case) -> (section, unit set, where)
 SHOP_MISSING = []  # dishes with ingredients that have no shopping details yet
 
 
+def same_dish_check(wb, names, warnings):
+    """The same dish served with more than one meal (same Recipe name and Type) is one recipe in the app, so its copies must match."""
+    copies = {}
+    for tab in ("recipes", "archive"):
+        if tab not in names:
+            continue
+        ws = wb[names[tab]]
+        head = [str(x or "").strip().lower() for x in next(ws.iter_rows(min_row=1, max_row=1, values_only=True))]
+        col = {h: i for i, h in enumerate(head)}
+        keep = [h for h in ("section", "group", "order", "amount", "text", "shop item", "shop qty", "shop unit", "shop section", "timer", "prep task", "prep amount", "ahead", "count up") if h in col]
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            if not row or not row[0]:
+                continue
+            sec = str(row[col["section"]] or "").strip().lower()
+            if sec not in ("makes", "ingredient", "step", "tip"):
+                continue
+            key = (str(row[0]).strip().lower(), str(row[col["type"]] or "").strip().lower())
+            meal = str(row[col["meal"]] or "").strip()
+            copies.setdefault(key, {}).setdefault(meal, []).append(tuple("" if row[col[h]] is None else str(row[col[h]]).strip() for h in keep))
+    for (name, _), by_meal in copies.items():
+        if len(by_meal) > 1:
+            versions = {tuple(sorted(v)) for v in by_meal.values()}
+            if len(versions) > 1:
+                warnings.append(f"{name.title()!r} is in {len(by_meal)} meals ({', '.join(by_meal)}) but the copies differ. The app shows it as one recipe, so keep every copy identical (or rename one if it's really a different recipe)")
+
+
 def main(path):
     wb = openpyxl.load_workbook(path, data_only=True)
     errors, warnings = [], []
@@ -32,6 +58,7 @@ def main(path):
             errors.append(f"Meal {both!r} is in both Recipes and Archive. Move its rows to one tab only")
     else:
         warnings.append('No "Archive" tab (past recipes). Add one with the same columns as Recipes when archiving a meal')
+    same_dish_check(wb, names, warnings)
     shopping_check(wb, names, errors, warnings)
     shop_report(warnings)
     for w in warnings:

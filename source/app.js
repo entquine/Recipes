@@ -102,6 +102,11 @@ function buildModel({ recipes, shopping, archive = [] }) {
   const names = new Set(current.map((x) => x.name));
   const past = buildMeals(archive).filter((x) => !names.has(x.name)); // a meal in both tabs counts as current
   past.forEach((x) => { x.archived = true; });
+  // The same dish served with more than one meal (same name and type, e.g. Garlic Green Beans with two mains) is one
+  // recipe: one Recipe Book line, one photo, one "times made" (all its meals added up). Its key is the first of its IDs.
+  const by = new Map();
+  for (const meal of [...current, ...past]) for (const d of meal.dishes) { const k = d.type + '|' + d.name.trim().toLowerCase(); if (!by.has(k)) by.set(k, []); by.get(k).push({ meal, dish: d }); }
+  for (const g of by.values()) if (g.length > 1) { const canon = g.map((x) => x.dish.id || '').filter(Boolean).sort()[0]; g.forEach((x) => { x.dish.group = g; if (canon) x.dish.canon = canon; }); }
   return { meals: current, past, ...buildShopping(shopping) };
 }
 // Shopping details on an ingredient row (columns Shop item / Shop qty / Shop unit / Shop section).
@@ -987,7 +992,7 @@ function writeSession(part, key, value) { // part: 'timers'; value null = delete
   setDoc(doc(state.firebase.db, 'cooking', 'session'), { [part]: { [key]: value == null ? deleteField() : value } }, { merge: true })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
-const dishKey = (d) => d.id || 'd-' + slug(d.name);
+const dishKey = (d) => d.canon || d.id || 'd-' + slug(d.name); // a dish in several meals shares one key
 
 // Step timers: "Roast 20-25 minutes" gets a 20-minute timer button. Timers are shared, so both phones see them.
 function stepMinutes(text) {
@@ -1215,7 +1220,8 @@ function cookAction(a) {
 const pastDays = (rid) => { const today = dayKey(new Date()); return [...new Set(planList().filter(([k, v]) => k < today && planKey(v) === rid).map(([k]) => k))].sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
 // calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
-const countedMade = (meal, dish = meal.main) => pastDays(meal.rid).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
+const countedOne = (meal, dish) => pastDays(meal.rid).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
+const countedMade = (meal, dish = meal.main) => (dish.group ? dish.group.reduce((n, x) => n + countedOne(x.meal, x.dish), 0) : countedOne(meal, dish)); // a shared side: every meal it's in
 const madeCount = (meal, dish = meal.main) => Math.max(0, countedMade(meal, dish) + (Number(state.madeAdjust[dishKey(dish)]) || 0)); // plus your change
 function writeAdjust(id, delta) {
   if (delta) state.madeAdjust[id] = delta; else delete state.madeAdjust[id];
@@ -1252,7 +1258,7 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
 }
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
 function lastMadeText(meal, dish = meal.main) {
-  const k = lastMade(meal), n = madeCount(meal, dish);
+  const k = dish.group ? dish.group.map((x) => lastMade(x.meal)).filter(Boolean).sort().pop() : lastMade(meal), n = madeCount(meal, dish);
   if (!n) return 'Not made yet';
   if (!k) return timesText(n) + (dish.madeNote ? ` · last ${dish.madeNote}` : '');
   const days = Math.round((keyToDate(dayKey(new Date())) - keyToDate(k)) / 86400000);
@@ -1526,7 +1532,8 @@ function bookRowHtml(meal, dish, inPlanned) {
   const ri = dish === meal.main ? ratingInfo(meal.name) : { done: false };
   const n = madeCount(meal, dish), next = nextPlanned(meal.name);
   const words = [dish.name, ...dish.groups.flatMap((g) => g.items.map((x) => (x.shop && x.shop.item ? x.shop.item + ' ' : '') + x.text))].join(' ').toLowerCase();
-  const meta = [dish !== meal.main ? `with ${esc(meal.main.name)}` : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : inPlanned ? '' : 'Not made yet',
+  const withs = dish.group ? [...new Set(dish.group.filter((x) => x.dish !== x.meal.main).map((x) => x.meal.main.name))] : dish !== meal.main ? [meal.main.name] : [];
+  const meta = [withs.length ? `with ${withs.map(esc).join(' or ')}` : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : inPlanned ? '' : 'Not made yet',
     next ? `${ICONS.cal} ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
   const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
@@ -1553,6 +1560,18 @@ function renderPast() {
     ...(m.past || []).map((x) => ({ meal: x, dish: x.main, kind: x.kind }))].filter((e) => !e.dish.hideBook);
   all.forEach((e, i) => { e.i = i; e.made = madeCount(e.meal, e.dish); e.next = nextPlanned(e.meal.name); e.planned = isPlannedMeal(e.meal); // on the calendar soon, or its meal is on the Planned list and hasn't been made yet (a side skipped when the meal was made goes to Want to try)
     const ri = e.dish === e.meal.main ? ratingInfo(e.meal.name) : null; e.stars = ri && ri.done ? ri.avg : 0; });
+  { // a dish in several meals gets one line: the planned copy if any, else the first; planned if any copy is
+    const seen = new Set();
+    for (let i = all.length - 1; i >= 0; i--) if (all[i].dish.group) { all[i].dup = true; }
+    const keep = [];
+    for (const e of all) {
+      if (!e.dup) { keep.push(e); continue; }
+      const k = dishKey(e.dish); if (seen.has(k)) continue; seen.add(k);
+      const mem = all.filter((x) => x.dup && dishKey(x.dish) === k), best = mem.find((x) => x.planned) || mem[0];
+      best.planned = mem.some((x) => x.planned); best.next = mem.map((x) => x.next).filter(Boolean).sort()[0] || null; keep.push(best);
+    }
+    all.splice(0, all.length, ...keep);
+  }
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
     ['made', 'Made before', all.filter((e) => !e.planned && e.made), madeSort()],
