@@ -765,3 +765,9 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .sincenote .since { margin-top: 2px; }
 .item .since { display: inline-flex; width: 100%; text-decoration: none; opacity: 1; } .item .since[hidden] { display: none; }
 .item.done .body:has(> .since:not([hidden])) { opacity: 1; color: color-mix(in srgb, var(--text) 45%, transparent); } .item.done .body:has(> .since:not([hidden])) > :not(.since) { opacity: .45; }
+/* count-up Start button (side button on steps, wider in cook mode and the Head start card) */
+.cubtn[hidden] { display: none !important; }
+.timerbtn.cubtn.running { background: var(--ok); border-color: var(--ok); color: #fff; }
+.cubig { display: inline-flex; align-items: center; gap: 6px; width: auto; margin: 8px 0 4px; padding: 7px 16px; font-size: 15px; }
+.cubig.running { color: var(--ok); }
+.aheaditem .sub .cubig { display: flex; width: fit-content; }

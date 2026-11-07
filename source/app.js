@@ -295,7 +295,6 @@ function markAllBought() {
   undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
 }
 function setTick(scope, key, value) {
-  if (value === true && countUpStep(scope, key)) value = Date.now(); // count-up steps remember when they were ticked
   if (!state.firebase) {
     const t = state.ticks[scope] || (state.ticks[scope] = {});
     if (value) t[key] = value; else delete t[key];
@@ -1105,9 +1104,9 @@ function renderCook() {
     <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
       <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(it.amount)}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
-      ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
+      ${d.steps.map((st, i) => { const cu = countUpStep(meal.id, st.key), mins = cu ? 0 : stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
         <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
-        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}${sinceHtml(meal, st.key)}
+        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}${sinceHtml(meal, st.key)}${cu ? countBtnHtml(meal, st.key, true) : ''}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
         <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
@@ -1657,30 +1656,50 @@ function headStart(meal) { return meal.dishes.flatMap((d) => d.steps.filter((st)
 function countUpStep(scope, key) { const m = mealById(scope); if (!m) return null; for (const d of m.dishes) { const st = d.steps.find((x) => x.key === key && x.countUp); if (st) return { d, st }; } return null; }
 const fmtSpan = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
 const fmtLimit = (m) => (m % 60 === 0 ? `${m / 60}+ hour${m === 60 ? '' : 's'}` : `${m}+ min`);
+// The start time is saved in the meal's ticks as "<step key>@start" (tap Start); ticking the step means it's finished.
+const startKey = (key) => key + '@start';
 function sinceHtml(meal, key) {
   const x = countUpStep(meal.id, key); if (!x) return '';
-  const nx = x.d.steps[x.d.steps.indexOf(x.st) + 1];
-  return `<span class="since" data-since="${esc(key)}" data-scope="${esc(meal.id)}" data-limit="${x.st.countUp}" data-next="${nx ? esc(nx.key) : ''}" hidden></span>`;
+  return `<span class="since" data-since="${esc(key)}" data-scope="${esc(meal.id)}" data-limit="${x.st.countUp}" hidden></span>`;
 }
-function sinceRunning(meal) { // count-up steps ticked with a time whose next step isn't ticked yet
+function countBtnHtml(meal, key, big) { // Start / running (tap to stop)
+  return `<button class="${big ? 'btn ghost cubig' : 'timerbtn tb-side'} cubtn" data-countup="${esc(key)}" data-scope="${esc(meal.id)}" aria-label="Start counting">${ICONS.timer}<span>Start</span></button>`;
+}
+function sinceRunning(meal) { // count-up steps started and not ticked off yet
   const t = state.ticks[meal.id] || {};
-  return meal.dishes.flatMap((d) => d.steps.filter((st, i) => st.countUp && typeof t[st.key] === 'number' && !(d.steps[i + 1] && t[d.steps[i + 1].key])).map((st) => ({ d, st })));
+  return meal.dishes.flatMap((d) => d.steps.filter((st) => st.countUp && typeof t[startKey(st.key)] === 'number' && !t[st.key]).map((st) => ({ d, st })));
+}
+function sinceText(v, limit, short) {
+  const m = Math.max(0, Math.floor((Date.now() - v) / 60000)), over = limit && m >= limit;
+  if (short) return over ? `${Math.round(limit / 60) || limit}+${limit % 60 ? 'm' : 'h'}` : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
+  const when = new Date(v), at = (dayKey(when) === dayKey(new Date()) ? '' : when.toLocaleDateString([], { weekday: 'short' }) + ' ') + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  return `Started ${at} · ${over ? fmtLimit(limit) : fmtSpan(m)}`;
 }
 function refreshSince() {
   document.querySelectorAll('[data-since]').forEach((el) => {
-    const t = state.ticks[el.dataset.scope] || {}, v = t[el.dataset.since], next = el.dataset.next;
-    const show = typeof v === 'number' && !(next && t[next]); el.hidden = !show; if (!show) return;
-    const m = Math.max(0, Math.floor((Date.now() - v) / 60000)), limit = +el.dataset.limit || 0, when = new Date(v);
-    const at = (dayKey(when) === dayKey(new Date()) ? '' : when.toLocaleDateString([], { weekday: 'short' }) + ' ') + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-    el.innerHTML = `${ICONS.timer} Started ${esc(at)} · ${limit && m >= limit ? fmtLimit(limit) : fmtSpan(m)}`;
+    const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.since)];
+    const show = typeof v === 'number' && !t[el.dataset.since]; el.hidden = !show; if (!show) return;
+    el.innerHTML = `${ICONS.timer} ${esc(sinceText(v, +el.dataset.limit || 0))}`;
   });
+  document.querySelectorAll('[data-countup]').forEach((el) => {
+    const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.countup)], x = countUpStep(el.dataset.scope, el.dataset.countup);
+    const run = typeof v === 'number' && !t[el.dataset.countup], big = el.classList.contains('cubig');
+    el.classList.toggle('running', run); el.hidden = !!t[el.dataset.countup];
+    el.querySelector('span').textContent = run ? (big ? 'Stop counting' : sinceText(v, x ? x.st.countUp : 0, true)) : big ? 'Start counting' : 'Start';
+    el.setAttribute('aria-label', run ? 'Stop counting' : 'Start counting');
+  });
+}
+function countTap(scope, key) {
+  const t = state.ticks[scope] || {}, v = t[startKey(key)];
+  if (typeof v === 'number') { setTick(scope, startKey(key), false); undoToast('Stopped counting', () => setTick(scope, startKey(key), v)); }
+  else setTick(scope, startKey(key), Date.now());
 }
 setInterval(refreshSince, 20000);
 function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
   return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
-    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}${sinceHtml(meal, st.key)}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}${sinceHtml(meal, st.key)}<span class="sub">${st.countUp ? countBtnHtml(meal, st.key, true) : ''}<span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
 // A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
 // "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually
@@ -1695,8 +1714,9 @@ function headStartSummary(meal) {
   return `${first}${others ? ` (+${others} more step${others > 1 ? 's' : ''})` : ''} · ${aheadWhen(waits.st.ahead)}`;
 }
 function headStartReminder(meal) { // today's card on Meals: until every early step is ticked, then how long it's been
-  const t = state.ticks[meal.id] || {};
-  if (headStart(meal).every((y) => t[y.st.key])) return sinceRunning(meal).map(({ st }) => `<p class="aheadnote sincenote"><span><strong>${esc(st.text.replace(/\s*\(.*?\)/g, ''))}</strong>${sinceHtml(meal, st.key)}</span></p>`).join('');
+  const t = state.ticks[meal.id] || {}, run = sinceRunning(meal);
+  if (run.length) return run.map(({ st }) => `<p class="aheadnote sincenote"><span><strong>${esc(st.text.replace(/\s*\(.*?\)/g, ''))}</strong>${sinceHtml(meal, st.key)}</span></p>`).join('');
+  if (headStart(meal).every((y) => t[y.st.key])) return '';
   const sum = headStartSummary(meal);
   return sum ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(sum)}</span></p>` : '';
 }
@@ -1831,10 +1851,10 @@ document.addEventListener('toggle', (e) => { const el = e.target; if (el.matches
 const stepsHeadHtml = (meal, keys) => `<div class="stepshead"><h3>Steps</h3><span class="stepprog" data-stepscope="${esc(meal.id)}" data-stepkeys="${esc(keys.join(','))}"><span class="sp-n"></span><span class="bar"><b></b></span></span></div>`;
 // One step of a recipe. In the combined list each step is tagged with its dish and numbered as in that dish.
 function stepItemHtml(meal, d, s, prepOf, tagged) {
-  const mins = stepMinutes(s.text);
+  const mins = s.countUp ? 0 : stepMinutes(s.text);
   return itemHtml(meal.id, s.key,
-    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${sinceHtml(meal, s.key)}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : ''}`,
-    mins ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
+    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${sinceHtml(meal, s.key)}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : s.countUp ? countBtnHtml(meal, s.key) : ''}`,
+    mins || s.countUp ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
 }
 function fitJumpBar() { // keep every top button on screen: shrink the text a little (down to 12.5px) if they don't fit
   const bar = document.querySelector('.jump'); if (!bar) return;
@@ -2149,6 +2169,8 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#addbtn, #addinline')) { addMenu(); return; }
   if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
+  const cub = e.target.closest('[data-countup]');
+  if (cub) { e.preventDefault(); e.stopPropagation(); countTap(cub.dataset.scope, cub.dataset.countup); return; }
   const tb = e.target.closest('[data-timer]');
   if (tb) { timerTap(tb.dataset.label, +tb.dataset.timer, tb.dataset.meal, tb.dataset.step); return; }
   const stp = e.target.closest('[data-stoptimer]');
