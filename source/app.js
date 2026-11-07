@@ -138,7 +138,7 @@ function buildMeals(recipes) {
         if (!g) { g = { name: r.group, items: [] }; dish.groups.push(g); }
         g.items.push({ amount: r.amount, text: r.text, shop: shopInfo(r) }); break;
       }
-      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), ahead: r.ahead || '', seq }); break;
+      case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), ahead: r.ahead || '', countUp: r['count up'] ? aheadMinutes(r['count up']) : 0, seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'ahead': if (r.text) (meal.aheadNotes || (meal.aheadNotes = [])).push({ when: r.amount || '', text: r.text }); break;
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
@@ -295,17 +295,18 @@ function markAllBought() {
   undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
 }
 function setTick(scope, key, value) {
+  if (value === true && countUpStep(scope, key)) value = Date.now(); // count-up steps remember when they were ticked
   if (!state.firebase) {
     const t = state.ticks[scope] || (state.ticks[scope] = {});
-    if (value) t[key] = true; else delete t[key];
+    if (value) t[key] = value; else delete t[key];
     ls.set('local-ticks', state.ticks); refreshTicks(); return;
   }
   const { db } = state.firebase;
   // optimistic local update; Firestore also fires a local snapshot immediately
   const t = state.ticks[scope] || (state.ticks[scope] = {});
-  if (value) t[key] = true; else delete t[key];
+  if (value) t[key] = value; else delete t[key];
   refreshTicks();
-  setDoc(doc(db, 'ticks', scope), { k: { [key]: value ? true : deleteField() }, at: serverTimestamp() }, { merge: true })
+  setDoc(doc(db, 'ticks', scope), { k: { [key]: value || deleteField() }, at: serverTimestamp() }, { merge: true })
     .catch((e) => { console.error(e); toast('Could not save tick: ' + (e.code || e.message)); });
 }
 // Shopping ticks are saved per list (the Shopping tab's List date), so a new weekly list starts unticked.
@@ -1106,7 +1107,7 @@ function renderCook() {
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
       ${d.steps.map((st, i) => { const mins = stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
         <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
-        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}
+        <p class="cooktext">${esc(st.text)}</p>${st.amount ? `<p class="cookused">${esc(st.amount)}</p>` : ''}${sinceHtml(meal, st.key)}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
         <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
@@ -1115,7 +1116,7 @@ function renderCook() {
     <div class="cookfoot"><button class="btn ghost" data-cook="back" id="cookback">‹ Back</button><button class="btn" data-cook="done" id="cooknextbtn">Next ›</button></div>`;
   const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
-  renderTimers();
+  renderTimers(); refreshSince();
   fitCookName();
   sizeWheel(); wheelTo(cook.step, false);
   const w = $('#cookwheel');
@@ -1651,11 +1652,35 @@ function aheadMinutes(t) {
 }
 const aheadLabel = (t) => { const x = String(t).trim(); return /overnight/i.test(x) ? 'The night before' : `${x} before`; };
 function headStart(meal) { return meal.dishes.flatMap((d) => d.steps.filter((st) => st.ahead).map((st) => ({ d, st }))).sort((a, b) => aheadMinutes(b.st.ahead) - aheadMinutes(a.st.ahead)); }
+// Count-up steps (spreadsheet column "Count up", e.g. marinating): once ticked, show when that started and how long
+// it's been, up to the limit ("4+ hours"). Hidden again once the dish's next step is ticked.
+function countUpStep(scope, key) { const m = mealById(scope); if (!m) return null; for (const d of m.dishes) { const st = d.steps.find((x) => x.key === key && x.countUp); if (st) return { d, st }; } return null; }
+const fmtSpan = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} hr${m % 60 ? ` ${m % 60} min` : ''}`);
+const fmtLimit = (m) => (m % 60 === 0 ? `${m / 60}+ hour${m === 60 ? '' : 's'}` : `${m}+ min`);
+function sinceHtml(meal, key) {
+  const x = countUpStep(meal.id, key); if (!x) return '';
+  const nx = x.d.steps[x.d.steps.indexOf(x.st) + 1];
+  return `<span class="since" data-since="${esc(key)}" data-scope="${esc(meal.id)}" data-limit="${x.st.countUp}" data-next="${nx ? esc(nx.key) : ''}" hidden></span>`;
+}
+function sinceRunning(meal) { // count-up steps ticked with a time whose next step isn't ticked yet
+  const t = state.ticks[meal.id] || {};
+  return meal.dishes.flatMap((d) => d.steps.filter((st, i) => st.countUp && typeof t[st.key] === 'number' && !(d.steps[i + 1] && t[d.steps[i + 1].key])).map((st) => ({ d, st })));
+}
+function refreshSince() {
+  document.querySelectorAll('[data-since]').forEach((el) => {
+    const t = state.ticks[el.dataset.scope] || {}, v = t[el.dataset.since], next = el.dataset.next;
+    const show = typeof v === 'number' && !(next && t[next]); el.hidden = !show; if (!show) return;
+    const m = Math.max(0, Math.floor((Date.now() - v) / 60000)), limit = +el.dataset.limit || 0, when = new Date(v);
+    const at = (dayKey(when) === dayKey(new Date()) ? '' : when.toLocaleDateString([], { weekday: 'short' }) + ' ') + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    el.innerHTML = `${ICONS.timer} Started ${esc(at)} · ${limit && m >= limit ? fmtLimit(limit) : fmtSpan(m)}`;
+  });
+}
+setInterval(refreshSince, 20000);
 function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
   return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
-    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(st.amount)}</span>` : ''}${sinceHtml(meal, st.key)}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
 // A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
 // "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually
@@ -1669,8 +1694,9 @@ function headStartSummary(meal) {
   const others = list.length - 1, first = waits.st.text.replace(/\s*\(.*?\)\s*/g, ' ').split(/(?<=\.)\s/)[0].replace(/\s+/g, ' ').replace(/\.$/, '').trim();
   return `${first}${others ? ` (+${others} more step${others > 1 ? 's' : ''})` : ''} · ${aheadWhen(waits.st.ahead)}`;
 }
-function headStartReminder(meal) { // today's card on Meals: until every early step is ticked
-  const t = state.ticks[meal.id] || {}; if (headStart(meal).every((y) => t[y.st.key])) return '';
+function headStartReminder(meal) { // today's card on Meals: until every early step is ticked, then how long it's been
+  const t = state.ticks[meal.id] || {};
+  if (headStart(meal).every((y) => t[y.st.key])) return sinceRunning(meal).map(({ st }) => `<p class="aheadnote sincenote"><span><strong>${esc(st.text.replace(/\s*\(.*?\)/g, ''))}</strong>${sinceHtml(meal, st.key)}</span></p>`).join('');
   const sum = headStartSummary(meal);
   return sum ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(sum)}</span></p>` : '';
 }
@@ -1807,7 +1833,7 @@ const stepsHeadHtml = (meal, keys) => `<div class="stepshead"><h3>Steps</h3><spa
 function stepItemHtml(meal, d, s, prepOf, tagged) {
   const mins = stepMinutes(s.text);
   return itemHtml(meal.id, s.key,
-    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : ''}`,
+    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(s.amount)}</span>` : ''}${sinceHtml(meal, s.key)}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : ''}`,
     mins ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
 }
 function fitJumpBar() { // keep every top button on screen: shrink the text a little (down to 12.5px) if they don't fit
@@ -2012,6 +2038,7 @@ function renderLogin(err = '') {
 
 // ---------------------------------------------------------------- tick rendering
 function refreshTicks() {
+  refreshSince();
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);

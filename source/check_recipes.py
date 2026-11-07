@@ -12,7 +12,7 @@ SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
-SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount", "Hide from Recipe Book", "Combined order", "Ahead"]
+SHOP_COLS_NEW = ["Shop item", "Shop qty", "Shop unit", "Shop section", "Timer", "Prep task", "Prep amount", "Hide from Recipe Book", "Combined order", "Ahead", "Count up"]
 SHOP_SECTIONS = {"Meat", "Produce", "Dairy", "Frozen", "Bakery", "Pantry", "Other"}
 SHOP_SEEN = {}     # shop item (lower case) -> (section, unit set, where)
 SHOP_MISSING = []  # dishes with ingredients that have no shopping details yet
@@ -51,7 +51,7 @@ def check_meals(ws, tab, errors, warnings):
         errors.append(f"{tab}: columns after ID must be {SHOP_COLS_NEW}, found {extra}")
     meals = {}
     for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
-        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt, hide, combo, ahead = (list(row) + [None] * 19)[:19]
+        recipe, typ, meal, section, group, order, amount, text, rid, s_item, s_qty, s_unit, s_sec, timer, prep, prep_amt, hide, combo, ahead, countup = (list(row) + [None] * 20)[:20]
         if not any(row):
             continue
         where = f"{tab} row {i}"
@@ -107,6 +107,11 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: has a Prep amount but no Prep task")
             elif len(str(prep)) > 40:
                 warnings.append(f"{where}: Prep task is long; keep it short like 'Mince garlic'")
+        if countup not in (None, ""):
+            if s != "step":
+                errors.append(f"{where}: Count up is only used on Step rows")
+            elif not re.search(r"\d+\s*(min|hour|hr|day)", str(countup), re.I):
+                errors.append(f"{where}: Count up should be the longest time to count to, e.g. '4 hours' or '45 min'; found {countup!r}")
         if ahead not in (None, ""):
             if s != "step":
                 errors.append(f"{where}: Ahead is only used on Step rows")

@@ -758,3 +758,10 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 /* cook mode: un-tick the current step */
 .cw-untick { display: none; margin-top: 10px; width: auto; padding: 8px 16px; font-size: 15px; }
 .cw-step.ticked.cw-d0 .cw-untick { display: inline-flex; }
+/* count-up steps: "Started 4:12 PM · 47 min" */
+.since { display: flex; align-items: center; gap: 5px; margin-top: 5px; font-size: 14px; font-weight: 700; color: var(--ok); }
+.since[hidden] { display: none; }
+.cw-step .since { font-size: 18px; margin-top: 10px; }
+.sincenote .since { margin-top: 2px; }
+.item .since { display: inline-flex; width: 100%; text-decoration: none; opacity: 1; } .item .since[hidden] { display: none; }
+.item.done .body:has(> .since:not([hidden])) { opacity: 1; color: color-mix(in srgb, var(--text) 45%, transparent); } .item.done .body:has(> .since:not([hidden])) > :not(.since) { opacity: .45; }
