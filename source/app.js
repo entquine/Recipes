@@ -1840,21 +1840,19 @@ function planHeadHtml(meal) {
 // Fold or open a card smoothly: its height slides to the new size. If the card's top is above the screen, the page
 // scrolls along with it, so what you're looking at stays put instead of jumping.
 function animateFold(el, close, apply) {
-  if (el._folding) return; const root = document.documentElement;
-  const done = () => { el.style.height = ''; el.style.overflow = ''; el._folding = false; root.style.overflowAnchor = ''; };
+  if (el._folding) return;
   if (matchMedia('(prefers-reduced-motion: reduce)').matches || !el.isConnected || !el.offsetParent) { apply(close); return; }
-  root.style.overflowAnchor = 'none'; const y = scrollY; // we keep the place ourselves
-  const from = el.offsetHeight; apply(close); const to = el.offsetHeight; apply(!close); // measure both sizes
-  if (close === false) apply(false); // opening: show the content during the slide
-  el._folding = true; el.style.overflow = 'hidden'; el.style.height = from + 'px'; scrollTo(0, y);
-  const t0 = performance.now(), dur = 380, ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
-  const above = el.getBoundingClientRect().top < 110; let last = from;
-  const step = (now) => {
-    const k = Math.min(1, (now - t0) / dur), h = from + (to - from) * ease(k);
-    el.style.height = h + 'px'; if (above) scrollBy(0, h - last); last = h;
-    if (k < 1) requestAnimationFrame(step); else { if (close) apply(true); done(); }
-  };
-  requestAnimationFrame(step);
+  const root = document.documentElement; root.style.overflowAnchor = 'none'; // we keep the place ourselves
+  const y = scrollY, r = el.getBoundingClientRect();
+  const from = el.offsetHeight; apply(close); const to = el.offsetHeight; apply(!close); scrollTo(0, y); // measure both sizes
+  if (r.bottom < innerHeight * 0.4) { // mostly above the screen: nothing to watch, so change it at once and stay put
+    apply(close); if (r.top < 0) scrollTo(0, y + (to - from)); root.style.overflowAnchor = ''; return;
+  }
+  // on screen: the browser slides the height (smoother than changing it ourselves every frame)
+  if (!close) apply(false);
+  el._folding = true; el.style.overflow = 'hidden';
+  const a = el.animate([{ height: from + 'px' }, { height: to + 'px' }], { duration: 340, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' });
+  a.onfinish = () => { if (close) apply(true); a.cancel(); el.style.overflow = ''; el._folding = false; root.style.overflowAnchor = ''; };
 }
 function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.dishes.filter((d) => d.steps.length).every((d) => d.steps.some((x) => t[x.key])); }
 function autoFold() {
