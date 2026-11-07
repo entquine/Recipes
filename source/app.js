@@ -1269,7 +1269,8 @@ function suggestions(day) {
 }
 
 // whether the folded "Usually have" card is open, kept across redraws (ticking redraws the list)
-let staplesOpen = false;
+let staplesOpen = false, mealChipsOpen = false; // folded cards on the shopping list (remembered while the app is open)
+document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.mealfold')) mealChipsOpen = e.target.open; }, true);
 document.addEventListener('toggle', (e) => { if (e.target.matches && e.target.matches('details.staples')) staplesOpen = e.target.open; }, true);
 // Staples: items we usually have. They sit in their own folded card and don't count toward the list.
 const stapleId = (name) => 's-' + slug(name);
@@ -1403,8 +1404,9 @@ function toggleMealShopped(rid) {
 }
 function mealChipsHtml() {
   const meals = shopMeals().filter((x) => mealShopKeys(x.rid).length); if (!meals.length) return '';
-  return `<div class="mealchips"><span class="small">Shopped for a meal? Tap it:</span>${meals.map((x) => { const on = mealShopped(x.rid);
-    return `<button class="mchip${on ? ' on' : ''}" data-mealshopped="${esc(x.rid)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(mealLabel(x))}</button>`; }).join('')}</div>`;
+  const done = meals.filter((x) => mealShopped(x.rid)).length;
+  return `<details class="mealfold"${mealChipsOpen ? ' open' : ''}><summary><span>Shopped for a meal?</span>${done ? `<span class="small">${done} of ${meals.length} done</span>` : ''}</summary><div class="mealchips"><span class="small">Tap a meal you've already bought everything for:</span>${meals.map((x) => { const on = mealShopped(x.rid);
+    return `<button class="mchip${on ? ' on' : ''}" data-mealshopped="${esc(x.rid)}" aria-pressed="${on}">${on ? '✓ ' : ''}${esc(mealLabel(x))}</button>`; }).join('')}</div></details>`;
 }
 const FRACTIONS = [[0.25, '¼'], [0.5, '½'], [0.75, '¾'], [1 / 3, '⅓'], [2 / 3, '⅔']];
 function fmtQty(q) {

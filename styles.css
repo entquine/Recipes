@@ -789,3 +789,11 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .amtchanged { font-weight: 700; color: var(--c2); }
 #formdlg .linemenu-more { margin-top: 6px; flex-wrap: wrap; }
 #formdlg #amtin { width: 100%; margin: 4px 0 4px; }
+/* shopping: "Shopped for a meal?" folds to one line */
+.mealfold { margin: -2px 0 12px; }
+.mealfold > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; font-size: 14.5px; font-weight: 650; color: var(--muted); padding: 4px 0; }
+.mealfold > summary::-webkit-details-marker { display: none; }
+.mealfold > summary::before { content: "▸"; font-size: 13px; transition: transform .15s; }
+.mealfold[open] > summary::before { transform: rotate(90deg); }
+.mealfold > summary .small { margin-left: auto; color: var(--ok); font-weight: 700; }
+.mealfold .mealchips { margin: 6px 0 0; }
