@@ -1837,12 +1837,31 @@ function planHeadHtml(meal) {
   let extra = m ? m[2].trim() : ''; if (extra) extra = extra[0].toUpperCase() + extra.slice(1);
   return `<div class="planhead"><p class="section-label">The plan</p>${time ? `<span class="plantime">${ICONS.timer} ${esc(time)}</span>` : ''}</div>${extra ? `<p class="planextra">${esc(extra)}</p>` : ''}`;
 }
+// Fold or open a card smoothly: its height slides to the new size. If the card's top is above the screen, the page
+// scrolls along with it, so what you're looking at stays put instead of jumping.
+function animateFold(el, close, apply) {
+  if (el._folding) return; const root = document.documentElement;
+  const done = () => { el.style.height = ''; el.style.overflow = ''; el._folding = false; root.style.overflowAnchor = ''; };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !el.isConnected || !el.offsetParent) { apply(close); return; }
+  root.style.overflowAnchor = 'none'; const y = scrollY; // we keep the place ourselves
+  const from = el.offsetHeight; apply(close); const to = el.offsetHeight; apply(!close); // measure both sizes
+  if (close === false) apply(false); // opening: show the content during the slide
+  el._folding = true; el.style.overflow = 'hidden'; el.style.height = from + 'px'; scrollTo(0, y);
+  const t0 = performance.now(), dur = 380, ease = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+  const above = el.getBoundingClientRect().top < 110; let last = from;
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / dur), h = from + (to - from) * ease(k);
+    el.style.height = h + 'px'; if (above) scrollBy(0, h - last); last = h;
+    if (k < 1) requestAnimationFrame(step); else { if (close) apply(true); done(); }
+  };
+  requestAnimationFrame(step);
+}
 function planStarted(meal) { const t = state.ticks[meal.id] || {}; return meal.dishes.filter((d) => d.steps.length).every((d) => d.steps.some((x) => t[x.key])); }
 function autoFold() {
   document.querySelectorAll('details[data-autofold]').forEach((el) => {
     const meal = mealById(el.dataset.meal); if (!meal) return;
     const done = el.dataset.autofold === 'plan' ? planStarted(meal) : [...el.querySelectorAll('.item')].every((x) => x.classList.contains('done'));
-    if (done && lastFoldDone[el.id] === false) el.open = false;
+    if (done && lastFoldDone[el.id] === false) { if (el.dataset.autofold === 'ahead') animateFold(el, true, (c) => { el.open = !c; }); else el.open = false; } // smooth fold: Head start only for now
     lastFoldDone[el.id] = done;
   });
   // each dish card folds once all its steps are ticked (and starts folded when they already are)
@@ -2168,6 +2187,8 @@ document.addEventListener('click', async (e) => {
   }
   const dh = e.target.closest('.card.dish > .dish-head.foldable');
   if (dh && !e.target.closest('button, a')) { const card = dh.parentElement; setDishFold(card, !card.classList.contains('folded')); return; }
+  const fsum = e.target.closest('details.headstart > summary'); // the Head start card slides open and shut (trying it here first)
+  if (fsum && !e.target.closest('button, a')) { e.preventDefault(); const d = fsum.parentElement; animateFold(d, d.open, (c) => { d.open = !c; }); return; }
   const wk = e.target.closest('[data-week]');
   if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
   const star = e.target.closest('[data-rate]');
