@@ -1297,7 +1297,7 @@ document.addEventListener('pointerdown', (e) => {
   addEventListener('scroll', stop, { capture: true, passive: true });
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25);
-    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name); }, 600);
+    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name); }, 400); // press and hold: 0.4 seconds
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
 // Press and hold a shopping line: change how much to buy (shared, with who changed it), or mark it as usually have.
