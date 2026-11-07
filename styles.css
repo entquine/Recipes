@@ -785,3 +785,7 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .curow.tighter .cubig.running span { display: none; } .curow.tighter .cubig.running { padding: 7px 10px; }
 .aheadnote[hidden] { display: none; }
 .item > .body { min-width: 0; } .curow { max-width: 100%; }
+/* shopping: an amount someone changed */
+.amtchanged { font-weight: 700; color: var(--c2); }
+#formdlg .linemenu-more { margin-top: 6px; flex-wrap: wrap; }
+#formdlg #amtin { width: 100%; margin: 4px 0 4px; }

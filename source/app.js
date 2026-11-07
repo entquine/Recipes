@@ -256,6 +256,7 @@ const state = {
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
   staples: {},             // shopping/staples: items we usually have, by name key
+  amtOver: {},             // shopping/bought amt: shop item key -> { text, by (email), at, for (meal IDs) }: a changed amount to buy
   bought: {},              // shopping/bought: meal ID -> { since: 'YYYY-MM-DD', i: { shop item key: true } }
   myName: '',              // this person's name (Settings)
   names: {},               // email (lower-case) -> name, from Firestore profiles/*; used to label notes and added items
@@ -288,7 +289,7 @@ function markAllBought() {
   const t = state.ticks[SHOP()] || {};
   for (const [id, x] of Object.entries(state.extras)) if (!isStaple(x.name) && !t[extraKey(id)]) ticked.push(extraKey(id));
   const saveBought = () => {
-    if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
+    if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }, { mergeFields: ['b'] }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
     else ls.set('local-bought', state.bought);
   };
   saveBought(); ticked.forEach((k) => setTick(SHOP(), k, true)); route();
@@ -377,7 +378,7 @@ function startFirestore() {
     if (changed('staples', state.staples)) renderExtras();
   }), (err) => listenerFailed('staples', err));
   unsubBought = onSnapshot(doc(db, 'shopping', 'bought'), { includeMetadataChanges: true }, safely('bought', (snap) => {
-    state.bought = { ...((snap.exists() && snap.data().b) || {}) }; syncLoaded('bought', snap);
+    state.bought = { ...((snap.exists() && snap.data().b) || {}) }; state.amtOver = { ...((snap.exists() && snap.data().amt) || {}) }; syncLoaded('bought', snap);
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
     if (changed('bought', state.bought)) renderExtras();
   }), (err) => listenerFailed('bought', err));
@@ -1295,9 +1296,39 @@ document.addEventListener('pointerdown', (e) => {
   addEventListener('scroll', stop, { capture: true, passive: true });
   clearTimeout(holdTimer);
   holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25);
-    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else stapleMenu(it.dataset.name); }, 600);
+    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name); }, 600);
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
+// Press and hold a shopping line: change how much to buy (shared, with who changed it), or mark it as usually have.
+// A changed amount belongs to the meals the line was for at the time; if that changes, the recipe amount is back.
+const lineParts = (l) => (l.done ? l.parts : l.open);
+const lineFor = (l) => [...new Set(lineParts(l).map((x) => x.rid))].sort().join(',');
+function amtOverride(l) { const o = (state.amtOver || {})[l.key]; return o && o.for === lineFor(l) ? o : null; }
+function saveAmt(key, val) {
+  state.amtOver = state.amtOver || {}; if (val) state.amtOver[key] = val; else delete state.amtOver[key];
+  route();
+  if (!state.firebase) { ls.set('local-amt', state.amtOver); return; }
+  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { amt: { [key]: val || deleteField() } }, { mergeFields: [new FieldPath('amt', key)] })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+async function lineMenu(key) {
+  const l = shopLines().find((x) => x.key === key); if (!l) return;
+  const on = isStaple(l.item), o = amtOverride(l), recipeAmt = amountText(lineParts(l)) || 'as needed';
+  const forTxt = [...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', ');
+  const r = await formDialog(`<p class="picktitle">${esc(l.item)}</p>
+    <p class="small" style="margin:0 0 10px">For: ${esc(forTxt)} · the recipe${lineParts(l).length > 1 ? 's' : ''} call${lineParts(l).length > 1 ? '' : 's'} for ${esc(recipeAmt)}${o ? `<br>Changed to ${esc(o.text)} by ${esc(nameFor(o.by, 'someone'))}` : ''}</p>
+    <label class="small" for="amtin">How much to buy</label>
+    <input id="amtin" name="amt" maxlength="40" autocomplete="off" value="${esc(o ? o.text : recipeAmt === 'as needed' ? '' : recipeAmt)}" placeholder="e.g. 1½ dozen">
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save amount</button></div>
+    <div class="row-btns linemenu-more">${o ? '<button class="btn ghost" value="reset">Use the recipe amount</button>' : ''}<button class="btn ghost" value="staple">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>`);
+  if (r.value === 'staple') { toggleStaple(l.item); return; }
+  if (r.value === 'reset') { saveAmt(key, null); return; }
+  if (r.value !== 'save') return;
+  const text = String(r.form.amt.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  if (!text || text === recipeAmt) { if (o) saveAmt(key, null); return; }
+  if (o && o.text === text) return;
+  saveAmt(key, { text, by: myEmail(), at: Date.now(), for: lineFor(l) });
+}
 async function stapleMenu(name) {
   const on = isStaple(name);
   const r = await formDialog(`<p class="picktitle">${esc(name)}</p><p class="small" style="margin:0 0 12px">${on ? 'You marked this as something you usually have.' : 'Usually have this at home? Staples move to a folded "Usually have" card and don’t count toward the list.'}</p>
@@ -1429,9 +1460,10 @@ function renderAutoShopping(m) {
   const order = ['other', 'meat', 'produce', 'dairy', 'frozen', 'bakery', 'pantry'];
   const rank = (x) => { const i = order.indexOf(x.toLowerCase()); return i < 0 ? 50 : i; };
   const sections = [...new Set([...lines.map((l) => l.section), ...Object.values(state.extras).map((x) => x.section || 'Other')])].sort((a, b) => rank(a) - rank(b));
-  const row = (l) => `<li class="item gline${l.done ? ' done' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
-    <span class="body"><strong>${esc(l.item)}</strong>${amountText(l.done ? l.parts : l.open) ? ` · ${esc(amountText(l.done ? l.parts : l.open))}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
-    <span class="sub">For: ${esc([...new Set((l.done ? l.parts : l.open).map((x) => mealLabel(x.meal)))].join(', '))}</span></span></li>`;
+  const row = (l) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l));
+    return `<li class="item gline${l.done ? ' done' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
+    <span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${o ? '<span class="amtchanged">' : ''}${esc(amt)}${o ? '</span>' : ''}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
+    <span class="sub">For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span></li>`; };
   let h = '';
   for (const sec of sections) {
     const mine = lines.filter((l) => l.section === sec && !isStaple(l.item) && !l.mealDone).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
@@ -1859,14 +1891,15 @@ function autoFold() {
   document.querySelectorAll('details[data-autofold]').forEach((el) => {
     const meal = mealById(el.dataset.meal); if (!meal) return;
     const done = el.dataset.autofold === 'plan' ? planStarted(meal) : [...el.querySelectorAll('.item')].every((x) => x.classList.contains('done'));
-    if (done && lastFoldDone[el.id] === false) { if (el.dataset.autofold === 'ahead') animateFold(el, true, (c) => { el.open = !c; }); else el.open = false; } // smooth fold: Head start only for now
+    if (done && lastFoldDone[el.id] === false) animateFold(el, true, (c) => { el.open = !c; });
     lastFoldDone[el.id] = done;
   });
   // each dish card folds once all its steps are ticked (and starts folded when they already are)
   document.querySelectorAll('.card.dish[data-dishkeys]').forEach((el) => {
     const t = state.ticks[el.dataset.meal] || {}, keys = el.dataset.dishkeys.split(',').filter(Boolean);
     const done = keys.length > 0 && keys.every((k) => t[k]);
-    if (done && lastFoldDone[el.id] !== true) setDishFold(el, true);
+    if (done && lastFoldDone[el.id] === false) animateFold(el, true, (c) => setDishFold(el, c)); // just finished: slide shut
+    else if (done && lastFoldDone[el.id] === undefined) setDishFold(el, true); // already finished when the page opened
     lastFoldDone[el.id] = done;
   });
 }
@@ -2014,7 +2047,7 @@ function renderShopping() {
   if (autoShop()) {
     h += mealChipsHtml();
     h += renderAutoShopping(m);
-    h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold items you usually have at home</p>
+    h += `<div class="shopfoot"><p class="small staplehint">Tip: press and hold an item to change the amount, or if you usually have it</p>
       <div class="shopbtns"><button class="btn outline-danger" data-clearauto="1">Clear all ticks</button><button class="btn" id="markall">Mark all bought</button></div></div>`;
     view().innerHTML = h;
     fitShopPage();
@@ -2184,8 +2217,8 @@ document.addEventListener('click', async (e) => {
     return;
   }
   const dh = e.target.closest('.card.dish > .dish-head.foldable');
-  if (dh && !e.target.closest('button, a')) { const card = dh.parentElement; setDishFold(card, !card.classList.contains('folded')); return; }
-  const fsum = e.target.closest('details.headstart > summary'); // the Head start card slides open and shut (trying it here first)
+  if (dh && !e.target.closest('button, a')) { const card = dh.parentElement; animateFold(card, !card.classList.contains('folded'), (c) => setDishFold(card, c)); return; }
+  const fsum = e.target.closest('details[data-autofold] > summary'); // the folding cards slide open and shut
   if (fsum && !e.target.closest('button, a')) { e.preventDefault(); const d = fsum.parentElement; animateFold(d, d.open, (c) => { d.open = !c; }); return; }
   const wk = e.target.closest('[data-week]');
   if (wk) { state.calWeek = wk.dataset.week === '0' ? 0 : state.calWeek + Number(wk.dataset.week); route(); return; }
@@ -2291,7 +2324,7 @@ document.addEventListener('click', async (e) => {
   const ca2 = e.target.closest('[data-clearauto]');
   if (ca2) { // clear straight away, with Undo
     const beforeB = JSON.parse(JSON.stringify(state.bought)), beforeT = { ...(state.ticks[SHOP()] || {}) };
-    const saveBought = () => { if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }).catch((err) => toast('Could not save: ' + (err.code || err.message))); else ls.set('local-bought', state.bought); };
+    const saveBought = () => { if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }, { mergeFields: ['b'] }).catch((err) => toast('Could not save: ' + (err.code || err.message))); else ls.set('local-bought', state.bought); };
     state.bought = {}; saveBought(); clearScope(SHOP()); route();
     undoToast('All ticks cleared', () => { state.bought = beforeB; saveBought(); clearScope(SHOP(), beforeT); route(); });
     return;
@@ -2536,7 +2569,7 @@ function start() {
     state.extras = ls.get('local-extras', {});
     state.session = ls.get('local-session', { dinner: {}, timers: {} });
     state.staples = ls.get('local-staples', {});
-    state.bought = ls.get('local-bought', {});
+    state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {});
     state.ideas = ls.get('local-ideas', {});
     state.nextTime = ls.get('local-nexttime', {});
     state.madeAdjust = ls.get('local-adjust', {});
