@@ -777,7 +777,11 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .curow .cubig { flex: none; margin: 0; white-space: nowrap; }
 .curow .cubig.running { padding: 6px 12px; }
 .cw-step .curow .since { font-size: clamp(14px, 4.4vw, 18px); }
-.curow { container-type: inline-size; }
 .curow .since { white-space: nowrap; }
-@container (max-width: 290px) { .curow .since .sl { display: none; } .curow .cubig.running { padding: 6px 10px; } }
-@container (max-width: 290px) { .curow .cubig.running span { display: none; } .curow .cubig.running { padding: 7px 9px; } .curow .since { font-size: 13.5px; } }
+.curow .cubig { order: -1; } /* button first, then the time */
+.stopsq { display: inline-block; width: 11px; height: 11px; border-radius: 2px; background: currentColor; flex: none; }
+.curow .since { overflow: hidden; }
+.curow.tight .since .sl { display: none; }
+.curow.tighter .cubig.running span { display: none; } .curow.tighter .cubig.running { padding: 7px 10px; }
+.aheadnote[hidden] { display: none; }
+.item > .body { min-width: 0; } .curow { max-width: 100%; }

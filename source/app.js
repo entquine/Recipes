@@ -1685,8 +1685,16 @@ function refreshSince() {
     const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.countup)], x = countUpStep(el.dataset.scope, el.dataset.countup);
     const run = typeof v === 'number' && !t[el.dataset.countup], big = el.classList.contains('cubig');
     el.classList.toggle('running', run); el.hidden = !!t[el.dataset.countup];
-    el.querySelector('span').textContent = run ? (big ? 'Stop' : sinceText(v, x ? x.st.countUp : 0, true)) : big ? 'Start counting' : 'Start';
+    if (big) { const html = run ? '<i class="stopsq"></i><span>Stop</span>' : `${ICONS.timer}<span>Start counting</span>`; if (el.innerHTML !== html) el.innerHTML = html; }
+    else el.querySelector('span').textContent = run ? sinceText(v, x ? x.st.countUp : 0, true) : 'Start';
     el.setAttribute('aria-label', run ? 'Stop counting' : 'Start counting');
+  });
+  document.querySelectorAll('.sincenote').forEach((n) => { const sn = n.querySelector('.since'); n.hidden = !sn || sn.hidden; }); // Meals card: gone once ticked
+  document.querySelectorAll('.curow').forEach((row) => { // keep Stop and the time on one line: drop "Started", then the word Stop
+    const sn = row.querySelector('.since'); if (!sn || sn.hidden) return;
+    row.classList.remove('tight', 'tighter');
+    if (sn.scrollWidth > sn.clientWidth + 1) row.classList.add('tight');
+    if (sn.scrollWidth > sn.clientWidth + 1) row.classList.add('tighter');
   });
 }
 function countTap(scope, key) {
@@ -1716,7 +1724,8 @@ function headStartSummary(meal) {
 function headStartReminder(meal) { // today's card on Meals: until every early step is ticked, then how long it's been
   const t = state.ticks[meal.id] || {}, run = sinceRunning(meal);
   if (run.length) return run.map(({ st }) => `<p class="aheadnote sincenote"><span><strong>${esc(st.text.replace(/\s*\(.*?\)/g, ''))}</strong>${sinceHtml(meal, st.key)}</span></p>`).join('');
-  if (headStart(meal).every((y) => t[y.st.key])) return '';
+  const hs = headStart(meal), waits = hs.filter((y) => y.st.countUp); // the waiting step ticked = the head start is done
+  if (waits.length ? waits.every((y) => t[y.st.key]) : hs.every((y) => t[y.st.key])) return '';
   const sum = headStartSummary(meal);
   return sum ? `<p class="aheadnote">${ICONS.bell}<span><strong>Head start:</strong> ${esc(sum)}</span></p>` : '';
 }
