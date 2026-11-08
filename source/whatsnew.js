@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['092', ['What’s new labels versions as v-092 (without wcwb).']],
   ['091', ['The syncing dot only shows if saving takes more than about 2 seconds.', 'A started count-up (steaks out of the fridge, marinating) also shows in the timer bar, counting up, with ✓ to tick it off when it’s done.']],
   ['090', ['Calendar: the variety heads-up fits on one line (days as a range, × to hide it for a week).']],
   ['089', [
