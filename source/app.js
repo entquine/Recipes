@@ -890,6 +890,14 @@ function writePlan(changes) { // { 'YYYY-MM-DD': value or null }, saved together
   setDoc(doc(state.firebase.db, 'calendar', 'plan'), { d, at: serverTimestamp() }, { merge: true })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
+function moveSlot(from, to, slot) { // drag and drop a breakfast / lunch / dessert: move, or swap with the other day's
+  const a = slotValue(from, slot), b = slotValue(to, slot); if (from === to || !a) return;
+  const put = (day, v) => { const cur = { ...(state.planX[day] || {}) }; if (v) cur[slot] = v; else delete cur[slot]; if (Object.keys(cur).length) state.planX[day] = cur; else delete state.planX[day]; };
+  put(to, a); put(from, b); route();
+  if (!state.firebase) { ls.set('local-planx', state.planX); return; }
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { x: { [to]: { [slot]: a }, [from]: { [slot]: b || deleteField() } }, at: serverTimestamp() }, { merge: true })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
 function movePlan(from, to) { // drag and drop: move, or swap if the target day already has something
   if (from === to || !state.plan[from]) return;
   writePlan({ [to]: state.plan[from], [from]: state.plan[to] || null });
@@ -1956,7 +1964,7 @@ function renderCalendar() {
   const today = dayKey(new Date());
   const label = state.calWeek === 0 ? 'This week' : state.calWeek === 1 ? 'Next week' : state.calWeek === -1 ? 'Last week' : '';
   let h = banners();
-  if (!ls.get('cal-hint-seen', false)) h += `<div class="card hintcard"><p>Tap a day to choose or change its meal. Press and hold a meal to drag it to another day.</p><button class="btn ghost" data-hintok="cal-hint-seen">Got it</button></div>`;
+  if (!ls.get('cal-hint-seen', false)) h += `<div class="card hintcard"><p>Tap a day to choose or change its meal. Press and hold a meal (or a lunch, dessert or breakfast line) to drag it to another day.</p><button class="btn ghost" data-hintok="cal-hint-seen">Got it</button></div>`;
   h += `<div class="weeknav">
     <button class="btn ghost" data-week="-1" aria-label="Previous week">‹</button>
     <div><strong>${esc(fmtDay(start, { month: 'short', day: 'numeric' }))} – ${esc(fmtDay(end, { month: 'short', day: 'numeric' }))}</strong>${label ? `<span class="small">${label}</span>` : '<button class="linkbtn" data-week="0">Back to this week</button>'}</div>
@@ -2469,11 +2477,11 @@ function dragCleanup() {
   drag = null;
 }
 function dragStart() {
-  const src = document.querySelector(`.pick[data-day="${drag.from}"]`);
+  const src = document.querySelector(drag.slot ? `.xslot[data-slotpick="${drag.from}|${drag.slot}"]` : `.pick[data-day="${drag.from}"]`);
   if (!src) { dragCleanup(); return; }
   drag.active = true;
   const r = src.getBoundingClientRect();
-  const g = src.cloneNode(true); g.className = 'drag-ghost'; g.style.width = r.width + 'px';
+  const g = src.cloneNode(true); g.className = 'drag-ghost' + (drag.slot ? ' slot-ghost' : ''); g.style.width = r.width + 'px';
   drag.dx = drag.x - r.left; drag.dy = drag.y - r.top;
   document.body.appendChild(g); drag.ghost = g; dragMoveGhost();
   src.closest('.day').classList.add('dragging'); document.body.classList.add('is-dragging');
@@ -2490,8 +2498,11 @@ function dragTargetAt(x, y) {
   return el ? el.closest('.day, .weeknav [data-week]') : null;
 }
 document.addEventListener('pointerdown', (e) => {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const xs = e.target.closest('.day .xslot'); // a breakfast / lunch / dessert line drags on its own
+  if (xs) { const [day, slot] = xs.dataset.slotpick.split('|'); dragCleanup(); drag = { from: day, slot, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, active: false }; drag.timer = setTimeout(dragStart, 350); return; }
   const pick = e.target.closest('.day .pick');
-  if (!pick || !state.plan[pick.dataset.day] || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  if (!pick || !state.plan[pick.dataset.day]) return;
   dragCleanup();
   drag = { from: pick.dataset.day, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, active: false };
   drag.timer = setTimeout(dragStart, 350);
@@ -2521,10 +2532,10 @@ document.addEventListener('pointerup', () => {
   if (drag.active) {
     const t = dragTargetAt(drag.x, drag.y);
     const to = t && t.classList.contains('day') ? t.querySelector('.pick').dataset.day : null;
-    const from = drag.from;
+    const from = drag.from, slot = drag.slot;
     suppressClick = true; setTimeout(() => { suppressClick = false; }, 400);
     dragCleanup();
-    if (to && to !== from) { movePlan(from, to); toast('Moved'); }
+    if (to && to !== from) { if (slot) moveSlot(from, to, slot); else movePlan(from, to); toast('Moved'); }
   } else dragCleanup();
 });
 document.addEventListener('pointercancel', () => { if (drag && !drag.active) dragCleanup(); });
