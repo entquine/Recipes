@@ -832,6 +832,6 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .pick.dinnerdone > strong, .pick.dinnerdone > .small, .pick.dinnerdone > .avg { text-decoration: line-through; text-decoration-thickness: 2px; opacity: .55; }
 /* a breakfast / lunch / dessert line: one straight line across the label and the name (they're different sizes) */
 .xslot.isdone { position: relative; opacity: .55; }
-.xslot.isdone::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -1px; background: currentColor; pointer-events: none; }
+.xslot.isdone::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -2px; background: currentColor; pointer-events: none; }
 .pk-notdone { width: 100%; margin: 0 0 12px; }
 .xslot { align-self: flex-start; } /* as wide as its text, so a crossed-out line stops where the text does */
