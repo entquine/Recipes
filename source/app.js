@@ -260,11 +260,13 @@ const state = {
   photos: {},              // photos/<dish ID>: dish ID -> shrunk JPEG (data URL), or null when there's none
   nextTime: {},            // notes/nexttime: main dish ID -> { text, email, at } (note for next time)
   madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
+  retired: {},             // history/adjust r: dish ID -> when it was retired ("we didn't like it")
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
   session: { dinner: {}, timers: {} }, // cooking/session: dinner times and running timers
   staples: {},             // shopping/staples: items we usually have, by name key
   scale: {},               // shopping/bought scale: meal ID -> how many times the recipe (½, 2, 3); missing = 1
   shopOrder: [],           // shopping/bought order: shopping sections in store order
+  store: {},               // shopping/bought store: shop item key -> 'Marukai' | 'Costco' | 'Ace' (missing = the usual store)
   need: {},                // shopping/bought need: shop item key -> true, a "usually have" item needed this time
   amtOver: {},             // shopping/bought amt: shop item key -> { text, by (email), at, for (meal IDs) }: a changed amount to buy
   bought: {},              // shopping/bought: meal ID -> { since: 'YYYY-MM-DD', i: { shop item key: true } }
@@ -306,6 +308,7 @@ function markAllBought() {
   undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
 }
 function setTick(scope, key, value) {
+  if (value && !String(key).endsWith('@start') && navigator.vibrate) navigator.vibrate(12); // a tiny buzz so you know it registered
   if (!state.firebase) {
     const t = state.ticks[scope] || (state.ticks[scope] = {});
     if (value) t[key] = value; else delete t[key];
@@ -390,9 +393,9 @@ function startFirestore() {
   }), (err) => listenerFailed('staples', err));
   unsubBought = onSnapshot(doc(db, 'shopping', 'bought'), { includeMetadataChanges: true }, safely('bought', (snap) => {
     const dd = (snap.exists() && snap.data()) || {};
-    state.bought = { ...(dd.b || {}) }; state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; syncLoaded('bought', snap);
+    state.bought = { ...(dd.b || {}) }; state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; syncLoaded('bought', snap);
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
-    if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need })) renderExtras();
+    if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need, st: state.store })) renderExtras();
   }), (err) => listenerFailed('bought', err));
   unsubIdeas = onSnapshot(doc(db, 'ideas', 'list'), { includeMetadataChanges: true }, safely('ideas', (snap) => {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
@@ -407,8 +410,8 @@ function startFirestore() {
     if (changed('next-time notes', state.nextTime) && /^#\/meal\//.test(location.hash)) route();
   }), (err) => listenerFailed('next-time notes', err));
   unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
-    state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; syncLoaded('times made', snap);
-    if (changed('times made', state.madeAdjust) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
+    state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; state.retired = { ...((snap.exists() && snap.data().r) || {}) }; syncLoaded('times made', snap);
+    if (changed('times made', { a: state.madeAdjust, r: state.retired }) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
   }), (err) => listenerFailed('times made', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
@@ -998,7 +1001,7 @@ function renderSync() {
   const el = $('#sync');
   const labels = { ok: 'Synced', pending: 'Syncing…', offline: lastSnapPending ? 'Offline · will sync' : 'Offline', local: 'This phone only', none: 'Signed out', error: 'Sync error' };
   el.className = 'sync ' + state.sync; el.lastElementChild.textContent = labels[state.sync] || '';
-  el.title = labels[state.sync] || ''; el.setAttribute('aria-label', el.title); // when synced, only the green dot shows
+  el.title = labels[state.sync] || ''; el.setAttribute('aria-label', el.title); // all synced: nothing shows; otherwise a colored dot with a word or two
 }
 addEventListener('online', () => updateSync(false));
 addEventListener('offline', () => updateSync(true));
@@ -1088,6 +1091,16 @@ function stepMinutes(text) {
 }
 const timerLabel = (d, st) => st.timer || `${shortName(d)}: step ${st.num}`;
 function runningTimerFor(step) { return Object.entries(state.session.timers || {}).find(([, t]) => t.step === step) || null; }
+// More time: +1 on a running timer adds a minute; +1 / +2 / +5 on one that's going off starts it again for that long.
+// Once time is added, the timer also shows how long it's been going out of its new total (e.g. 6:10 / 7:00).
+const timerStart = (t) => t.start || t.ends - ((t.mins || 0) + (t.extra || 0)) * 60000;
+function addTime(id, n) {
+  const t = (state.session.timers || {})[id]; if (!t) return;
+  const now = Date.now(), start = timerStart(t), ends = t.ends <= now ? now + n * 60000 : t.ends + n * 60000;
+  alarmed.delete(id); delete lastRing[id];
+  writeSession('timers', id, { ...t, start, ends, extra: (t.extra || 0) + n });
+}
+const clock = (ms) => { const sec = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`; };
 function finishTimer(id) { // a timer that has gone off: tapping it ends it and ticks off its step
   const t = (state.session.timers || {})[id]; if (!t) return;
   writeSession('timers', id, null);
@@ -1101,7 +1114,7 @@ async function timerTap(label, mins, mealId, step) {
 }
 function startTimer(label, mins, mealId, step) {
   const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-  writeSession('timers', id, { label, mins, ends: Date.now() + mins * 60000, meal: mealId, step: step || '', by: myEmail() });
+  writeSession('timers', id, { label, mins, start: Date.now(), ends: Date.now() + mins * 60000, meal: mealId, step: step || '', by: myEmail() });
   audioUnlock(); updateWakeLock();
   toast(`Timer started: ${mins < 1 ? Math.round(mins * 60) + ' sec' : mins + ' min'}`);
 }
@@ -1144,7 +1157,10 @@ function renderTimers() {
     else if (done && (t.by || '').toLowerCase() === myEmail() && now - (lastRing[id] || 0) > 5000 && now - t.ends < 15 * 60000) { lastRing[id] = now; ring(3); } // keeps going until someone taps it
     const mm = Math.floor(Math.abs(left) / 60), ss = String(Math.abs(left) % 60).padStart(2, '0');
     const theirs = t.by && t.by.toLowerCase() !== myEmail();
-    return `<div class="timer${done ? ' done' : ''}" data-tid="${esc(id)}"${done ? ' role="button" aria-label="Timer done: tap to finish"' : ''}><a href="#/meal/${esc(t.meal || '')}" class="tlabel">${esc(t.label)}${theirs ? ` <span class="towner">· ${esc(nameFor(t.by))}</span>` : ''}</a><span class="tleft">${done ? 'Done!' : `${mm}:${ss}`}</span><button class="tclose" data-stoptimer="${esc(id)}" aria-label="${done ? 'Dismiss' : 'Cancel'} timer">×</button></div>`;
+    const who = theirs ? ` <span class="towner">· ${esc(nameFor(t.by))}</span>` : '', st = timerStart(t);
+    if (done) return `<div class="timer done" data-tid="${esc(id)}" role="button" aria-label="Timer done: tap to finish"><span class="tlabel">${esc(t.label)}${who}</span><span class="tleft">Done!</span>
+      <span class="tadds">${[1, 2, 5].map((n) => `<button class="tadd" data-addtime="${esc(id)}|${n}">+${n} min</button>`).join('')}<span class="tfinish">Tap to finish ✓</span></span></div>`;
+    return `<div class="timer" data-tid="${esc(id)}"><a href="#/meal/${esc(t.meal || '')}" class="tlabel">${esc(t.label)}${who}</a>${t.extra ? `<span class="tsofar" title="Time so far / total">${clock(now - st)} / ${clock(t.ends - st)}</span>` : ''}<span class="tleft">${mm}:${ss}</span><button class="tadd" data-addtime="${esc(id)}|1" aria-label="Add a minute">+1</button><button class="tclose" data-stoptimer="${esc(id)}" aria-label="Cancel timer">×</button></div>`;
   }).join('');
   if (cookBar) cookBar.innerHTML = bar.innerHTML; // cook mode covers the screen, so it shows the timers too
   if (!timerTick) timerTick = setInterval(renderTimers, 1000);
@@ -1232,13 +1248,15 @@ function renderCook() {
         <p class="cooktext">${esc(st.text)}</p>${(() => { const used = st.amount ? scaleText(st.amount) : stepIngredients(st.dish || d, st.text); return used ? `<p class="cookused">${esc(used)}</p>` : ''; })()}${cu ? `<div class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</div>` : ''}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
         <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
-      <div class="cw-step cw-end" data-cwi="${n}"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
+      <div class="cw-step cw-end" data-cwi="${n}"><div class="cw-dishdone"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
+        <div class="cw-serve"><p class="cookdone">Time to eat! 🍽️</p><ul class="servelist">${meal.dishes.map((x) => `<li><span class="chip-${x.color}">✓</span> ${esc(x.name)}</li>`).join('')}</ul>
+          <button class="btn ghost" data-addphoto="${esc(dishKey(meal.main))}" hidden>${ICONS.camera} Photo of the plate</button><button class="btn" data-cook="close">Close cook mode</button></div></div>
       <div class="cw-pad"></div></div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
     <div class="cookfoot"><button class="btn ghost" data-cook="back" id="cookback">‹ Back</button><button class="btn" data-cook="done" id="cooknextbtn">Next ›</button></div>`;
   const on = el.querySelector('.cooktabs .on'); // keep the chosen dish's tab in view
   if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
-  renderTimers(); refreshSince();
+  renderTimers(); refreshSince(); paintPhotos(); // paintPhotos: shows "Photo of the plate" if the dish has no photo yet
   fitCookName();
   sizeWheel(); wheelTo(cook.step, false);
   const w = $('#cookwheel');
@@ -1293,6 +1311,8 @@ function markWheel(cur) { // size/fade each step by its distance from the curren
     for (let k = 0; k < 4; k++) el.classList.toggle('cw-d' + k, k === dist);
     if (el.dataset.cwkey) el.classList.toggle('ticked', !!t[el.dataset.cwkey]);
   });
+  const end = w.querySelector('.cw-end'), ml = mealById(cook.meal); // every step of the meal done: the end becomes "Time to eat!"
+  if (end && ml) end.classList.toggle('alldone', ml.keys.every((k) => t[k]));
   const back = $('#cookback'), next = $('#cooknextbtn');
   if (back) back.disabled = cur === 0;
   if (next) next.hidden = cur >= last;
@@ -1358,7 +1378,8 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
     <div class="menuphoto" data-photo="${esc(id)}" data-name="${esc(dish.name)}" hidden></div>
     <div class="menuphotobtns"><button type="button" class="photobtn" data-addphoto="${esc(id)}" hidden>${ICONS.camera} Add photo</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-replacephoto="${esc(id)}" hidden>Replace</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-removephoto="${esc(id)}" data-name="${esc(dish.name)}" hidden>Remove</button></div>
     ${rateable ? `<p class="small menulabel">Your rating</p><div class="menustars">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-menustar="${k}" aria-label="${k} star${k > 1 ? 's' : ''}">★</button>`).join('')}</div>` : ''}
-    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>
+    <div class="row-btns retirerow">${(state.retired || {})[id] ? '<button class="btn ghost" value="unretire">Bring it back</button>' : '<button class="btn ghost retirebtn" value="retire">Retire (we didn’t like it)</button>'}</div>`);
   const f = $('#formdlg');
   f.classList.add('centered'); // no keyboard here, so it can sit in the middle
   paintPhotos();
@@ -1367,6 +1388,8 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
   f.querySelectorAll('[data-menustar]').forEach((b) => b.addEventListener('click', () => { const k = +b.dataset.menustar; stars = stars === k ? 0 : k; paint(); }));
   f.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
   const r = await dlg;
+  if (r.value === 'retire') { setRetired(id, true); undoToast(`${dish.name} retired`, () => setRetired(id, false)); return; }
+  if (r.value === 'unretire') { setRetired(id, false); toast(`${dish.name} is back`); return; }
   if (r.value !== 'save') return;
   let saved = false;
   if (n !== madeCount(meal, dish)) { writeAdjust(id, n - counted); saved = true; }
@@ -1385,7 +1408,7 @@ function lastMadeText(meal, dish = meal.main) {
 // Suggestions for a day: well rated, and not had in a while (never made counts as a while)
 function suggestions(day) {
   const today = keyToDate(dayKey(new Date()));
-  return allMeals().filter((x) => x.kind === 'Main' && !plannedElsewhere(x.rid, day) && planKey(state.plan[day]) !== x.rid)
+  return allMeals().filter((x) => x.kind === 'Main' && !isRetired(x) && !plannedElsewhere(x.rid, day) && planKey(state.plan[day]) !== x.rid)
     .map((x) => { const k = lastMade(x), ri = ratingInfo(x.name); const weeks = k ? (today - keyToDate(k)) / 604800000 : 8;
       return { x, score: (ri.done ? ri.avg : 3.5) + Math.min(weeks, 8) * 0.3 }; })
     .sort((a, b) => b.score - a.score).slice(0, 3).map((o) => o.x);
@@ -1438,7 +1461,16 @@ function saveAmt(key, val) {
   setDoc(doc(state.firebase.db, 'shopping', 'bought'), { amt: { [key]: val || deleteField() } }, { mergeFields: [new FieldPath('amt', key)] })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
+const STORES = ['Marukai', 'Costco', 'Ace']; // anything else is the usual ("Standard") store
+function setStore(key, v) {
+  state.store = state.store || {}; if (v) state.store[key] = v; else delete state.store[key];
+  route();
+  if (!state.firebase) { ls.set('local-store', state.store); return; }
+  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { store: { [key]: v || deleteField() } }, { mergeFields: [new FieldPath('store', key)] })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
 async function lineMenu(key) {
+  setTimeout(() => { const sel = $('#storesel'); if (sel) sel.addEventListener('change', () => { setStore(key, sel.value); toast(sel.value ? `${sel.value} item` : 'Standard store'); }); }, 0);
   const l = shopLines().find((x) => x.key === key); if (!l) return;
   const on = isStaple(l.item), o = amtOverride(l), recipeAmt = amountText(lineParts(l)) || 'as needed';
   const forTxt = [...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', ');
@@ -1446,6 +1478,8 @@ async function lineMenu(key) {
     <p class="small" style="margin:0 0 10px">For: ${esc(forTxt)} · the recipe${lineParts(l).length > 1 ? 's' : ''} call${lineParts(l).length > 1 ? '' : 's'} for ${esc(recipeAmt)}${o ? `<br>Changed to ${esc(o.text)} by ${esc(nameFor(o.by, 'someone'))}` : ''}</p>
     <label class="small" for="amtin">How much to buy</label>
     <input id="amtin" name="amt" maxlength="40" autocomplete="off" value="${esc(o ? o.text : recipeAmt === 'as needed' ? '' : recipeAmt)}" placeholder="e.g. 1½ dozen">
+    <label class="small" for="storesel" style="display:block;margin-top:10px">Store</label>
+    <select id="storesel" class="dlg-input" name="store">${['', ...STORES].map((x) => `<option value="${x}"${((state.store || {})[key] || '') === x ? ' selected' : ''}>${x || 'Standard'}</option>`).join('')}</select>
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save amount</button></div>
     <div class="row-btns linemenu-more">${o ? '<button class="btn ghost" value="reset">Use the recipe amount</button>' : ''}<button class="btn ghost" value="staple">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>`);
   if (r.value === 'staple') { toggleStaple(l.item); return; }
@@ -1573,7 +1607,7 @@ function toggleLine(key) {
     if (on) cur.i[key] = true; else delete cur.i[key];
     state.bought[rid] = cur; changes[rid] = cur;
   };
-  if (l.done) l.parts.forEach((x) => set(x.rid, false)); else l.open.forEach((x) => set(x.rid, true));
+  if (l.done) l.parts.forEach((x) => set(x.rid, false)); else { l.open.forEach((x) => set(x.rid, true)); if (navigator.vibrate) navigator.vibrate(12); }
   route();
   if (!state.firebase) { ls.set('local-bought', state.bought); return; }
   const b = {}; for (const [rid, v] of Object.entries(changes)) b[rid] = Object.keys(v.i).length ? v : deleteField();
@@ -1598,17 +1632,22 @@ function renderAutoShopping(m) {
   const row = (l, inStaples) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l)), needed = isStaple(l.item) && !inStaples;
     return `<li class="item gline${l.done ? ' done' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
     <span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${o ? '<span class="amtchanged">' : ''}${esc(amt)}${o ? '</span>' : ''}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
-    <span class="sub">${needed ? 'Running low · ' : ''}For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
+    <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
   const away = (l) => isStaple(l.item) && !(state.need || {})[l.key]; // staples stay in "Usually have" unless marked as needed this time
   let h = '';
+  // Store filter: only offered while a specialty store has something left to buy; everything shows by default
+  const left = (st) => lines.filter((l) => (state.store || {})[l.key] === st && !l.done && !l.mealDone && !away(l)).length;
+  const offered = STORES.filter((st) => left(st));
+  let only = ls.get('shop-store-filter', ''); if (only && !offered.includes(only)) only = '';
+  if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
   for (const sec of sections) {
-    const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
-    const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec);
+    const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
+    const rows = here.map((l) => row(l)).join('') + (only ? '' : extrasListHtml(sec));
     if (rows) h += `<section class="card shopsec" data-sec="${esc(sec)}"><p class="section-label secdrag">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
   const staples = lines.filter(away).sort((a, b) => a.item.localeCompare(b.item));
   const stapleExtras = extrasListHtml(null, true);
-  if (staples.length || stapleExtras) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
+  if (!only && (staples.length || stapleExtras)) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
     <p class="small">Things you usually have at home. They don't count toward the list. Running low? Tap + Need to put it on this trip's list.</p><ul class="list">${staples.map((l) => row(l, true)).join('')}${stapleExtras}</ul></details>`;
   if (!lines.length && !Object.keys(state.extras).length) h += '<p class="empty">Nothing to buy. Plan a meal on the calendar, or tap + to add an item.</p>';
   return h;
@@ -1648,7 +1687,15 @@ function planningSwitch(active) {
 }
 // Planned = on the calendar for today or later, or a current meal (Recipes tab) that hasn't been made yet.
 // Used by the Meals list, the Recipe Book's Planned section and the shopping list.
-const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal));
+const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal) && !isRetired(meal));
+// Retire: "we didn't like it". Kept in a folded Retired list in the Recipe Book, left out of suggestions and the Planned list.
+const isRetired = (meal, dish = meal.main) => !!(state.retired || {})[dishKey(dish)];
+function setRetired(id, on) {
+  state.retired = state.retired || {}; if (on) state.retired[id] = Date.now(); else delete state.retired[id];
+  route();
+  if (!state.firebase) { ls.set('local-retired', state.retired); return; }
+  setDoc(doc(state.firebase.db, 'history', 'adjust'), { r: { [id]: on ? Date.now() : deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
 const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : meal.kind === 'Breakfast' ? 2 : 0}">${meal.kind}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
@@ -1700,6 +1747,8 @@ function renderPast() {
     }
     all.splice(0, all.length, ...keep);
   }
+  const retired = all.filter((e) => isRetired(e.meal, e.dish) && !e.next); // planned again on the calendar = back in play
+  all.splice(0, all.length, ...all.filter((e) => !retired.includes(e)));
   const groups = [
     ['planned', 'Planned', all.filter((e) => e.planned), (a, b) => (a.next || '9').localeCompare(b.next || '9') || a.i - b.i],
     ['made', 'Made before', all.filter((e) => !e.planned && e.made), madeSort()],
@@ -1713,6 +1762,7 @@ function renderPast() {
     h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>${sortRow}
       <ul class="booklist">${part('Mains', list.filter((e) => e.kind === 'Main'))}${part('Sides', list.filter((e) => e.kind === 'Side'))}${part('Breakfasts', list.filter((e) => e.kind === 'Breakfast'))}${part('Desserts', list.filter((e) => e.kind === 'Dessert'))}</ul></details>`;
   }
+  if (retired.length) h += `<details class="card booksec retiredsec" data-sec="retired"><summary><span class="section-label">Retired</span><span class="bk-count">${retired.length}</span></summary><ul class="booklist">${retired.sort((a, b) => a.dish.name.localeCompare(b.dish.name)).map((e) => bookRowHtml(e.meal, e.dish, false)).join('')}</ul></details>`;
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
   h += '<p class="small staplehint">Tip: tap ⋯ (or press and hold a recipe) to rate it, add a photo or change how many times it’s been made.</p>';
   view().innerHTML = h;
@@ -1798,7 +1848,7 @@ function mealCardHtml(meal, tonight, label = 'Tonight') { // tonight: today's hi
   const timeAndProgress = `${time ? `<span class="time">${ICONS.timer} ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
   return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
       <div class="eyebrow">${tonight ? `<span class="tonight-label">${esc(label)}</span>` : `${esc(meal.title)}${plannedChip(meal)}`}</div>
-      <h2>${esc(meal.main.name)}</h2>
+      ${(() => { const th = state.thumbs[dishKey(meal.main)]; return th ? `<div class="mc-titlerow"><h2>${esc(meal.main.name)}</h2><img class="mc-thumb" src="${th}" alt=""></div>` : `<h2>${esc(meal.main.name)}</h2>`; })()}
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
       ${tonight || nextPlanned(meal.name) ? '' : `<span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span>`}
@@ -2137,6 +2187,31 @@ function shortName(d) { // short label for the jump bar
   return n.length > 26 ? n.slice(0, 24) + '…' : n;
 }
 
+// Variety check for the week on screen: the same meat two dinners in a row, or the same side three times.
+// Each warning can be dismissed for a week (on this phone).
+function proteinOf(meal) {
+  const items = meal.main.groups.flatMap((g) => g.items).filter((it) => it.shop && !it.shop.none && /meat|seafood|fish/i.test(it.shop.section || '')).map((it) => it.shop.item.toLowerCase());
+  for (const x of items) {
+    if (/chicken/.test(x)) return 'Chicken'; if (/turkey/.test(x)) return 'Turkey';
+    if (/beef|steak|ribeye|sirloin|brisket|chuck/.test(x)) return 'Beef'; if (/pork|bacon|sausage|kielbasa|ham\b/.test(x)) return 'Pork';
+    if (/shrimp|prawn/.test(x)) return 'Shrimp'; if (/salmon|cod|tilapia|fish|tuna/.test(x)) return 'Fish';
+  }
+  return '';
+}
+function varietyHtml(keys) {
+  const now = Date.now(), dis = ls.get('variety-dismissed', {}), out = [];
+  const meals = keys.map((k) => { const v = state.plan[k], m = v && !customText(v) ? mealByName(v) : null; return { k, m }; });
+  const day = (k) => fmtDay(keyToDate(k), { weekday: 'short' });
+  for (let i = 0; i < meals.length - 1; i++) {
+    const a = meals[i].m, b = meals[i + 1].m; if (!a || !b) continue;
+    const pa = proteinOf(a); if (!pa || pa !== proteinOf(b)) continue;
+    let j = i + 1; while (j + 1 < meals.length && meals[j + 1].m && proteinOf(meals[j + 1].m) === pa) j++;
+    out.push({ id: `p|${pa}|${meals[i].k}`, text: `${pa} ${j - i + 1} nights in a row (${meals.slice(i, j + 1).map((x) => day(x.k)).join(', ')})` }); i = j;
+  }
+  const sides = new Map(); meals.forEach(({ k, m }) => m && m.sides.forEach((d) => { const n = d.name; if (!sides.has(n)) sides.set(n, []); sides.get(n).push(k); }));
+  for (const [n, ks] of sides) if (ks.length >= 3) out.push({ id: `s|${n}|${keys[0]}`, text: `${n} ${ks.length} times this week` });
+  return out.filter((w) => !(dis[w.id] > now)).map((w) => `<div class="varietywarn"><span>⚠️ ${esc(w.text)}</span><button class="linkbtn" data-varietyok="${esc(w.id)}">Dismiss for a week</button></div>`).join('');
+}
 function renderCalendar() {
   setTitle('Calendar', false); setTab('calendar');
   const start = weekStart(state.calWeek), end = new Date(start); end.setDate(end.getDate() + 6);
@@ -2155,6 +2230,7 @@ function renderCalendar() {
     if (keys[6] >= today) bits.push(open ? `${open} day${open === 1 ? '' : 's'} open` : 'every day planned');
     if (state.calWeek === 0 && autoShop()) { const [dn, tot] = autoCounts(); bits.push(tot - dn ? `<a href="#/shopping">${tot - dn} item${tot - dn === 1 ? '' : 's'} to buy</a>` : 'shopping done'); }
     h += `<p class="weeksum">${bits.join(' · ')}</p>`;
+    h += varietyHtml(keys);
   }
   h += `<ul class="days${weekSlide ? ' slide-' + weekSlide : ''}">`; weekSlide = '';
   for (let i = 0; i < 7; i++) {
@@ -2214,6 +2290,7 @@ async function pickSlot(day) { // the + on a calendar day: which meal?
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
   if (r.value) pickMeal(day, r.value);
 }
+const pkThumb = (x) => { const th = state.thumbs[dishKey(x.main)]; return th ? `<img class="pk-thumb" src="${th}" alt="">` : ''; };
 async function pickMeal(day, slot = 'dinner') {
   const m = state.model; if (!m) return;
   const current = slotValue(day, slot), currentCustom = customText(current);
@@ -2229,13 +2306,13 @@ async function pickMeal(day, slot = 'dinner') {
   dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}${slot === 'dinner' ? '' : ` · ${slotName(slot)}`}</p>
     ${(state.planDone[day] || {})[slot] ? '<button class="btn ghost pk-notdone" value="__notdone">↺ Mark not done</button>' : ''}
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
-    <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
+    <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${pkThumb(x)}${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
-      return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}${pastSorted.filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${pastSorted.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
       const other = plannedElsewhere(x.rid, day);
-      return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div></div>
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
@@ -2318,9 +2395,11 @@ function renderSettings() {
     <div class="updrow"><button class="btn ghost" type="button" id="update">Check for updates</button><span class="ver">${esc(window.APP_VERSION || 'dev')}</span></div>
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}</section>`;
   // What's new: the version history, folded (newest first)
-  h += `<details class="card whatsnew"><summary class="section-label">What’s new</summary>${WHATS_NEW.map(([v, items]) => `<div class="wn"><p class="wn-v">wcwb-v-${esc(v)}</p><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`).join('')}</details>`;
+  const wn = ([v, items]) => `<div class="wn"><p class="wn-v">wcwb-v-${esc(v)}</p><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
+  h += `<details class="card whatsnew"><summary class="section-label">What’s new</summary>${WHATS_NEW.slice(0, 5).map(wn).join('')}${WHATS_NEW.length > 5 ? `<details class="wn-older"><summary>Older</summary>${WHATS_NEW.slice(5).map(wn).join('')}</details>` : ''}</details>`;
   const cur = ls.get('color-theme', 'teal');
-  h += `<section class="card"><p class="section-label">Color</p><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></section>`;
+  const curT = THEMES.find((x) => x[0] === cur) || THEMES[0]; // folded: the summary shows the color in use
+  h += `<details class="card colorfold"><summary class="section-label">Color<span class="acct-who"><i class="colordot" style="background:${curT[2]}"></i>${esc(curT[1])}</span></summary><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></details>`;
   // Account: rarely needed, so folded; the summary shows who you are
   h += `<details class="card account"><summary class="section-label">Account<span class="acct-who">${esc(state.myName || (state.user && state.user.email) || '')}</span></summary>
     ${!state.firebase ? '<p>Not set up: everything stays on this phone.</p>' : state.user ? `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>` : ''}
@@ -2467,6 +2546,10 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#addbtn, #addinline')) { addMenu(); return; }
   if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
+  const sfl = e.target.closest('[data-storefilter]');
+  if (sfl) { ls.set('shop-store-filter', sfl.dataset.storefilter); route(); return; }
+  const vok = e.target.closest('[data-varietyok]');
+  if (vok) { const d = ls.get('variety-dismissed', {}), now = Date.now(); for (const k of Object.keys(d)) if (d[k] < now) delete d[k]; d[vok.dataset.varietyok] = now + 7 * 86400000; ls.set('variety-dismissed', d); route(); return; }
   const scl = e.target.closest('[data-scale]');
   if (scl) { setScale(scl.dataset.rid, +scl.dataset.scale); return; }
   const tdn = e.target.closest('[data-todaydone]');
@@ -2475,6 +2558,8 @@ document.addEventListener('click', async (e) => {
   if (cub) { e.preventDefault(); e.stopPropagation(); countTap(cub.dataset.scope, cub.dataset.countup); return; }
   const tb = e.target.closest('[data-timer]');
   if (tb) { timerTap(tb.dataset.label, +tb.dataset.timer, tb.dataset.meal, tb.dataset.step); return; }
+  const adt = e.target.closest('[data-addtime]');
+  if (adt) { e.preventDefault(); const [id, n] = adt.dataset.addtime.split('|'); addTime(id, +n); return; }
   const rang = e.target.closest('.timer.done[data-tid]');
   if (rang) { e.preventDefault(); finishTimer(rang.dataset.tid); return; }
   const stp = e.target.closest('[data-stoptimer]');
@@ -2880,10 +2965,10 @@ function start() {
     state.extras = ls.get('local-extras', {});
     state.session = ls.get('local-session', { dinner: {}, timers: {} });
     state.staples = ls.get('local-staples', {});
-    state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {}); state.scale = ls.get('local-scale', {}); state.shopOrder = ls.get('local-shoporder', []); state.need = ls.get('local-need', {});
+    state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {}); state.scale = ls.get('local-scale', {}); state.shopOrder = ls.get('local-shoporder', []); state.need = ls.get('local-need', {}); state.store = ls.get('local-store', {});
     state.ideas = ls.get('local-ideas', {});
     state.nextTime = ls.get('local-nexttime', {});
-    state.madeAdjust = ls.get('local-adjust', {});
+    state.madeAdjust = ls.get('local-adjust', {}); state.retired = ls.get('local-retired', {});
     state.photos = ls.get('local-photos', {});
     state.thumbs = ls.get('local-thumbs', {}); thumbsLoaded = true;
     state.sync = 'local'; renderSync(); renderTimers();

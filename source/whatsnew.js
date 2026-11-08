@@ -1,6 +1,17 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['089', [
+    'Timers: +1 on a running timer adds a minute; a timer that’s going off has +1, +2 and +5 min buttons. Once time is added it also shows time so far out of the new total.',
+    'Cook mode: when every step of the meal is ticked, a “Time to eat!” screen lists the dishes and offers a photo of the plate.',
+    'Calendar: a heads-up for the same meat two nights in a row or the same side three times in a week (Dismiss for a week).',
+    'Shopping: press and hold an item to set its store (Marukai, Costco or Ace). Everything still shows; buttons at the top filter to one store while it has things left to buy.',
+    'Recipe Book: Retire a recipe you didn’t like (in its ⋯ menu). It moves to a folded Retired list and stops being suggested; Bring it back any time.',
+    'Dish photos show on the Meals cards and in the calendar’s meal picker.',
+    'A tiny buzz when you tick something (on phones that support it).',
+    'The sync dot only shows when something’s off (offline, syncing or an error).',
+    'Settings: What’s new shows the five latest versions, with older ones folded; Color is folded too; every folding card has the same arrow.',
+  ]],
   ['088', ['Your own rating (in brackets) is a lighter gold than the average.']],
   ['087', [
     'Recipes: choose how many servings (½, 1, 2 or 3 times the recipe). Amounts on the recipe, in cook mode and on the shopping list follow it, for both phones.',

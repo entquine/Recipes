@@ -623,10 +623,6 @@ details.plan:not([open]) > summary { margin: 0; }
 .tonightcook { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; border-radius: 14px; padding: 9px 16px; }
 .tc-main { display: inline-flex; align-items: center; gap: 6px; }
 .tc-sub { font-size: 13px; font-weight: 500; opacity: .85; padding-left: 1.6em; }
-.account > summary { list-style: none; }
-.account > summary::-webkit-details-marker { display: none; }
-.account > summary::before { content: "▸"; font-size: 13px; margin-right: 2px; }
-.account[open] > summary::before { content: "▾"; }
 /* day picker: one scrolling list between a fixed top and bottom */
 #picker { padding: 16px 16px 14px; }
 #picker form { display: flex; flex-direction: column; max-height: calc(100dvh - 84px); }
@@ -863,3 +859,50 @@ html, body { overscroll-behavior-y: contain; }
 .mine-stars { color: #dcab4a; font-weight: 650; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mine-stars { color: #f6d58e; } }
 :root[data-theme="dark"] .mine-stars { color: #f6d58e; }
+/* timer: +1 while running; +1 / +2 / +5 when it goes off */
+.timer { flex-wrap: wrap; }
+.timer .tadd { border: 1.5px solid var(--c2); background: var(--surface); color: var(--c2); border-radius: 999px; padding: 4px 10px; font-size: 14px; font-weight: 800; cursor: pointer; }
+.timer .tsofar { font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+.timer.done { cursor: pointer; }
+.timer.done .tadds { flex-basis: 100%; display: flex; align-items: center; gap: 8px; }
+.timer.done .tadd { border-color: var(--danger); color: var(--danger); padding: 6px 12px; }
+.timer.done .tfinish { margin-left: auto; font-size: 13.5px; font-weight: 800; color: var(--danger); }
+/* cook mode: the whole meal is done */
+.cw-end .cw-serve { display: none; }
+.cw-end.alldone .cw-serve { display: block; }
+.cw-end.alldone .cw-dishdone { display: none; }
+.servelist { list-style: none; padding: 0; margin: 10px 0 16px; font-size: 18px; font-weight: 650; }
+.servelist li { display: flex; align-items: center; gap: 10px; padding: 5px 0; }
+.servelist li span { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; align-items: center; justify-content: center; font-size: 15px; }
+.cw-serve .btn { display: flex; width: 100%; justify-content: center; margin-top: 10px; }
+/* calendar: variety check */
+.varietywarn { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 0 0 10px; padding: 9px 12px; border-radius: 12px; background: var(--warn-bg); color: var(--warn-ink); font-size: 14px; font-weight: 600; }
+.varietywarn .linkbtn { flex: none; font-size: 13px; color: var(--warn-ink); text-decoration: underline; }
+/* shopping: specialty stores */
+.storechip { display: inline-block; font-size: 11.5px; font-weight: 800; letter-spacing: .03em; padding: 0 7px; border-radius: 6px; background: var(--c2-soft); color: var(--c2); }
+.storefilter { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 12px; }
+.storefilter button { border: 1.5px solid var(--line); background: var(--surface); color: var(--text); border-radius: 999px; padding: 5px 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
+.storefilter button b { color: var(--c2); }
+.storefilter button.on { background: var(--c2); border-color: var(--c2); color: #fff; }
+.storefilter button.on b { color: #fff; }
+/* Recipe Book: Retire */
+#formdlg .retirerow { margin-top: 4px; }
+#formdlg .retirebtn { color: var(--danger); }
+.retiredsec .bookrow { opacity: .6; }
+/* sync: nothing shows when all is synced; a colored dot (and a word) only when something's off */
+.sync.ok { display: none; }
+/* What's new: older versions folded */
+.wn-older { margin-top: 14px; }
+.wn-older > summary { cursor: pointer; font-weight: 700; color: var(--muted); font-size: 14px; }
+/* a dish photo on the Meals cards and in the calendar picker */
+.mc-titlerow { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+.mc-thumb { width: 58px; height: 58px; border-radius: 12px; object-fit: cover; flex: none; }
+.pickopt .pk-thumb { float: left; width: 42px; height: 42px; border-radius: 9px; object-fit: cover; margin: 0 10px 0 0; }
+.pickopt::after { content: ""; display: block; clear: both; }
+/* Settings: every folding card (Color, Account, What's new, Diagnostics) gets the same arrow */
+.colorfold > summary, .account > summary, .whatsnew > summary, .synccheck > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 0; }
+.colorfold > summary::-webkit-details-marker, .account > summary::-webkit-details-marker, .whatsnew > summary::-webkit-details-marker, .synccheck > summary::-webkit-details-marker { display: none; }
+.colorfold > summary::before, .account > summary::before, .whatsnew > summary::before, .synccheck > summary::before { content: "▸"; font-size: 17px; line-height: 1; width: 12px; }
+.colorfold[open] > summary::before, .account[open] > summary::before, .whatsnew[open] > summary::before, .synccheck[open] > summary::before { content: "▾"; }
+.colorfold[open] > summary { margin-bottom: 10px; }
+.colordot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
