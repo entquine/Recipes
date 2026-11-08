@@ -835,3 +835,5 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .xslot.isdone::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; margin-top: -2px; background: currentColor; pointer-events: none; }
 .pk-notdone { width: 100%; margin: 0 0 12px; }
 .xslot { align-self: flex-start; } /* as wide as its text, so a crossed-out line stops where the text does */
+/* no iPhone link preview / callout when pressing and holding */
+a, button, img { -webkit-touch-callout: none; }

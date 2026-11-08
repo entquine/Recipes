@@ -1407,6 +1407,9 @@ document.addEventListener('pointerdown', (e) => {
     if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name); }, 400); // press and hold: 0.4 seconds
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
+// No browser "Open link address / Copy link" menu when pressing and holding parts of the app (they're links underneath).
+// Text boxes keep their menu, for copy and paste.
+document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea, [contenteditable="true"]')) e.preventDefault(); });
 // Press and hold a shopping line: change how much to buy (shared, with who changed it), or mark it as usually have.
 // A changed amount belongs to the meals the line was for at the time; if that changes, the recipe amount is back.
 const lineParts = (l) => (l.done ? l.parts : l.open);
