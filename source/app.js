@@ -149,6 +149,7 @@ function buildMeals(recipes) {
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'ahead': if (r.text) (meal.aheadNotes || (meal.aheadNotes = [])).push({ when: r.amount || '', text: r.text }); break;
       case 'source': dish.source = String(r.text || r.amount || '').trim(); break; // the recipe's original web page
+      case 'made with': dish.madeWith = { id: String(r.text || '').trim(), until: String(r.amount || '').trim() }; break; // an archived side: its old meal's calendar days count for it
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
     }
@@ -1387,7 +1388,9 @@ function cookAction(a) {
 const pastDays = (rid) => { const today = dayKey(new Date()); return [...new Set(planList().filter(([k, v]) => k < today && planKey(v) === rid).map(([k]) => k))].sort(); };
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
 // calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
-const countedOne = (meal, dish) => pastDays(meal.rid).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
+// A side split off from a meal ("Made with" row): the days that meal was on the calendar, up to when the side was split off
+const withDays = (dish) => (dish.madeWith && dish.madeWith.id ? pastDays(dish.madeWith.id).filter((k) => !dish.madeWith.until || k <= dish.madeWith.until) : []);
+const countedOne = (meal, dish) => pastDays(meal.rid).length + withDays(dish).length + (dish.madeBefore != null ? dish.madeBefore : (meal.main.madeBefore || 0));
 const countedMade = (meal, dish = meal.main) => (dish.group ? dish.group.reduce((n, x) => n + countedOne(x.meal, x.dish), 0) : countedOne(meal, dish)); // a shared side: every meal it's in
 const madeCount = (meal, dish = meal.main) => Math.max(0, countedMade(meal, dish) + (Number(state.madeAdjust[dishKey(dish)]) || 0)); // plus your change
 function writeAdjust(id, delta) {
@@ -1428,7 +1431,7 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
 }
 const timesText = (n) => (n === 1 ? 'Made once' : n === 2 ? 'Made twice' : `Made ${n} times`);
 function lastMadeText(meal, dish = meal.main) {
-  const k = dish.group ? dish.group.map((x) => lastMade(x.meal)).filter(Boolean).sort().pop() : lastMade(meal), n = madeCount(meal, dish);
+  const k = (dish.group ? dish.group.flatMap((x) => [lastMade(x.meal), withDays(x.dish).pop()]) : [lastMade(meal), withDays(dish).pop()]).filter(Boolean).sort().pop(), n = madeCount(meal, dish);
   if (!n) return 'Not made yet';
   if (!k) return timesText(n) + (dish.madeNote ? ` · last ${dish.madeNote}` : '');
   const days = Math.round((keyToDate(dayKey(new Date())) - keyToDate(k)) / 86400000);

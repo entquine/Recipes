@@ -8,7 +8,7 @@ import sys
 
 import openpyxl
 
-SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made", "ahead", "source"}
+SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made", "made with", "ahead", "source"}
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
@@ -112,6 +112,11 @@ def check_meals(ws, tab, errors, warnings):
             d["plan"] += 1
             if amount is not None and not re.fullmatch(r"Before|\d{1,2}:\d{2}(:00)?", str(amount).strip()):
                 warnings.append(f"{where}: Plan time should look like 0:27 or Before, found {amount!r}")
+        if s == "made with":
+            if not re.match(r"^d-[a-z0-9-]+$", str(text or "").strip()):
+                errors.append(f"{where}: Made with needs the old main dish's ID in Text (e.g. d-lemon-herb-chicken-cutlets), found {text!r}")
+            if amount not in (None, "") and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(amount).strip()):
+                errors.append(f"{where}: Made with Amount should be the date it was split off, as YYYY-MM-DD, found {amount!r}")
         if s == "source" and not re.match(r"^https?://", str(text or "").strip()):
             warnings.append(f"{where}: Source should be the recipe's web address (starting with https://), found {text!r}")
         if s == "made":

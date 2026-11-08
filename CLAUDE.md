@@ -19,7 +19,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Recipe | Dish name, e.g. `Garlic Butter Ribeye Steak Bites` |
 | Type | `Main`, `Side`, `Breakfast` or `Dessert`. Each meal has exactly one Main and usually one or two Sides (a meal may also include a Dessert, shown last). Use `Dessert` for sweets and baking (muffins, cookies, cakes, pies): a dessert is never a Main. Use `Breakfast` for breakfast dishes (pancakes, egg bakes, breakfast burritos, overnight oats): usually its own Archive entry like a Dessert; a breakfast meal in the Recipes tab has one Breakfast in place of the Main |
 | Meal | Groups dishes into a meal, e.g. `4 Steak Bites`. The leading number sets the order in the app and is hidden. New meals take the next number |
-| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, `Made`, `Ahead`, or `Source` |
+| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, `Made`, `Made with`, `Ahead`, or `Source` |
 | Group | Optional ingredient sub-group, e.g. `Teriyaki sauce` |
 | Order | Step number, or the order of Plan rows |
 | Amount | Ingredient rows: quantity (`1¼ lb`). Step rows: the "amount used" in that step (`2 chicken breasts`). Plan rows: time from the start, `0:27`, or `Before` |
@@ -57,6 +57,7 @@ Same columns as **Recipes**, but each entry is a **single dish**: one Main, one 
 - **Archive a current meal** ("archive the pot pie") splits it into one entry per dish:
   - The **Main** keeps its **ID** (that's what carries the ratings and calendar history over) and, by convention, its original **Meal** name, leading number included (e.g. `2 Chicken Pot Pie`). Keep its Makes / Plan total / Plan first / Plan rows, but **rewrite the Plan rows to drop the sides**: remove any `Side step` references and any steps, times or "start first" notes that only concern a side. Renumber the Plan `Order` if rows are removed.
   - Each **Side** becomes its own entry with **Meal = the dish's own name** (e.g. `Roasted Broccoli`) and no number, keeping its own **ID**. A Side keeps its Makes, Ingredient, Step and Tip rows, and has **no Plan rows**.
+  - Give each archived Side a **`Made with` row** so it keeps credit for the times its meal was made: **Text** = the Main's ID, **Amount** = today's date as `YYYY-MM-DD` (the day it was split off). The app counts the days that Main was on the calendar up to that date as times this side was made. (Calendar days live in the app, so this is the only way the side keeps them.)
   - Then remove the meal's ingredients from the Shopping tab (or trim the amount and "Used in" text for items that other current meals still use).
 - **Un-archive a dish**: move its rows back to **Recipes**, IDs unchanged, and re-pair it with its meal. A Main gets its original Meal name back (it never lost it). A Side takes the Meal name of the main it's served with, and that Main's Plan rows are updated to include the side again (`Side step` references, timing, "start first" if the side takes longer). Add the ingredients back to Shopping.
 - A Meal name must be in only one of the two tabs. The checker reports an error if it's in both.
@@ -71,6 +72,7 @@ When a dish comes from a web page (an idea with a link, or a link the owner send
 
 ### Times made (Section `Made`)
 The app shows how many times each recipe has been made: every past day it was on the app's calendar counts automatically, **plus** an optional `Made` row for times **before** it was tracked on the calendar.
+- A side split off from an archived meal has a `Made with` row instead of needing a number (see "Archive a current meal"); it can have both.
 - One `Made` row per dish at most, on that dish's own rows (Recipe, Type, Meal, ID as usual). **Amount** = the number of times made before the calendar, as a whole number (`4`). **Text** = optional rough "last made", e.g. `Oct 2026` (shown only until the calendar has a date). Other columns blank.
 - Put it on the dish that was made: the Main for a meal (its sides share the meal's calendar days and, unless they have their own `Made` row, the Main's count), or an archived Side entry for a side made on its own.
 - In the Recipe Book, a meal on the Planned list moves from **Planned** to **Made before** once it has been made (unless it's on the calendar for an upcoming day). A side the owner set to 0 times made after the meal was made goes to **Want to try**.
