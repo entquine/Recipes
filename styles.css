@@ -909,3 +909,6 @@ html, body { overscroll-behavior-y: contain; }
 .varietywarn span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .varietywarn .vw-x { flex: none; width: 30px; height: 30px; border: 0; border-radius: 50%; background: rgba(0,0,0,.08); color: var(--warn-ink); font-size: 19px; line-height: 1; cursor: pointer; }
 .varietywarn { font-size: clamp(12.5px, 3.45vw, 14px); padding: 8px 8px 8px 11px; gap: 6px; }
+/* recipe: link to the original web page */
+.srclink { display: inline-flex; align-items: baseline; gap: 5px; margin: 2px 0 8px; font-size: 14px; font-weight: 700; color: var(--c0); text-decoration: none; }
+.srclink span { font-weight: 500; color: var(--muted); }

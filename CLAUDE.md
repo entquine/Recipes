@@ -19,7 +19,7 @@ If the owner gives you a new spreadsheet made elsewhere, **merge its rows into `
 | Recipe | Dish name, e.g. `Garlic Butter Ribeye Steak Bites` |
 | Type | `Main`, `Side`, `Breakfast` or `Dessert`. Each meal has exactly one Main and usually one or two Sides (a meal may also include a Dessert, shown last). Use `Dessert` for sweets and baking (muffins, cookies, cakes, pies): a dessert is never a Main. Use `Breakfast` for breakfast dishes (pancakes, egg bakes, breakfast burritos, overnight oats): usually its own Archive entry like a Dessert; a breakfast meal in the Recipes tab has one Breakfast in place of the Main |
 | Meal | Groups dishes into a meal, e.g. `4 Steak Bites`. The leading number sets the order in the app and is hidden. New meals take the next number |
-| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, `Made`, or `Ahead` |
+| Section | `Makes`, `Plan total`, `Plan first`, `Plan`, `Ingredient`, `Step`, `Tip`, `Made`, `Ahead`, or `Source` |
 | Group | Optional ingredient sub-group, e.g. `Teriyaki sauce` |
 | Order | Step number, or the order of Plan rows |
 | Amount | Ingredient rows: quantity (`1¼ lb`). Step rows: the "amount used" in that step (`2 chicken breasts`). Plan rows: time from the start, `0:27`, or `Before` |
@@ -66,6 +66,9 @@ Same columns as **Recipes**, but each entry is a **single dish**: one Main, one 
 
 **Step timers:** a step whose text has a duration (e.g. "Roast 20-25 minutes", "Simmer 1 hour") gets a timer button in the app, using the first number. Write durations as digits with "minutes"/"hours" when a step involves waiting. Give every such step a short **Timer** name (what's happening, not the step number), e.g. `Cook cutlets`, `Rest steak`, `Simmer sauce`. Without one, the timer is called "<dish>: step N".
 
+### Original recipe link (Section `Source`)
+When a dish comes from a web page (an idea with a link, or a link the owner sends), add **one `Source` row** on that dish's rows: **Text** = the page's full web address (`https://…`), other columns blank (Recipe, Type, Meal, ID as usual). The app shows **View original (site name) ›** under the dish's name. For dishes added from the Planning tab's ideas, the app also finds the link from the idea by name, but the `Source` row is what keeps it if the idea is ever deleted. The checker warns if the Text isn't a web address.
+
 ### Times made (Section `Made`)
 The app shows how many times each recipe has been made: every past day it was on the app's calendar counts automatically, **plus** an optional `Made` row for times **before** it was tracked on the calendar.
 - One `Made` row per dish at most, on that dish's own rows (Recipe, Type, Meal, ID as usual). **Amount** = the number of times made before the calendar, as a whole number (`4`). **Text** = optional rough "last made", e.g. `Oct 2026` (shown only until the calendar has a date). Other columns blank.
@@ -82,7 +85,7 @@ The app's **Planning** tab collects recipe ideas from both people: a recipe name
 - If the recipe comes with a side (or a side would clearly suit it), add that side as a **separate** Archive entry the same way (Meal = the side's own name, Type `Side`, no Plan rows). Don't pair it with the Main.
 - A sweet or baked idea (muffins, cookies, cake) is a **Dessert**: add it as its own Archive entry with Type `Dessert` (Plan rows for its own steps are fine, e.g. bake times) and no side.
 - A breakfast idea (pancakes, egg bake, breakfast burritos) is a **Breakfast**: add it as its own Archive entry with Type `Breakfast`, the same way as a Dessert. In the app's calendar, breakfasts are listed first when picking a breakfast (and desserts first when picking a dessert).
-- For a link, fetch the page and follow that recipe; if it can't be read, say so. For a vague idea, propose a recipe and confirm before adding it.
+- For a link, fetch the page and follow that recipe, and add a `Source` row with the link (see "Original recipe link"); if it can't be read, say so. For a vague idea, propose a recipe and confirm before adding it.
 - **Use the idea's name as (or inside) the dish's Recipe name** (e.g. idea "Fish tacos" → `Baja Fish Tacos`): the app ticks an idea off as "In the Recipe Book" when a dish name contains it.
 - Only put an idea in the Recipes tab (as a numbered meal with sides and a full Plan) if the owner asks to plan it as a meal now.
 Then check and push as usual, and list the dishes added.

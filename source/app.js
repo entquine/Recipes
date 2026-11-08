@@ -147,6 +147,7 @@ function buildMeals(recipes) {
       case 'step': dish.steps.push({ order, amount: r.amount, text: r.text, timer: r.timer || '', prep: r['prep task'] || '', prepAmt: r['prep amount'] || '', combo: r['combined order'] === '' || r['combined order'] == null ? NaN : parseFloat(r['combined order']), ahead: r.ahead || '', countUp: r['count up'] ? aheadMinutes(r['count up']) : 0, seq }); break;
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'ahead': if (r.text) (meal.aheadNotes || (meal.aheadNotes = [])).push({ when: r.amount || '', text: r.text }); break;
+      case 'source': dish.source = String(r.text || r.amount || '').trim(); break; // the recipe's original web page
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
     }
@@ -493,6 +494,22 @@ function ideaRowHtml([id, x]) {
 const ideaDay = (at) => new Date(at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 // An idea counts as added once a recipe with that name (or containing it) is in the recipes.
 const normName = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+// "View original": the dish's Source row, or else the link of the Planning idea it came from (matched by name)
+function sourceOf(d) {
+  const ok = (u) => /^https?:\/\//i.test(String(u || '').trim());
+  if (ok(d.source)) return d.source.trim();
+  const dn = normName(d.name);
+  for (const x of Object.values(state.ideas || {})) {
+    if (!x || !ok(x.url)) continue; const n = normName(x.name || ''); if (n.length < 4) continue;
+    if (dn === n || dn.includes(n) || (dn.length >= 8 && n.includes(dn))) return x.url.trim();
+  }
+  return '';
+}
+function sourceLinkHtml(d) {
+  const u = sourceOf(d); if (!u) return '';
+  let host = ''; try { host = new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
+  return `<a class="srclink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">View original <span>${esc(host)}</span> ›</a>`;
+}
 function ideaRecipe(x) {
   const n = normName(x.name || ''); if (n.length < 4) return null;
   for (const meal of allMeals()) for (const d of meal.dishes) {
@@ -2111,7 +2128,7 @@ function renderMeal(id, only) {
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     const pk = dishKey(d);
-    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(scaleServings(d.makes))}</p>` : ''}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${full.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
+    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(scaleServings(d.makes))}</p>` : ''}${sourceLinkHtml(d)}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${full.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${openIngs.has(d.anchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>`;
