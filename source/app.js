@@ -2862,7 +2862,8 @@ function dragCleanup() {
   clearTimeout(drag.timer); clearTimeout(drag.weekTimer);
   if (drag.ghost) drag.ghost.remove();
   if (drag.held) drag.held.remove();
-  document.querySelectorAll('.day.drop-target, .day.dragging, [data-week].drop-target').forEach((el) => el.classList.remove('drop-target', 'dragging'));
+  document.querySelectorAll('.day.drop-target, .day.dragging, [data-week].drop-target, #dropremove.drop-target').forEach((el) => el.classList.remove('drop-target', 'dragging'));
+  const rz = $('#dropremove'); if (rz) rz.classList.remove('show');
   document.body.classList.remove('is-dragging');
   drag = null;
 }
@@ -2875,6 +2876,9 @@ function dragStart() {
   drag.dx = drag.x - r.left; drag.dy = drag.y - r.top;
   document.body.appendChild(g); drag.ghost = g; dragMoveGhost();
   src.closest('.day').classList.add('dragging'); document.body.classList.add('is-dragging');
+  let rz = $('#dropremove'); // drop here to take it off the calendar
+  if (!rz) { rz = document.createElement('div'); rz.id = 'dropremove'; document.body.appendChild(rz); }
+  rz.innerHTML = `<span>🗑️ Drop here to remove</span>`; rz.classList.add('show');
   // The finger's touch stays tied to this element. Keep a hidden copy of it in the page for the whole drag,
   // so redrawing the calendar (changing week, or an update from the other phone) doesn't drop the drag.
   const holder = document.createElement('div'); holder.className = 'drag-holder';
@@ -2885,7 +2889,7 @@ function dragStart() {
 function dragMoveGhost() { drag.ghost.style.transform = `translate(${drag.x - drag.dx}px, ${drag.y - drag.dy}px)`; }
 function dragTargetAt(x, y) {
   const el = document.elementFromPoint(x, y);
-  return el ? el.closest('.day, .weeknav [data-week]') : null;
+  return el ? el.closest('#dropremove, .day, .weeknav [data-week]') : null;
 }
 document.addEventListener('pointerdown', (e) => {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -2915,17 +2919,20 @@ document.addEventListener('pointermove', (e) => {
   } else if (!t) clearTimeout(drag.weekTimer);
   // scroll the page when dragging near the top or bottom edge
   const edge = 90;
-  if (drag.y < edge + 60) scrollBy(0, -12); else if (drag.y > innerHeight - edge - 70) scrollBy(0, 12);
+  if (t && t.id === 'dropremove') { /* hovering Remove: keep still */ } else if (drag.y < edge + 60) scrollBy(0, -12); else if (drag.y > innerHeight - edge - 70) scrollBy(0, 12);
 });
 document.addEventListener('pointerup', () => {
   if (!drag) return;
   if (drag.active) {
     const t = dragTargetAt(drag.x, drag.y);
     const to = t && t.classList.contains('day') ? t.querySelector('.pick').dataset.day : null;
-    const from = drag.from, slot = drag.slot;
+    const from = drag.from, slot = drag.slot, remove = !!(t && t.id === 'dropremove');
     suppressClick = true; setTimeout(() => { suppressClick = false; }, 400);
     dragCleanup();
-    if (to && to !== from) { if (slot) moveSlot(from, to, slot); else movePlan(from, to); toast('Moved'); }
+    if (remove) { // dropped on Remove: off the calendar, with Undo
+      const sl = slot || 'dinner', was = slotValue(from, sl), mm = mealByName(was);
+      setPlan(from, null, sl); undoToast(`${customText(was) || (mm ? mm.main.name : 'Meal')} removed`, () => setPlan(from, was, sl));
+    } else if (to && to !== from) { if (slot) moveSlot(from, to, slot); else movePlan(from, to); toast('Moved'); }
   } else dragCleanup();
 });
 document.addEventListener('pointercancel', () => { if (drag && !drag.active) dragCleanup(); });
