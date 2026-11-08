@@ -997,8 +997,12 @@ function updateSync(fromCache) {
   else state.sync = 'ok';
   renderSync();
 }
-function renderSync() {
+let syncWait = 0;
+function renderSync(late) {
   const el = $('#sync');
+  // "Syncing…" only if it's still going after about 2 seconds (most saves are instant); offline and errors show at once
+  if (state.sync === 'pending' && !late) { if (el.classList.contains('pending')) return; if (!syncWait) { el.className = 'sync ok'; syncWait = setTimeout(() => { syncWait = 0; if (state.sync === 'pending') renderSync(true); }, 2000); } return; }
+  clearTimeout(syncWait); syncWait = 0;
   const labels = { ok: 'Synced', pending: 'Syncing…', offline: lastSnapPending ? 'Offline · will sync' : 'Offline', local: 'This phone only', none: 'Signed out', error: 'Sync error' };
   el.className = 'sync ' + state.sync; el.lastElementChild.textContent = labels[state.sync] || '';
   el.title = labels[state.sync] || ''; el.setAttribute('aria-label', el.title); // all synced: nothing shows; otherwise a colored dot with a word or two
@@ -1142,16 +1146,24 @@ async function quickTimer() {
 document.addEventListener('click', (e) => { if (e.target.closest('#quicktimer')) quickTimer(); });
 const alarmed = new Set();
 let timerTick = null;
+// Count-up steps that have been started (steaks out of the fridge, marinating) also sit in the timer bar, counting up,
+// with ✓ to tick the step off as finished. They stay on the step and the Head start card too.
+function countUpsRunning() { return allMeals().flatMap((m) => sinceRunning(m).map(({ d, st }) => ({ m, d, st, v: (state.ticks[m.id] || {})[startKey(st.key)] }))); }
+function countUpRowHtml({ m, st, v }) {
+  const label = st.timer || st.text.replace(/\s*\(.*?\)/g, '').split(/[.,;]/)[0];
+  return `<div class="timer countup"><a href="#/meal/${esc(m.id)}" class="tlabel">${esc(label)}</a><span class="tleft">↑ ${esc(sinceText(v, st.countUp, true))}</span><button class="tadd" data-cudone="${esc(m.id)}|${esc(st.key)}" aria-label="Done: tick this step">✓</button></div>`;
+}
 function renderTimers() {
   const bar = $('#timerbar'); if (!bar) return;
-  const list = Object.entries(state.session.timers || {}).sort((a, b) => a[1].ends - b[1].ends);
-  bar.hidden = !list.length;
-  document.body.classList.toggle('has-timers', !!list.length);
+  const list = Object.entries(state.session.timers || {}).sort((a, b) => a[1].ends - b[1].ends), ups = countUpsRunning();
+  const any = list.length + ups.length > 0;
+  bar.hidden = !any;
+  document.body.classList.toggle('has-timers', any);
   const cookBar = $('#cooktimers');
-  if (cookBar) cookBar.hidden = !list.length;
-  if (!list.length) { clearInterval(timerTick); timerTick = null; bar.innerHTML = ''; if (cookBar) cookBar.innerHTML = ''; markTimerButtons(); return; }
+  if (cookBar) cookBar.hidden = !any;
+  if (!any) { clearInterval(timerTick); timerTick = null; bar.innerHTML = ''; if (cookBar) cookBar.innerHTML = ''; markTimerButtons(); return; }
   const now = Date.now();
-  bar.innerHTML = list.map(([id, t]) => {
+  bar.innerHTML = ups.map(countUpRowHtml).join('') + list.map(([id, t]) => {
     const left = Math.round((t.ends - now) / 1000), done = left <= 0;
     if (done && !alarmed.has(id)) { alarmed.add(id); lastRing[id] = now; alarm(t.label, (t.by || '').toLowerCase() === myEmail()); }
     else if (done && (t.by || '').toLowerCase() === myEmail() && now - (lastRing[id] || 0) > 5000 && now - t.ends < 15 * 60000) { lastRing[id] = now; ring(3); } // keeps going until someone taps it
@@ -2433,7 +2445,7 @@ function renderLogin(err = '') {
 
 // ---------------------------------------------------------------- tick rendering
 function refreshTicks() {
-  refreshSince();
+  refreshSince(); renderTimers(); // count-ups in the timer bar follow the ticks
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
@@ -2558,6 +2570,8 @@ document.addEventListener('click', async (e) => {
   if (cub) { e.preventDefault(); e.stopPropagation(); countTap(cub.dataset.scope, cub.dataset.countup); return; }
   const tb = e.target.closest('[data-timer]');
   if (tb) { timerTap(tb.dataset.label, +tb.dataset.timer, tb.dataset.meal, tb.dataset.step); return; }
+  const cud = e.target.closest('[data-cudone]');
+  if (cud) { e.preventDefault(); const [scope, key] = cud.dataset.cudone.split('|'); setTick(scope, key, true); return; }
   const adt = e.target.closest('[data-addtime]');
   if (adt) { e.preventDefault(); const [id, n] = adt.dataset.addtime.split('|'); addTime(id, +n); return; }
   const rang = e.target.closest('.timer.done[data-tid]');
