@@ -129,7 +129,7 @@ function buildMeals(recipes) {
     let meal = meals.get(mealName);
     if (!meal) { meal = { name: mealName, title: displayMealName(mealName), id: 'm-' + slug(mealName), dishes: new Map(), planTotal: '', planFirst: '', plan: [] }; meals.set(mealName, meal); }
     let dish = meal.dishes.get(recipe);
-    if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : /dessert/i.test(r.type) ? 'Dessert' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
+    if (!dish) { dish = { name: recipe, id: '', type: /side/i.test(r.type) ? 'Side' : /dessert/i.test(r.type) ? 'Dessert' : /breakfast/i.test(r.type) ? 'Breakfast' : 'Main', makes: '', groups: [], steps: [], tips: [], seq }; meal.dishes.set(recipe, dish); }
     if (!dish.id && r.id) dish.id = r.id;
     if (/^(yes|y|true)$/i.test(r['hide from recipe book'] || '')) dish.hideBook = true; // simple sides kept out of the Recipe Book
     const order = r.order === '' ? NaN : parseFloat(r.order);
@@ -154,7 +154,7 @@ function buildMeals(recipes) {
 
   const out = [];
   for (const meal of meals.values()) {
-    const ORDER = { Main: 0, Side: 1, Dessert: 2 };
+    const ORDER = { Main: 0, Breakfast: 0, Side: 1, Dessert: 2 };
     const dishes = [...meal.dishes.values()].sort((a, b) => ORDER[a.type] - ORDER[b.type] || a.seq - b.seq);
     meal.dishes = dishes;
     const used = new Map();
@@ -167,7 +167,7 @@ function buildMeals(recipes) {
     });
     meal.plan.sort(byOrder);
     meal.plan.forEach((p) => { p.key = uniq(`plan|${p.when}|${p.text}`); p.min = toMinutes(p.when); });
-    meal.main = dishes.find((d) => d.type === 'Main') || dishes[0];
+    meal.main = dishes.find((d) => d.type === 'Main') || dishes.find((d) => d.type === 'Breakfast') || dishes[0];
     meal.sides = dishes.filter((d) => d !== meal.main);
     meal.kind = meal.main.type; // 'Main' or 'Side' (past entries are one dish each)
     meal.rid = meal.main.id || 'd-' + slug(meal.main.name); // ratings and calendar entries are keyed on the main dish's ID
@@ -1529,7 +1529,7 @@ function planningSwitch(active) {
 // Planned = on the calendar for today or later, or a current meal (Recipes tab) that hasn't been made yet.
 // Used by the Meals list, the Recipe Book's Planned section and the shopping list.
 const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal));
-const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : 0}">${meal.kind}</span>`;
+const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : meal.kind === 'Breakfast' ? 2 : 0}">${meal.kind}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">${ICONS.cal} ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
@@ -1591,7 +1591,7 @@ function renderPast() {
     const part = (label, rows) => (rows.length ? `<li class="bk-sub" data-sub>${label}</li>${rows.sort(sort).map((e) => bookRowHtml(e.meal, e.dish, id === 'planned')).join('')}` : '');
     const sortRow = id === 'made' && list.length > 1 ? `<div class="booksort">${BOOK_SORTS.map(([v, label]) => `<button class="filter${ls.get('book-sort', 'rated') === v ? ' on' : ''}" data-booksort="${v}">${label}</button>`).join('')}</div>` : '';
     h += `<details class="card booksec" data-sec="${id}"${id !== 'planned' || ls.get('book-planned-open', false) ? ' open' : ''}><summary><span class="section-label">${title}</span><span class="bk-count">${list.length}</span></summary>${sortRow}
-      <ul class="booklist">${part('Mains', list.filter((e) => e.kind === 'Main'))}${part('Sides', list.filter((e) => e.kind === 'Side'))}${part('Desserts', list.filter((e) => e.kind === 'Dessert'))}</ul></details>`;
+      <ul class="booklist">${part('Mains', list.filter((e) => e.kind === 'Main'))}${part('Sides', list.filter((e) => e.kind === 'Side'))}${part('Breakfasts', list.filter((e) => e.kind === 'Breakfast'))}${part('Desserts', list.filter((e) => e.kind === 'Dessert'))}</ul></details>`;
   }
   h += '<p class="empty" id="booknone" hidden>No recipes match.</p>';
   h += '<p class="small staplehint">Tip: tap ⋯ (or press and hold a recipe) to rate it, add a photo or change how many times it’s been made.</p>';
@@ -2032,11 +2032,16 @@ async function pickMeal(day, slot = 'dinner') {
   const current = slotValue(day, slot), currentCustom = customText(current);
   let dlg = $('#picker');
   if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
-  const sgIds = new Set(slot === 'dinner' ? suggestions(day).map((x) => x.rid) : []), many = m.meals.length + (m.past || []).length > 8;
-  const pastSorted = [...(m.past || [])].sort((a, b) => (slot === 'dessert' ? (a.kind !== 'Dessert') - (b.kind !== 'Dessert') : (a.kind === 'Dessert') - (b.kind === 'Dessert'))); // desserts first for dessert, last otherwise
+  // Dinner: a few suggestions first. Breakfast / dessert: every breakfast / dessert first. Otherwise those kinds go last.
+  const want = slot === 'breakfast' ? 'Breakfast' : slot === 'dessert' ? 'Dessert' : null;
+  const top = slot === 'dinner' ? suggestions(day) : want ? allMeals().filter((x) => x.kind === want) : [];
+  const topLabel = slot === 'dinner' ? 'Suggested' : want === 'Breakfast' ? 'Breakfasts' : 'Desserts';
+  const sgIds = new Set(top.map((x) => x.rid)), many = m.meals.length + (m.past || []).length > 8;
+  const odd = (x) => x.kind === 'Dessert' || x.kind === 'Breakfast';
+  const pastSorted = [...(m.past || [])].sort((a, b) => odd(a) - odd(b));
   dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}${slot === 'dinner' ? '' : ` · ${slotName(slot)}`}</p>
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
-    <div class="pk-body">${(() => { const sg = slot === 'dinner' ? suggestions(day) : []; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">Suggested</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt" value="${esc(x.rid)}">${x.archived ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
+    <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}><strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
