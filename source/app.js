@@ -2206,11 +2206,11 @@ function varietyHtml(keys) {
     const a = meals[i].m, b = meals[i + 1].m; if (!a || !b) continue;
     const pa = proteinOf(a); if (!pa || pa !== proteinOf(b)) continue;
     let j = i + 1; while (j + 1 < meals.length && meals[j + 1].m && proteinOf(meals[j + 1].m) === pa) j++;
-    out.push({ id: `p|${pa}|${meals[i].k}`, text: `${pa} ${j - i + 1} nights in a row (${meals.slice(i, j + 1).map((x) => day(x.k)).join(', ')})` }); i = j;
+    out.push({ id: `p|${pa}|${meals[i].k}`, text: `${pa} ${j - i + 1 === 2 ? 'twice' : j - i + 1 + ' nights'} in a row (${day(meals[i].k)}–${day(meals[j].k)})` }); i = j;
   }
   const sides = new Map(); meals.forEach(({ k, m }) => m && m.sides.forEach((d) => { const n = d.name; if (!sides.has(n)) sides.set(n, []); sides.get(n).push(k); }));
   for (const [n, ks] of sides) if (ks.length >= 3) out.push({ id: `s|${n}|${keys[0]}`, text: `${n} ${ks.length} times this week` });
-  return out.filter((w) => !(dis[w.id] > now)).map((w) => `<div class="varietywarn"><span>⚠️ ${esc(w.text)}</span><button class="linkbtn" data-varietyok="${esc(w.id)}">Dismiss for a week</button></div>`).join('');
+  return out.filter((w) => !(dis[w.id] > now)).map((w) => `<div class="varietywarn"><span>⚠️ ${esc(w.text)}</span><button class="vw-x" data-varietyok="${esc(w.id)}" aria-label="Hide this for a week" title="Hide for a week">×</button></div>`).join('');
 }
 function renderCalendar() {
   setTitle('Calendar', false); setTab('calendar');
@@ -2549,7 +2549,7 @@ document.addEventListener('click', async (e) => {
   const sfl = e.target.closest('[data-storefilter]');
   if (sfl) { ls.set('shop-store-filter', sfl.dataset.storefilter); route(); return; }
   const vok = e.target.closest('[data-varietyok]');
-  if (vok) { const d = ls.get('variety-dismissed', {}), now = Date.now(); for (const k of Object.keys(d)) if (d[k] < now) delete d[k]; d[vok.dataset.varietyok] = now + 7 * 86400000; ls.set('variety-dismissed', d); route(); return; }
+  if (vok) { const d = ls.get('variety-dismissed', {}), now = Date.now(); for (const k of Object.keys(d)) if (d[k] < now) delete d[k]; d[vok.dataset.varietyok] = now + 7 * 86400000; ls.set('variety-dismissed', d); route(); toast('Hidden for a week'); return; }
   const scl = e.target.closest('[data-scale]');
   if (scl) { setScale(scl.dataset.rid, +scl.dataset.scale); return; }
   const tdn = e.target.closest('[data-todaydone]');

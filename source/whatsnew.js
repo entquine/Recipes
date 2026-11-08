@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['090', ['Calendar: the variety heads-up fits on one line (days as a range, × to hide it for a week).']],
   ['089', [
     'Timers: +1 on a running timer adds a minute; a timer that’s going off has +1, +2 and +5 min buttons. Once time is added it also shows time so far out of the new total.',
     'Cook mode: when every step of the meal is ticked, a “Time to eat!” screen lists the dishes and offers a photo of the plate.',
