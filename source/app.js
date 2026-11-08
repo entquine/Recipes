@@ -2137,6 +2137,15 @@ async function pickMeal(day, slot = 'dinner') {
     </div>
     <div class="row-btns">${current ? '<button class="btn outline-danger" value="__none" style="width:auto">Remove</button>' : ''}<button class="btn ghost" value="">Cancel</button></div></form>`;
   dlg.returnValue = '';
+  // Already a recipe here: a way to open it (a link under the date, and › on its line in the list)
+  const curMeal = current && !currentCustom ? mealByName(current) : null;
+  if (curMeal) {
+    const go = `#/meal/${curMeal.id}`, close = () => dlg.close('');
+    const row = document.createElement('a'); row.className = 'pk-openrow'; row.href = go; row.innerHTML = `<span>Open <b>${esc(curMeal.main.name)}</b></span><span aria-hidden="true">›</span>`;
+    dlg.querySelector('.picktitle').after(row); row.addEventListener('click', close);
+    dlg.querySelectorAll('.pickopt.sel').forEach((b) => { const wrap = document.createElement('div'); wrap.className = 'pk-selrow'; b.replaceWith(wrap); wrap.appendChild(b);
+      const a = document.createElement('a'); a.className = 'pk-open'; a.href = go; a.setAttribute('aria-label', 'Open recipe'); a.textContent = '›'; a.addEventListener('click', close); wrap.appendChild(a); });
+  }
   const input = $('#customtext', dlg), srch = $('.pksearch', dlg);
   if (srch) { // filter the list as you type; Enter mustn't pick the first meal
     srch.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') ev.preventDefault(); });

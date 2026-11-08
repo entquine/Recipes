@@ -813,3 +813,9 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .cropframe { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 12px; background: #111; touch-action: none; cursor: grab; }
 .cropframe img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-select: none; pointer-events: none; }
 .cropzoom { width: 100%; margin: 14px 0 6px; accent-color: var(--c0); }
+/* calendar picker: open the recipe that's already planned */
+.pk-openrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 12px; padding: 12px 14px; border-radius: 12px; background: var(--c0); color: #fff; text-decoration: none; font-size: 15.5px; }
+.pk-openrow span:last-child { font-size: 22px; line-height: 1; font-weight: 700; }
+.pk-selrow { position: relative; }
+.pk-selrow .pickopt { width: 100%; padding-right: 56px; }
+.pk-open { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--c0); color: #fff; font-size: 24px; font-weight: 700; text-decoration: none; }
