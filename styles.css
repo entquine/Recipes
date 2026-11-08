@@ -483,7 +483,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 
 /* ---------- dish photos ---------- */
 .dishphoto { margin: -16px -16px 14px; border-radius: var(--radius) var(--radius) 0 0; overflow: hidden; cursor: pointer; background: var(--surface-2); }
-.dishphoto img { display: block; width: 100%; max-height: 300px; object-fit: cover; }
+.dishphoto img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; } /* the shape the crop screen uses */
 .dishphoto[hidden], .photobtn[hidden] { display: none; }
 .dishbtns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .dishbtns .cookdishbtn { margin-top: 0; }
@@ -807,3 +807,9 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .qtquick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 12px 0; }
 .qtquick .btn { padding: 10px 0; font-size: 15px; width: 100%; }
 #qtname { width: 100%; margin: 4px 0 0; }
+/* photo crop */
+#cropdlg { width: min(520px, calc(100vw - 24px)); max-width: none; border: 0; border-radius: 18px; padding: 18px; background: var(--surface); color: var(--text); }
+#cropdlg::backdrop { background: rgba(0,0,0,.55); }
+.cropframe { position: relative; width: 100%; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 12px; background: #111; touch-action: none; cursor: grab; }
+.cropframe img { position: absolute; left: 0; top: 0; max-width: none; transform-origin: 0 0; user-select: none; -webkit-user-select: none; pointer-events: none; }
+.cropzoom { width: 100%; margin: 14px 0 6px; accent-color: var(--c0); }

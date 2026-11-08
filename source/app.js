@@ -593,21 +593,68 @@ function writeThumb(key, t) {
   if (!state.firebase) { try { ls.set('local-thumbs', state.thumbs); } catch { /* full */ } return; }
   setDoc(doc(state.firebase.db, 'photos', '_thumbs'), { t: { [key]: t || deleteField() } }, { merge: true }).catch(() => {});
 }
-async function shrinkPhoto(file) {
+const PHOTO_SHAPE = 4 / 3; // dish photos are saved this shape (wide), so the whole picture shows on the recipe
+async function shrinkPhoto(file, crop) {
   const bmp = await createImageBitmap(file); // turned the right way up from the camera's orientation
-  const k = Math.min(1, 1100 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  const r = crop || { x: 0, y: 0, w: bmp.width, h: bmp.height };
+  const k = Math.min(1, 1100 / Math.max(r.w, r.h));
+  const c = document.createElement('canvas'); c.width = Math.round(r.w * k); c.height = Math.round(r.h * k);
+  c.getContext('2d').drawImage(bmp, r.x, r.y, r.w, r.h, 0, 0, c.width, c.height);
   let url = '';
   for (const q of [0.8, 0.7, 0.6, 0.5, 0.4]) { url = c.toDataURL('image/jpeg', q); if (url.length < 340000) break; }
   return url;
+}
+// Crop: drag the photo inside a frame the shape it's shown in; pinch or use the slider to zoom. Resolves with the
+// part to keep (in the photo's own pixels), or null if cancelled.
+function cropPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onerror = () => { URL.revokeObjectURL(url); reject(new Error('could not open the photo')); };
+    im.onload = () => {
+      let dlg = $('#cropdlg'); if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'cropdlg'; document.body.appendChild(dlg); }
+      dlg.innerHTML = `<form method="dialog"><p class="picktitle">Choose what shows</p><p class="small" style="margin:0 0 10px">Drag the photo to move it. Pinch or use the slider to zoom.</p>
+        <div class="cropframe"><img alt="" draggable="false"></div>
+        <input type="range" class="cropzoom" min="1" max="4" step="0.01" value="1" aria-label="Zoom">
+        <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="use">Use photo</button></div></form>`;
+      const frame = dlg.querySelector('.cropframe'), img = dlg.querySelector('img'), zoom = dlg.querySelector('.cropzoom');
+      img.src = url; const iw = im.naturalWidth, ih = im.naturalHeight;
+      let FW = 0, FH = 0, s0 = 1, z = 1, ox = 0, oy = 0;
+      const clamp = () => { const s = s0 * z; ox = Math.min(0, Math.max(FW - iw * s, ox)); oy = Math.min(0, Math.max(FH - ih * s, oy)); };
+      const draw = () => { clamp(); img.style.width = iw * s0 * z + 'px'; img.style.transform = `translate(${ox}px, ${oy}px)`; };
+      const zoomAt = (nz, cx, cy) => { nz = Math.min(4, Math.max(1, nz)); const k = nz / z; ox = cx - (cx - ox) * k; oy = cy - (cy - oy) * k; z = nz; zoom.value = z; draw(); };
+      const pts = new Map(); let pinch = null;
+      frame.addEventListener('pointerdown', (e) => { frame.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z }; } });
+      frame.addEventListener('pointermove', (e) => {
+        const p = pts.get(e.pointerId); if (!p) return;
+        const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+        if (pts.size === 1) { ox += dx; oy += dy; draw(); return; }
+        const [a, b] = [...pts.values()], r = frame.getBoundingClientRect();
+        if (pinch) zoomAt(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
+      });
+      const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
+      frame.addEventListener('pointerup', up); frame.addEventListener('pointercancel', up);
+      frame.addEventListener('wheel', (e) => { e.preventDefault(); const r = frame.getBoundingClientRect(); zoomAt(z * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
+      zoom.addEventListener('input', () => zoomAt(+zoom.value, FW / 2, FH / 2));
+      dlg.addEventListener('close', () => {
+        URL.revokeObjectURL(url);
+        if (dlg.returnValue !== 'use') { resolve(null); return; }
+        const s = s0 * z; resolve({ x: -ox / s, y: -oy / s, w: FW / s, h: FH / s });
+      }, { once: true });
+      dlg.returnValue = ''; dlg.showModal();
+      FW = frame.clientWidth; FH = frame.clientHeight; s0 = Math.max(FW / iw, FH / ih);
+      ox = (FW - iw * s0) / 2; oy = (FH - ih * s0) / 2; draw(); // starts showing the middle, filling the frame
+    };
+    im.src = url;
+  });
 }
 function pickPhoto(key) {
   const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*';
   inp.addEventListener('change', async () => {
     const f = inp.files && inp.files[0]; if (!f) return;
+    let crop; try { crop = await cropPhoto(f); } catch (e) { crop = undefined; } // if the crop screen can't open, keep the whole photo
+    if (crop === null) return; // cancelled
     toast('Saving photo…', 10000);
-    try { savePhoto(key, await shrinkPhoto(f)); } catch (e) { toast('Couldn’t use that photo: ' + e.message, 4000); }
+    try { savePhoto(key, await shrinkPhoto(f, crop)); } catch (e) { toast('Couldn’t use that photo: ' + e.message, 4000); }
   });
   inp.click();
 }
