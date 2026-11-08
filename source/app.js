@@ -77,6 +77,7 @@ function confirmDialog(text, okLabel = 'Clear') {
 const IC = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICONS = {
   cal: IC('M4.5 6.5h15v13h-15zM4.5 10.5h15M8.5 4v4M15.5 4v4'),
+  trash: IC('M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10.2 10.5v6M13.8 10.5v6'),
   timer: IC('M12 21a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM12 10v3.5l2.5 1.5M9.5 3h5'),
   cook: IC('M7.5 17.5h9v3h-9zM7.5 17.5v-4A4 4 0 0 1 8.4 6a4 4 0 0 1 7.2 0 4 4 0 0 1 .9 7.5v4'),
   camera: IC('M4 8.5h3.2l1.8-2.5h6l1.8 2.5H20V19H4zM12 16.5a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z'),
@@ -2878,7 +2879,7 @@ function dragStart() {
   src.closest('.day').classList.add('dragging'); document.body.classList.add('is-dragging');
   let rz = $('#dropremove'); // drop here to take it off the calendar
   if (!rz) { rz = document.createElement('div'); rz.id = 'dropremove'; document.body.appendChild(rz); }
-  rz.innerHTML = `<span>🗑️ Drop here to remove</span>`; rz.classList.add('show');
+  rz.innerHTML = `<span>${ICONS.trash} Drop here to remove</span>`; rz.classList.add('show');
   // The finger's touch stays tied to this element. Keep a hidden copy of it in the page for the whole drag,
   // so redrawing the calendar (changing week, or an update from the other phone) doesn't drop the drag.
   const holder = document.createElement('div'); holder.className = 'drag-holder';

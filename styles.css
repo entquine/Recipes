@@ -916,3 +916,4 @@ html, body { overscroll-behavior-y: contain; }
 #dropremove { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px); height: 128px; display: flex; align-items: center; justify-content: center; border-radius: 16px; border: 2px dashed var(--danger); background: var(--surface); color: var(--danger); font-weight: 800; font-size: 18px; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,.18); transform: translateY(-120%); transition: transform .18s ease-out, background .12s; pointer-events: none; }
 #dropremove.show { transform: none; pointer-events: auto; }
 #dropremove.drop-target { background: var(--danger); color: #fff; border-style: solid; }
+#dropremove span { display: inline-flex; align-items: center; gap: 8px; } #dropremove .ic { width: 24px; height: 24px; }
