@@ -2075,10 +2075,10 @@ function renderCalendar() {
     const k = dayKey(d), custom = customText(state.plan[k]), name = custom ? '' : state.plan[k], meal = name ? mealByName(name) : null;
     const past = k < today;
     const extras = SLOTS.filter(([sl]) => sl !== 'dinner' && slotValue(k, sl)).map(([sl, label]) => { const v = slotValue(k, sl), mm = mealByName(v);
-      return `<span class="xslot" role="button" tabindex="0" data-slotpick="${k}|${sl}"><b>${label}</b> ${esc(customText(v) || (mm ? mm.main.name.replace(/\s+with\s+.*$/i, '') : 'No longer in the recipes'))}</span>`; }).join('');
+      return `<span class="xslot${(state.planDone[k] || {})[sl] ? ' isdone' : ''}" role="button" tabindex="0" data-slotpick="${k}|${sl}"><b>${label}</b> ${esc(customText(v) || (mm ? mm.main.name.replace(/\s+with\s+.*$/i, '') : 'No longer in the recipes'))}</span>`; }).join('');
     h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}${state.plan[k] || extras ? '' : ' noplan'}">
       <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b>${state.plan[k] || extras ? `<button class="addslot" data-addslot="${k}" aria-label="Add breakfast, lunch or dessert">＋</button>` : ''}</div>
-      <button class="pick" data-day="${k}">${custom
+      <button class="pick${(state.planDone[k] || {}).dinner ? ' dinnerdone' : ''}" data-day="${k}">${custom
         ? `<strong>${esc(custom)}</strong>`
         : name
         ? (() => {
@@ -2140,6 +2140,7 @@ async function pickMeal(day, slot = 'dinner') {
   const odd = (x) => x.kind === 'Dessert' || x.kind === 'Breakfast';
   const pastSorted = [...(m.past || [])].sort((a, b) => odd(a) - odd(b));
   dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}${slot === 'dinner' ? '' : ` · ${slotName(slot)}`}</p>
+    ${(state.planDone[day] || {})[slot] ? '<button class="btn ghost pk-notdone" value="__notdone">↺ Mark not done</button>' : ''}
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
     <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
@@ -2176,6 +2177,7 @@ async function pickMeal(day, slot = 'dinner') {
     if (text && text !== currentCustom) setPlan(day, { text }, slot);
     return;
   }
+  if (choice === '__notdone') { if ((state.planDone[day] || {})[slot]) markDone(day, slot); return; }
   if (choice === '__none') setPlan(day, null, slot);
   else if (choice && choice !== planKey(current) && !plannedElsewhere(choice, day)) setPlan(day, choice, slot);
 }
