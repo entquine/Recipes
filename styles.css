@@ -837,3 +837,26 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .xslot { align-self: flex-start; } /* as wide as its text, so a crossed-out line stops where the text does */
 /* no iPhone link preview / callout when pressing and holding */
 a, button, img { -webkit-touch-callout: none; }
+.bk-mine { font-weight: 500; opacity: .75; }
+/* servings switch on a recipe */
+.servings { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
+.servings .small { margin-right: 4px; }
+.servings button { min-width: 44px; padding: 6px 10px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font-weight: 700; font-size: 14.5px; cursor: pointer; }
+.servings button.on { background: var(--c0); border-color: var(--c0); color: #fff; }
+.scalenote { margin: -6px 0 12px; color: var(--c0); font-weight: 600; }
+.weeksum { margin: -4px 0 12px; text-align: center; font-size: 14px; color: var(--muted); }
+.weeksum a { color: var(--c0); font-weight: 700; text-decoration: none; }
+/* "Usually have": + Need puts it on this trip's list */
+.needbtn { margin-left: auto; align-self: center; flex: none; border: 1.5px solid var(--c0); color: var(--c0); background: var(--surface); border-radius: 999px; padding: 5px 11px; font-size: 13.5px; font-weight: 700; cursor: pointer; }
+/* dragging a shopping section */
+.secdrag { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
+.shopsec.secmoving { outline: 2px dashed var(--c0); outline-offset: 2px; box-shadow: 0 10px 30px rgba(0,0,0,.18); }
+/* pull down to update */
+html, body { overscroll-behavior-y: contain; }
+#pullind { position: fixed; left: 0; right: 0; top: calc(env(safe-area-inset-top, 0px) + 56px); height: 0; overflow: hidden; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px; font-size: 14px; font-weight: 700; color: var(--c0); background: linear-gradient(var(--bg), transparent); z-index: 30; pointer-events: none; transition: opacity .15s; }
+/* Settings: What's new */
+.whatsnew > summary { cursor: pointer; margin: 0; }
+.whatsnew .wn { margin-top: 12px; }
+.whatsnew .wn-v { margin: 0 0 4px; font-weight: 800; font-size: 13.5px; color: var(--c0); }
+.whatsnew ul { margin: 0; padding-left: 18px; font-size: 14.5px; line-height: 1.45; }
+.whatsnew li { margin: 2px 0; }
