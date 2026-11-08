@@ -251,6 +251,7 @@ const state = {
   authReady: false,
   dbError: '',
   plan: {},
+  planDone: {},            // calendar/plan .f: day -> { slot: true }, marked finished on the Meals page
   planX: {},               // calendar/plan .x: day -> { breakfast, lunch, dessert } (dinner is in plan)                // 'YYYY-MM-DD' -> meal name (shared calendar)
   ratings: {},             // meal id -> { name, main, sides, votes: { userId: 1-5 } }
   notes: {},               // shopping notes: id -> { text, by, at }
@@ -344,6 +345,7 @@ function startFirestore() {
   unsubPlan = onSnapshot(doc(db, 'calendar', 'plan'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
     state.planX = { ...((snap.exists() && snap.data().x) || {}) }; // breakfast / lunch / dessert per day
+    state.planDone = { ...((snap.exists() && snap.data().f) || {}) }; // finished today: day -> { slot: true }
     if (changed('calendar', [state.plan, state.planX]) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
   }), (err) => listenerFailed('calendar', err));
   unsubRatings = onSnapshot(collection(db, 'ratings'), { includeMetadataChanges: true }, safely('ratings', (snap) => {
@@ -948,6 +950,15 @@ function writePlan(changes) { // { 'YYYY-MM-DD': value or null }, saved together
   route();
   if (!state.firebase) { ls.set('local-plan', state.plan); return; }
   setDoc(doc(state.firebase.db, 'calendar', 'plan'), { d, at: serverTimestamp() }, { merge: true })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+function markDone(day, slot) { // Meals page: mark today's breakfast / lunch / dinner / dessert finished (or not), shared
+  const cur = { ...(state.planDone[day] || {}) }, on = !cur[slot];
+  if (on) cur[slot] = true; else delete cur[slot];
+  if (Object.keys(cur).length) state.planDone[day] = cur; else delete state.planDone[day];
+  route();
+  if (!state.firebase) { ls.set('local-plandone', state.planDone); return; }
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { f: { [day]: { [slot]: on || deleteField() } }, at: serverTimestamp() }, { merge: true })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
 function moveSlot(from, to, slot) { // drag and drop a breakfast / lunch / dessert: move, or swap with the other day's
@@ -1763,13 +1774,20 @@ function renderMeals() {
   // Just one thing: "Tonight" for dinner, "For lunch" etc. Several: a "Today" heading and each card says which meal.
   const todayK = dayKey(new Date()), todays = SLOTS.map(([sl, name]) => [sl, name, slotValue(todayK, sl)]).filter((x) => x[2]);
   const one = todays.length === 1;
-  if (!one && todays.length) h += '<p class="section-label todaylabel">Today</p>';
+  // Several: one "Today" section around them all, each with a Done button; finished ones go to the bottom, greyed.
+  const fin = state.planDone[todayK] || {};
+  if (!one) todays.sort((a, b) => !!fin[a[0]] - !!fin[b[0]]);
+  if (!one && todays.length) h += '<section class="todaybox"><p class="section-label todaylabel">Today</p>';
   const shownToday = new Set();
   for (const [sl, name, v] of todays) {
     const label = one ? (sl === 'dinner' ? 'Tonight' : `For ${name.toLowerCase()}`) : name, mm = mealByName(v);
-    if (mm && !shownToday.has(mm)) { shownToday.add(mm); h += mealCardHtml(mm, true, label); }
-    else if (customText(v)) h += `<a class="card tonight" href="#/calendar"><span class="section-label">${esc(label)}</span><strong>${esc(customText(v))}</strong></a>`;
+    let card = '';
+    if (mm && !shownToday.has(mm)) { shownToday.add(mm); card = mealCardHtml(mm, true, label); }
+    else if (customText(v)) card = `<a class="card tonight" href="#/calendar"><span class="section-label">${esc(label)}</span><strong>${esc(customText(v))}</strong></a>`;
+    if (!card) continue;
+    h += one ? card : `<div class="todayitem${fin[sl] ? ' finished' : ''}">${card}<button class="todaydone" data-todaydone="${sl}" aria-pressed="${!!fin[sl]}">${fin[sl] ? '↺ Not done' : '✓ Done'}</button></div>`;
   }
+  if (!one && todays.length) h += '</section>';
   const tonight = todays.length ? true : null;
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
   const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };
@@ -2358,6 +2376,8 @@ document.addEventListener('click', async (e) => {
   }
   if (e.target.closest('#addbtn, #addinline')) { addMenu(); return; }
   if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
+  const tdn = e.target.closest('[data-todaydone]');
+  if (tdn) { e.preventDefault(); markDone(dayKey(new Date()), tdn.dataset.todaydone); return; }
   const cub = e.target.closest('[data-countup]');
   if (cub) { e.preventDefault(); e.stopPropagation(); countTap(cub.dataset.scope, cub.dataset.countup); return; }
   const tb = e.target.closest('[data-timer]');
@@ -2694,7 +2714,7 @@ function start() {
   } else {
     state.ticks = ls.get('local-ticks', {});
     state.plan = ls.get('local-plan', {});
-    state.planX = ls.get('local-planx', {});
+    state.planX = ls.get('local-planx', {}); state.planDone = ls.get('local-plandone', {});
     state.ratings = ls.get('local-ratings', {});
     state.notes = ls.get('local-notes', {});
     state.myName = ls.get('local-name', '');
