@@ -627,10 +627,23 @@ function cropPhoto(file) {
       frame.addEventListener('pointermove', (e) => {
         const p = pts.get(e.pointerId); if (!p) return;
         const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
-        if (pts.size === 1) { ox += dx; oy += dy; draw(); return; }
+        if (pts.size === 1 && !tpinch) { ox += dx; oy += dy; draw(); return; }
+        if (tpinch) return; // two fingers on a touch screen: the touch handler below does the zoom
         const [a, b] = [...pts.values()], r = frame.getBoundingClientRect();
         if (pinch) zoomAt(pinch.z * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d, (a.x + b.x) / 2 - r.left, (a.y + b.y) / 2 - r.top);
       });
+      // Pinch with two fingers (touch events: what iPhones reliably hand over), zooming around the middle of the fingers.
+      let tpinch = null;
+      const two = (t) => { const r = frame.getBoundingClientRect(), [a, b] = [t[0], t[1]]; return { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) || 1, cx: (a.clientX + b.clientX) / 2 - r.left, cy: (a.clientY + b.clientY) / 2 - r.top }; };
+      frame.addEventListener('touchstart', (e) => { if (e.touches.length >= 2) { e.preventDefault(); const g = two(e.touches); tpinch = { d: g.d, z, cx: g.cx, cy: g.cy }; } }, { passive: false });
+      frame.addEventListener('touchmove', (e) => {
+        e.preventDefault(); if (!tpinch || e.touches.length < 2) return;
+        const g = two(e.touches); ox += g.cx - tpinch.cx; oy += g.cy - tpinch.cy; tpinch.cx = g.cx; tpinch.cy = g.cy; // the fingers moving together also move the photo
+        zoomAt(tpinch.z * g.d / tpinch.d, g.cx, g.cy);
+      }, { passive: false });
+      const tend = (e) => { if (e.touches.length < 2) tpinch = null; };
+      frame.addEventListener('touchend', tend); frame.addEventListener('touchcancel', tend);
+      ['gesturestart', 'gesturechange'].forEach((n) => frame.addEventListener(n, (e) => e.preventDefault())); // no page zoom on iPhone
       const up = (e) => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; };
       frame.addEventListener('pointerup', up); frame.addEventListener('pointercancel', up);
       frame.addEventListener('wheel', (e) => { e.preventDefault(); const r = frame.getBoundingClientRect(); zoomAt(z * (e.deltaY < 0 ? 1.1 : 0.9), e.clientX - r.left, e.clientY - r.top); }, { passive: false });
