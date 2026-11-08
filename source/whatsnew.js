@@ -1,7 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
-  ['094', ['Calendar: while dragging a meal (or a breakfast, lunch or dessert line), a Remove box appears at the top. Drop it there to take it off the calendar, with Undo.']],
+  ['094', ['Calendar: while dragging a meal (or a breakfast, lunch or dessert line), a Remove box appears at the top. Drop it there to take it off the calendar, with Undo. (The box was then made twice as tall, so it’s easier to hit.)']],
   ['093', ['Recipes from a web page show View original (with the site’s name) under the dish name.']],
   ['092', ['What’s new labels versions as v-092 (without wcwb).']],
   ['091', ['The syncing dot only shows if saving takes more than about 2 seconds.', 'A started count-up (steaks out of the fridge, marinating) also shows in the timer bar, counting up, with ✓ to tick it off when it’s done.']],

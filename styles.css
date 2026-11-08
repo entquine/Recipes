@@ -913,6 +913,6 @@ html, body { overscroll-behavior-y: contain; }
 .srclink { display: inline-flex; align-items: baseline; gap: 5px; margin: 2px 0 8px; font-size: 14px; font-weight: 700; color: var(--c0); text-decoration: none; }
 .srclink span { font-weight: 500; color: var(--muted); }
 /* calendar drag: a Remove zone at the top */
-#dropremove { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px); height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 16px; border: 2px dashed var(--danger); background: var(--surface); color: var(--danger); font-weight: 800; font-size: 16px; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,.18); transform: translateY(-120%); transition: transform .18s ease-out, background .12s; pointer-events: none; }
+#dropremove { position: fixed; left: 12px; right: 12px; top: calc(env(safe-area-inset-top, 0px) + 8px); height: 128px; display: flex; align-items: center; justify-content: center; border-radius: 16px; border: 2px dashed var(--danger); background: var(--surface); color: var(--danger); font-weight: 800; font-size: 18px; z-index: 60; box-shadow: 0 8px 24px rgba(0,0,0,.18); transform: translateY(-120%); transition: transform .18s ease-out, background .12s; pointer-events: none; }
 #dropremove.show { transform: none; pointer-events: auto; }
 #dropremove.drop-target { background: var(--danger); color: #fff; border-style: solid; }
