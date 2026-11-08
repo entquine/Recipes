@@ -859,7 +859,7 @@ function ratingInfo(key) {
   const avg = votes.length ? votes.reduce((a, b) => a + b, 0) / votes.length : 0;
   return { record: r || null, count: votes.length, mine, done, avg };
 }
-const starsText = (avg, mine) => `★ ${avg.toFixed(1)} / 5.0${mine ? ` (${mine})` : ''}`; // the average, then your own vote in brackets
+const starsText = (avg, mine) => `★ ${avg.toFixed(1)} / 5.0${mine ? ` <span class="mine-stars">(${mine})</span>` : ''}`; // the average, then your own vote in brackets (lighter gold)
 function setRating(meal, stars) {
   const id = meal.rid;
   const r = state.ratings[id] || (state.ratings[id] = { votes: { ...((ratingDoc(meal) || {}).votes || {}) } });
@@ -1663,7 +1663,7 @@ function bookRowHtml(meal, dish, inPlanned) {
   const withs = dish.group ? [...new Set(dish.group.filter((x) => x.dish !== x.meal.main).map((x) => x.meal.main.name))] : dish !== meal.main ? [meal.main.name] : [];
   const meta = [withs.length ? `with ${withs.map(esc).join(' or ')}` : '', n ? `<b class="bk-made">${esc(lastMadeText(meal, dish))}</b>` : inPlanned ? '' : 'Not made yet',
     next ? `${ICONS.cal} ${next === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(next), { weekday: 'short', month: 'short', day: 'numeric' }))}` : ''].filter(Boolean).join(' · ');
-  const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}${ri.mine ? ` <span class="bk-mine">(${ri.mine})</span>` : ''}</span>`
+  const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}${ri.mine ? ` <span class="mine-stars">(${ri.mine})</span>` : ''}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
   const di = meal.dishes.indexOf(dish), th = state.thumbs[dishKey(dish)];
   return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}${meal.dishes.length > 1 ? '/' + di : ''}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">

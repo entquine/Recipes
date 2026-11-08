@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['088', ['Your own rating (in brackets) is a lighter gold than the average.']],
   ['087', [
     'Recipes: choose how many servings (½, 1, 2 or 3 times the recipe). Amounts on the recipe, in cook mode and on the shopping list follow it, for both phones.',
     'Meals page: once you start cooking, today’s card says what’s next (“Keep cooking · Next: …”).',

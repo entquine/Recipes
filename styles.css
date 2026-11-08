@@ -837,7 +837,6 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 .xslot { align-self: flex-start; } /* as wide as its text, so a crossed-out line stops where the text does */
 /* no iPhone link preview / callout when pressing and holding */
 a, button, img { -webkit-touch-callout: none; }
-.bk-mine { font-weight: 500; opacity: .75; }
 /* servings switch on a recipe */
 .servings { display: flex; align-items: center; gap: 6px; margin: 0 0 12px; flex-wrap: wrap; }
 .servings .small { margin-right: 4px; }
@@ -860,3 +859,7 @@ html, body { overscroll-behavior-y: contain; }
 .whatsnew .wn-v { margin: 0 0 4px; font-weight: 800; font-size: 13.5px; color: var(--c0); }
 .whatsnew ul { margin: 0; padding-left: 18px; font-size: 14.5px; line-height: 1.45; }
 .whatsnew li { margin: 2px 0; }
+/* your own rating, beside the average: a lighter gold */
+.mine-stars { color: #dcab4a; font-weight: 650; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .mine-stars { color: #f6d58e; } }
+:root[data-theme="dark"] .mine-stars { color: #f6d58e; }
