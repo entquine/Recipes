@@ -1023,6 +1023,24 @@ function startTimer(label, mins, mealId, step) {
   audioUnlock(); updateWakeLock();
   toast(`Timer started: ${mins} min`);
 }
+// Quick timer (clock button at the top of a recipe): any length, any name, shared like the step timers.
+async function quickTimer() {
+  const used = new Set(Object.values(state.session.timers || {}).map((t) => t.label));
+  let n = 1; while (used.has(`Quick Timer ${n}`)) n++;
+  const r = await formDialog(`<p class="picktitle">Quick timer</p>
+    <label class="small" for="qtname">Name</label><input id="qtname" class="dlg-input" name="qname" maxlength="40" autocomplete="off" value="Quick Timer ${n}">
+    <div class="qtquick">${[1, 2, 3, 4, 5].map((m) => `<button class="btn ghost" value="m${m}">${m} min</button>`).join('')}</div>
+    <label class="small" for="qtmins">Or how many minutes</label>
+    <div class="customrow"><input id="qtmins" name="qmins" type="number" inputmode="decimal" min="0.5" max="600" step="any" placeholder="e.g. 12"><button class="btn" value="save">Start</button></div>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  if (!r.value) return;
+  const mins = r.value.startsWith('m') ? +r.value.slice(1) : parseFloat(r.form.qmins.value);
+  if (!(mins > 0)) { toast('Type how many minutes'); return; }
+  const label = String(r.form.qname.value || '').replace(/\s+/g, ' ').trim().slice(0, 40) || `Quick Timer ${n}`;
+  const meal = location.hash.startsWith('#/meal/') ? decodeURIComponent(location.hash.split('/')[2] || '') : '';
+  startTimer(label, Math.min(600, mins), meal, '');
+}
+document.addEventListener('click', (e) => { if (e.target.closest('#quicktimer')) quickTimer(); });
 const alarmed = new Set();
 let timerTick = null;
 function renderTimers() {
@@ -2560,6 +2578,7 @@ function route() {
   if (!keepScroll) doneMsg = ''; // a new visit to a screen gets a new cheer
   const y = scrollY;
   $('#addbtn').hidden = true; // adding is the "+ Add item" button on the list itself
+  $('#quicktimer').hidden = page !== 'meal'; // the clock button: recipes only
   view().style.minHeight = ''; // only the shopping page stretches to fill the screen
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''), sub);

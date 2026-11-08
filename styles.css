@@ -803,3 +803,7 @@ details.plan > summary.plan-sum::after { top: 50% !important; transform: transla
 /* dragging just a breakfast / lunch / dessert line */
 .drag-ghost.slot-ghost { display: block; padding: 8px 12px; border-radius: 10px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 14px; }
 .xslot { touch-action: pan-y; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* quick timer */
+.qtquick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 12px 0; }
+.qtquick .btn { padding: 10px 0; font-size: 15px; width: 100%; }
+#qtname { width: 100%; margin: 4px 0 0; }
