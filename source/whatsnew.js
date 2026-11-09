@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['098', ['A count-up step you’ve ticked off keeps showing on the step how long it ran (e.g. Started 4:12 PM · 47 min).']],
   ['097', ['Sides split off from a meal (Honey and Chili Flake Carrots, Roasted Baby Potatoes) count the times that meal was made, so they show under Made before.']],
   ['094', ['Calendar: while dragging a meal (or a breakfast, lunch or dessert line), a Remove box appears at the top. Drop it there to take it off the calendar, with Undo. (The box was then made twice as tall, so it’s easier to hit, with a trash icon in the same style as the app’s other icons.)']],
   ['093', ['Recipes from a web page show View original (with the site’s name) under the dish name.']],

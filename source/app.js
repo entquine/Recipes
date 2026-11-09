@@ -311,7 +311,9 @@ function markAllBought() {
   undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
 }
 function setTick(scope, key, value) {
-  if (value && !String(key).endsWith('@start') && navigator.vibrate) navigator.vibrate(12); // a tiny buzz so you know it registered
+  if (value && !/@(start|end)$/.test(String(key)) && navigator.vibrate) navigator.vibrate(12); // a tiny buzz so you know it registered
+  // a started count-up step: remember when it was ticked, so the step keeps showing how long it ran
+  if (!/@(start|end)$/.test(String(key)) && typeof (state.ticks[scope] || {})[startKey(key)] === 'number' && countUpStep(scope, key)) setTick(scope, key + '@end', value ? Date.now() : false);
   if (!state.firebase) {
     const t = state.ticks[scope] || (state.ticks[scope] = {});
     if (value) t[key] = value; else delete t[key];
@@ -1991,17 +1993,20 @@ function sinceRunning(meal) { // count-up steps started and not ticked off yet
   const t = state.ticks[meal.id] || {};
   return meal.dishes.flatMap((d) => d.steps.filter((st) => st.countUp && typeof t[startKey(st.key)] === 'number' && !t[st.key]).map((st) => ({ d, st })));
 }
-function sinceText(v, limit, short) {
-  const m = Math.max(0, Math.floor((Date.now() - v) / 60000)), over = limit && m >= limit;
+function sinceText(v, limit, short, end) {
+  if (end === null) return `\u0001Started \u0002${new Date(v).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`; // ticked, but when isn't known
+  const m = Math.max(0, Math.floor(((end || Date.now()) - v) / 60000)), over = limit && m >= limit;
   if (short) return over ? `${Math.round(limit / 60) || limit}+${limit % 60 ? 'm' : 'h'}` : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}`;
   const when = new Date(v), at = (dayKey(when) === dayKey(new Date()) ? '' : when.toLocaleDateString([], { weekday: 'short' }) + ' ') + when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   return `\u0001Started \u0002${at} · ${over ? fmtLimit(limit) : fmtSpan(m)}`;
 }
 function refreshSince() {
   document.querySelectorAll('[data-since]').forEach((el) => {
-    const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.since)];
-    const show = typeof v === 'number' && !t[el.dataset.since]; el.hidden = !show; if (!show) return;
-    el.innerHTML = `${ICONS.timer} <span>${esc(sinceText(v, +el.dataset.limit || 0)).replace('\u0001', '<span class="sl">').replace('\u0002', '</span>')}</span>`; // "Started" drops when the line is narrow
+    const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.since)], done = !!t[el.dataset.since], end = t[el.dataset.since + '@end'];
+    // running: counts up; ticked off: stays on the step, stopped at how long it ran (the Meals card and timer bar drop it)
+    const show = typeof v === 'number' && (!done || !el.closest('.sincenote')); el.hidden = !show; if (!show) return;
+    el.classList.toggle('stopped', done);
+    el.innerHTML = `${ICONS.timer} <span>${esc(done ? sinceText(v, +el.dataset.limit || 0, false, typeof end === 'number' ? end : null) : sinceText(v, +el.dataset.limit || 0)).replace('\u0001', '<span class="sl">').replace('\u0002', '</span>')}</span>`; // "Started" drops when the line is narrow
   });
   document.querySelectorAll('[data-countup]').forEach((el) => {
     const t = state.ticks[el.dataset.scope] || {}, v = t[startKey(el.dataset.countup)], x = countUpStep(el.dataset.scope, el.dataset.countup);

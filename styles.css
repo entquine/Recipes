@@ -917,3 +917,4 @@ html, body { overscroll-behavior-y: contain; }
 #dropremove.show { transform: none; pointer-events: auto; }
 #dropremove.drop-target { background: var(--danger); color: #fff; border-style: solid; }
 #dropremove span { display: inline-flex; align-items: center; gap: 8px; } #dropremove .ic { width: 24px; height: 24px; }
+.since.stopped { color: var(--muted); }
