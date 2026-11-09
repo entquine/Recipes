@@ -1116,12 +1116,12 @@ function stepMinutes(text) {
 }
 const timerLabel = (d, st) => st.timer || `${shortName(d)}: step ${st.num}`;
 function runningTimerFor(step) { return Object.entries(state.session.timers || {}).find(([, t]) => t.step === step) || null; }
-// More time: +1 on a running timer adds a minute; +1 / +2 / +5 on one that's going off starts it again for that long.
+// More (or less) time: +1 / −1 on a running timer adds or takes off a minute; +1 / +2 / +5 on one that's going off starts it again for that long.
 // Once time is added, the timer also shows how long it's been going out of its new total (e.g. 6:10 / 7:00).
 const timerStart = (t) => t.start || t.ends - ((t.mins || 0) + (t.extra || 0)) * 60000;
 function addTime(id, n) {
   const t = (state.session.timers || {})[id]; if (!t) return;
-  const now = Date.now(), start = timerStart(t), ends = t.ends <= now ? now + n * 60000 : t.ends + n * 60000;
+  const now = Date.now(), start = timerStart(t), ends = t.ends <= now ? now + n * 60000 : Math.max(now, t.ends + n * 60000); // −1 with under a minute left: it goes off now
   alarmed.delete(id); delete lastRing[id];
   writeSession('timers', id, { ...t, start, ends, extra: (t.extra || 0) + n });
 }
@@ -1193,7 +1193,7 @@ function renderTimers() {
     const who = theirs ? ` <span class="towner">· ${esc(nameFor(t.by))}</span>` : '', st = timerStart(t);
     if (done) return `<div class="timer done" data-tid="${esc(id)}" role="button" aria-label="Timer done: tap to finish"><span class="tlabel">${esc(t.label)}${who}</span><span class="tleft">Done!</span>
       <span class="tadds">${[1, 2, 5].map((n) => `<button class="tadd" data-addtime="${esc(id)}|${n}">+${n} min</button>`).join('')}<span class="tfinish">Tap to finish ✓</span></span></div>`;
-    return `<div class="timer" data-tid="${esc(id)}"><a href="#/meal/${esc(t.meal || '')}" class="tlabel">${esc(t.label)}${who}</a>${t.extra ? `<span class="tsofar" title="Time so far / total">${clock(now - st)} / ${clock(t.ends - st)}</span>` : ''}<span class="tleft">${mm}:${ss}</span><button class="tadd" data-addtime="${esc(id)}|1" aria-label="Add a minute">+1</button><button class="tclose" data-stoptimer="${esc(id)}" aria-label="Cancel timer">×</button></div>`;
+    return `<div class="timer" data-tid="${esc(id)}"><a href="#/meal/${esc(t.meal || '')}" class="tlabel">${esc(t.label)}${who}</a>${t.extra ? `<span class="tsofar" title="Time so far / total">${clock(now - st)} / ${clock(t.ends - st)}</span>` : ''}<span class="tleft">${mm}:${ss}</span><button class="tadd tsub" data-addtime="${esc(id)}|-1" aria-label="Take off a minute">−1</button><button class="tadd" data-addtime="${esc(id)}|1" aria-label="Add a minute">+1</button><button class="tclose" data-stoptimer="${esc(id)}" aria-label="Cancel timer">×</button></div>`;
   }).join('');
   if (cookBar) cookBar.innerHTML = bar.innerHTML; // cook mode covers the screen, so it shows the timers too
   if (!timerTick) timerTick = setInterval(renderTimers, 1000);

@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['103', ['Timers: a −1 button beside +1 takes a minute off a running timer.']],
   ['102', ['Recipes counted in something other than servings show it: muffins say Makes (muffins) 6 · 12 · 24 · 36 instead of ½× to 3×.']],
   ['101', ['Recipes from the Recipe Book no longer show a notice at the top.', 'When every step of a recipe is ticked, an Untick everything button appears at the top (with Undo).']],
   ['100', ['Meals page: once everything for today is marked Done, the Today section folds to one line (tap to open it).']],

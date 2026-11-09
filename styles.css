@@ -931,3 +931,4 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .untickall { display: flex; width: 100%; justify-content: center; margin: 0 0 12px; }
 .untickall[hidden] { display: none; }
 .servings .yunit { color: var(--c0); font-weight: 800; }
+.timer .tadd.tsub { padding: 4px 9px; }
