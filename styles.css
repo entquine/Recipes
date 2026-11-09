@@ -928,3 +928,5 @@ details.todaybox > summary::before { content: "▸"; font-size: 16px; color: var
 details.todaybox[open] > summary { margin-bottom: 8px; }
 details.todaybox[open] > summary::before { content: "▾"; }
 details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: one even line */
+.untickall { display: flex; width: 100%; justify-content: center; margin: 0 0 12px; }
+.untickall[hidden] { display: none; }

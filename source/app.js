@@ -2102,7 +2102,8 @@ function renderMeal(id, only) {
     (meal.combined ? '<a href="#" class="jump-all" data-jump="' + S + '-combined">All</a>' : '') +
     meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
-  if (meal.archived) h += '<div class="banner">This recipe is in the Recipe Book. You can cook it, tick it and put it on the calendar; while it’s on the calendar it shows on the Meals list too.</div>';
+  // Everything ticked: a button at the top to start fresh (shown and hidden as you tick, in refreshTicks)
+  h += `<button class="btn ghost untickall" data-untickall="${esc(S)}" data-keys="${esc(meal.keys.join(','))}" hidden>↺ Untick everything</button>`;
   if (one) h += `<a class="partof" href="#/meal/${esc(full.id)}">${one === full.main ? 'Served with' : 'Part of'} <b>${esc(one === full.main ? full.sides.map((x) => x.name).join(' & ') : full.title)}</b><span>See the whole meal ›</span></a>`;
   else { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg, ri.mine) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
   if (!one || one === full.main) h += nextTimeTopHtml(meal);
@@ -2480,6 +2481,7 @@ function renderLogin(err = '') {
 // ---------------------------------------------------------------- tick rendering
 function refreshTicks() {
   refreshSince(); renderTimers(); // count-ups in the timer bar follow the ticks
+  document.querySelectorAll('[data-untickall]').forEach((b) => { const t = state.ticks[b.dataset.untickall] || {}, ks = b.dataset.keys.split(',').filter(Boolean); b.hidden = !ks.length || !ks.every((k) => t[k]); });
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
     el.classList.toggle('done', on); el.setAttribute('aria-checked', on);
@@ -2598,6 +2600,12 @@ document.addEventListener('click', async (e) => {
   if (vok) { const d = ls.get('variety-dismissed', {}), now = Date.now(); for (const k of Object.keys(d)) if (d[k] < now) delete d[k]; d[vok.dataset.varietyok] = now + 7 * 86400000; ls.set('variety-dismissed', d); route(); toast('Hidden for a week'); return; }
   const scl = e.target.closest('[data-scale]');
   if (scl) { setScale(scl.dataset.rid, +scl.dataset.scale); return; }
+  const uta = e.target.closest('[data-untickall]');
+  if (uta) { // untick this recipe's steps (and their count-up times), with Undo
+    const scope = uta.dataset.untickall, before = { ...(state.ticks[scope] || {}) }, ks = new Set(uta.dataset.keys.split(','));
+    const keep = Object.fromEntries(Object.entries(before).filter(([k]) => !ks.has(k.replace(/@(start|end)$/, ''))));
+    clearScope(scope, keep); undoToast('All unticked', () => clearScope(scope, before)); return;
+  }
   const tdn = e.target.closest('[data-todaydone]');
   if (tdn) { e.preventDefault(); markDone(dayKey(new Date()), tdn.dataset.todaydone); return; }
   const cub = e.target.closest('[data-countup]');

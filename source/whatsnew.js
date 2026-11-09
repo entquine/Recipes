@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['101', ['Recipes from the Recipe Book no longer show a notice at the top.', 'When every step of a recipe is ticked, an Untick everything button appears at the top (with Undo).']],
   ['100', ['Meals page: once everything for today is marked Done, the Today section folds to one line (tap to open it).']],
   ['099', ['Recipe Book search really hides the recipes that don’t match (it found the right ones but left the rest showing), and matches the start of words, so “apple” finds apples but not pineapple.']],
   ['098', ['A count-up step you’ve ticked off keeps showing on the step how long it ran (e.g. Started 4:12 PM · 47 min).']],
