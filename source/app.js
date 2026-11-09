@@ -1927,6 +1927,7 @@ async function pickDayFor(meal) {
   setPlan(r.value, meal.rid);
   toast(`Planned for ${r.value === dayKey(today) ? 'tonight' : fmtDay(keyToDate(r.value), { weekday: 'long' })}`);
 }
+let todayWasDone = null; // was everything for today done when the Meals page was last drawn (to slide it shut once)
 function renderMeals() {
   setTitle('Meals', false); setTab('meals');
   const m = state.model;
@@ -1941,7 +1942,12 @@ function renderMeals() {
   // Several: one "Today" section around them all, each with a Done button; finished ones go to the bottom, greyed.
   const fin = state.planDone[todayK] || {};
   if (!one) todays.sort((a, b) => !!fin[a[0]] - !!fin[b[0]]);
-  if (!one && todays.length) h += '<section class="todaybox"><p class="section-label todaylabel">Today</p>';
+  // Everything done: the section folds to one line ("Today · all done ✓"); it slides shut when the last one is marked Done
+  const allDone = !one && todays.length > 0 && todays.every(([sl]) => fin[sl]), justDone = allDone && todayWasDone === false;
+  todayWasDone = allDone;
+  if (!one && todays.length) h += allDone
+    ? `<details class="todaybox alldone" id="todaybox" data-autofold="today"${justDone ? ' open' : ''}><summary class="section-label todaylabel">Today · all done ✓</summary>`
+    : '<section class="todaybox"><p class="section-label todaylabel">Today</p>';
   const shownToday = new Set();
   for (const [sl, name, v] of todays) {
     const label = one ? (sl === 'dinner' ? 'Tonight' : `For ${name.toLowerCase()}`) : name, mm = mealByName(v);
@@ -1951,7 +1957,8 @@ function renderMeals() {
     if (!card) continue;
     h += one ? card : `<div class="todayitem${fin[sl] ? ' finished' : ''}">${card}<button class="todaydone" data-todaydone="${sl}" aria-pressed="${!!fin[sl]}">${fin[sl] ? '↺ Not done' : '✓ Done'}</button></div>`;
   }
-  if (!one && todays.length) h += '</section>';
+  if (!one && todays.length) h += allDone ? '</details>' : '</section>';
+  if (justDone) setTimeout(() => { const el = $('#todaybox'); if (el && el.open) animateFold(el, true, (c) => { el.open = !c; }); }, 500);
   const tonight = todays.length ? true : null;
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
   const rank = (meal) => { const n = nextPlanned(meal.name); return n ? [0, n] : [ratingInfo(meal.name).done ? 2 : 1, '']; };

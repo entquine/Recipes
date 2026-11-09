@@ -919,3 +919,12 @@ html, body { overscroll-behavior-y: contain; }
 #dropremove.drop-target { background: var(--danger); color: #fff; border-style: solid; }
 #dropremove span { display: inline-flex; align-items: center; gap: 8px; } #dropremove .ic { width: 24px; height: 24px; }
 .since.stopped { color: var(--muted); }
+/* Today, all done: folded to one line */
+details.todaybox.alldone { padding: 10px 12px; border-color: var(--line); }
+details.todaybox.alldone[open] { padding-bottom: 2px; }
+details.todaybox > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; margin: 2px 4px; color: var(--ok); }
+details.todaybox > summary::-webkit-details-marker { display: none; }
+details.todaybox > summary::before { content: "▸"; font-size: 16px; color: var(--muted); }
+details.todaybox[open] > summary { margin-bottom: 8px; }
+details.todaybox[open] > summary::before { content: "▾"; }
+details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: one even line */
