@@ -1852,11 +1852,18 @@ function scaleText(text, k = curScale) { // "1¼ lb" ×2 → "2½ lb"; leaves ti
     return fmtQty(v * k);
   });
 }
-const scaleServings = (makes, k = curScale) => (k === 1 ? makes : String(makes).replace(/(\d+)(\s*(?:-|–|to)\s*(\d+))?\s+servings?/i, (m, a, _r, b) => `${fmtQty(a * k)}${b ? '–' + fmtQty(b * k) : ''} servings`));
+// What a recipe makes, from its Makes line: "2 servings", "14 muffins", "2-3 servings" (not times or sizes)
+const YIELD_RE = /(\d+)(?:\s*(?:-|–|to)\s*(\d+))?\s+([a-z]+)/i;
+function yieldOf(makes) {
+  const m = String(makes || '').match(YIELD_RE); if (!m || /^(min|minutes?|hours?|hrs?|inch|inches|degrees?)$/i.test(m[3])) return null;
+  return { a: +m[1], b: m[2] ? +m[2] : 0, unit: m[3].toLowerCase() };
+}
+const scaleServings = (makes, k = curScale) => { if (k === 1 || !yieldOf(makes)) return makes; return String(makes).replace(YIELD_RE, (m, a, b, unit) => `${fmtQty(a * k)}${b ? '–' + fmtQty(b * k) : ''} ${unit}`); };
 function servingsHtml(meal) {
-  const k = scaleOf(meal.rid), m = String(meal.main.makes || '').match(/(\d+)\s+servings?/i), base = m ? +m[1] : 0;
+  const k = scaleOf(meal.rid), y = yieldOf(meal.main.makes), base = y ? y.a : 0, servings = !y || /^servings?$/.test(y.unit);
   const opts = [0.5, 1, 2, 3];
-  return `<div class="servings"><span class="small">${base ? 'Servings' : 'Make'}</span>${opts.map((x) => `<button class="${x === k ? 'on' : ''}" data-scale="${x}" data-rid="${esc(meal.rid)}">${base ? fmtQty(base * x) : (x === 0.5 ? '½' : x) + '×'}</button>`).join('')}</div>${k !== 1 ? `<p class="small scalenote">Amounts are ×${fmtQty(k)}${base ? ` (${fmtQty(base * k)} servings)` : ''}, on the shopping list too. Cooking times and pan sizes aren't changed.</p>` : ''}`;
+  const label = !base ? 'Make' : servings ? 'Servings' : `Makes <span class="yunit">(${esc(y.unit)})</span>`; // muffins: Makes (muffins) 7 · 14 · 28 · 42
+  return `<div class="servings"><span class="small">${label}</span>${opts.map((x) => `<button class="${x === k ? 'on' : ''}" data-scale="${x}" data-rid="${esc(meal.rid)}">${base ? fmtQty(base * x) : (x === 0.5 ? '½' : x) + '×'}</button>`).join('')}</div>${k !== 1 ? `<p class="small scalenote">Amounts are ×${fmtQty(k)}${base ? ` (${fmtQty(base * k)} ${esc(y.unit)})` : ''}, on the shopping list too. Cooking times and pan sizes aren't changed.</p>` : ''}`;
 }
 function setScale(rid, k) {
   state.scale = state.scale || {}; if (k === 1) delete state.scale[rid]; else state.scale[rid] = k;

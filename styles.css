@@ -930,3 +930,4 @@ details.todaybox[open] > summary::before { content: "▾"; }
 details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: one even line */
 .untickall { display: flex; width: 100%; justify-content: center; margin: 0 0 12px; }
 .untickall[hidden] { display: none; }
+.servings .yunit { color: var(--c0); font-weight: 800; }
