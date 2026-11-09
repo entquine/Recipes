@@ -500,6 +500,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .ideadate { font-size: 12.5px; color: var(--muted); }
 /* recipe book: ⋯ button per line; photo row in its menu */
 .booklist li.bookli { display: flex; align-items: center; gap: 6px; }
+.booklist li.bookli[hidden] { display: none; } /* search hides rows that don't match */
 .bookli .bookrow { flex: 1; min-width: 0; }
 .bookmore { flex: none; width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--text); font-size: 22px; font-weight: 800; line-height: 1; cursor: pointer; }
 .menuphoto { margin: 8px auto 6px; max-width: 220px; border-radius: 12px; overflow: hidden; }

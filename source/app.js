@@ -1808,7 +1808,8 @@ function filterBook() { // hide rows (and empty sections) that don't match the s
   let any = false;
   document.querySelectorAll('.booksec').forEach((sec) => {
     let n = 0;
-    sec.querySelectorAll('.bookrow').forEach((a) => { const ok = q.every((w) => a.dataset.search.includes(w)); a.parentElement.hidden = !ok; if (ok) n++; });
+    // each word you type has to start a word in the recipe (so "apple" finds apples, not pineapple)
+    sec.querySelectorAll('.bookrow').forEach((a) => { const ok = q.every((w) => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(a.dataset.search)); a.parentElement.hidden = !ok; if (ok) n++; });
     sec.querySelectorAll('[data-sub]').forEach((li) => { let x = li.nextElementSibling, vis = false; while (x && !x.hasAttribute('data-sub')) { if (!x.hidden) vis = true; x = x.nextElementSibling; } li.hidden = !vis; });
     sec.hidden = !n; sec.querySelector('.bk-count').textContent = n; if (q.length && n) sec.open = true;
     any = any || n > 0;
