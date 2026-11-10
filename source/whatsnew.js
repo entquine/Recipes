@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['104', ['Shopping: after pressing and holding an item, the first tap in its menu works (it was sometimes ignored).', 'Items you add yourself can have a store too (press and hold them); they show under that store’s filter.']],
   ['103', ['Timers: a −1 button beside +1 takes a minute off a running timer.']],
   ['102', ['Recipes counted in something other than servings show it: muffins say Makes (muffins) 6 · 12 · 24 · 36 instead of ½× to 3×.']],
   ['101', ['Recipes from the Recipe Book no longer show a notice at the top.', 'When every step of a recipe is ticked, an Untick everything button appears at the top (with Undo).']],

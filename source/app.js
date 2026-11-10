@@ -790,11 +790,11 @@ function writeExtras(changes) {
 // Categories for added items: the shopping list's own sections, plus "Other".
 const shopSections = () => (state.model ? state.model.shopping.map((sec) => sec.name) : []);
 const extraSection = (x) => (shopSections().includes(x.section) ? x.section : 'Other');
-function extrasListHtml(section, staplesOnly) {
-  const items = Object.entries(state.extras).filter(([, x]) => (staplesOnly ? isStaple(x.name) : extraSection(x) === section && !isStaple(x.name))).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+function extrasListHtml(section, staplesOnly, onlyStore) { // onlyStore: just the items tagged for that store
+  const items = Object.entries(state.extras).filter(([id, x]) => (staplesOnly ? isStaple(x.name) : extraSection(x) === section && !isStaple(x.name)) && (!onlyStore || (state.store || {})[extraKey(id)] === onlyStore)).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
   if (!items.length) return '';
   return items.map(([id, x]) => itemHtml(SHOP(), extraKey(id),
-    `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">Added by ${esc(nameFor(x.email))}</span></span>${
+    `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">${(state.store || {})[extraKey(id)] ? `<span class="storechip">${esc(state.store[extraKey(id)])}</span> ` : ''}Added by ${esc(nameFor(x.email))}</span></span>${
       (x.email || '').toLowerCase() === myEmail()
         ? `<button class="delnote" data-editextra="${esc(id)}" aria-label="Edit ${esc(x.name)}">✎</button>`
         : `<button class="delnote" data-delextra="${esc(id)}" aria-label="Remove ${esc(x.name)}">×</button>`}`, 'extra', '', x.name)).join('');
@@ -1467,7 +1467,12 @@ function toggleStaple(name) {
 }
 // press and hold a shopping item to mark it as a staple. Any movement or scrolling cancels the hold:
 // once the page starts scrolling the phone stops reporting finger movement, so scroll and cancel events are watched too.
-let holdTimer = null, held = false;
+let holdTimer = null, held = false, liftAt = 0;
+// After a press-and-hold opens a menu, the phone sends a tap where the finger lifts. That tap (and only that one,
+// within a moment of lifting) is ignored, so it can't press a button in the menu or tick the item. Later taps all count.
+const markLift = () => { if (held) { held = false; liftAt = Date.now(); } };
+document.addEventListener('pointerup', markLift, true); document.addEventListener('touchend', markLift, true);
+document.addEventListener('click', (e) => { if (liftAt && Date.now() - liftAt < 450) { liftAt = 0; e.preventDefault(); e.stopImmediatePropagation(); } else liftAt = 0; }, true);
 document.addEventListener('pointerdown', (e) => {
   const it = e.target.closest('.item[data-name], .bookrow[data-dish]'); if (!it) return;
   held = false; const x0 = e.clientX, y0 = e.clientY, sy = scrollY;
@@ -1477,8 +1482,8 @@ document.addEventListener('pointerdown', (e) => {
   for (const [t, f] of offs) document.addEventListener(t, f, { capture: true, passive: true });
   addEventListener('scroll', stop, { capture: true, passive: true });
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; if (navigator.vibrate) navigator.vibrate(25);
-    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name); }, 400); // press and hold: 0.4 seconds
+  holdTimer = setTimeout(() => { stop(); if (Math.abs(scrollY - sy) > 2) return; held = true; liftAt = 0; if (navigator.vibrate) navigator.vibrate(25);
+    if (it.matches('.bookrow')) { const meal = mealById(it.dataset.meal); if (meal) madeMenu(meal, meal.dishes[+it.dataset.dish]); } else if (it.dataset.line) lineMenu(it.dataset.line); else stapleMenu(it.dataset.name, it.classList.contains('extra') ? it.dataset.key : ''); }, 400); // press and hold: 0.4 seconds
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
 // No browser "Open link address / Copy link" menu when pressing and holding parts of the app (they're links underneath).
@@ -1525,9 +1530,11 @@ async function lineMenu(key) {
   if (o && o.text === text) return;
   saveAmt(key, { text, by: myEmail(), at: Date.now(), for: lineFor(l) });
 }
-async function stapleMenu(name) {
+async function stapleMenu(name, storeKey) { // storeKey: an item you added yourself, which can also have a store
   const on = isStaple(name);
+  if (storeKey) setTimeout(() => { const sel = $('#storesel'); if (sel) sel.addEventListener('change', () => { setStore(storeKey, sel.value); toast(sel.value ? `${sel.value} item` : 'Standard store'); }); }, 0);
   const r = await formDialog(`<p class="picktitle">${esc(name)}</p><p class="small" style="margin:0 0 12px">${on ? 'You marked this as something you usually have.' : 'Usually have this at home? Staples move to a folded "Usually have" card and don’t count toward the list.'}</p>
+    ${storeKey ? `<label class="small" for="storesel" style="display:block">Store</label><select id="storesel" class="dlg-input" name="store" style="margin-bottom:12px">${['', ...STORES].map((x) => `<option value="${x}"${((state.store || {})[storeKey] || '') === x ? ' selected' : ''}>${x || 'Standard'}</option>`).join('')}</select>` : ''}
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>`);
   if (r.value === 'save') toggleStaple(name);
 }
@@ -1671,13 +1678,15 @@ function renderAutoShopping(m) {
   const away = (l) => isStaple(l.item) && !(state.need || {})[l.key]; // staples stay in "Usually have" unless marked as needed this time
   let h = '';
   // Store filter: only offered while a specialty store has something left to buy; everything shows by default
-  const left = (st) => lines.filter((l) => (state.store || {})[l.key] === st && !l.done && !l.mealDone && !away(l)).length;
+  const tk = state.ticks[SHOP()] || {};
+  const left = (st) => lines.filter((l) => (state.store || {})[l.key] === st && !l.done && !l.mealDone && !away(l)).length
+    + Object.entries(state.extras).filter(([id, x]) => (state.store || {})[extraKey(id)] === st && !tk[extraKey(id)] && !isStaple(x.name)).length; // and items you added
   const offered = STORES.filter((st) => left(st));
   let only = ls.get('shop-store-filter', ''); if (only && !offered.includes(only)) only = '';
   if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
   for (const sec of sections) {
     const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
-    const rows = here.map((l) => row(l)).join('') + (only ? '' : extrasListHtml(sec));
+    const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec, false, only);
     if (rows) h += `<section class="card shopsec" data-sec="${esc(sec)}"><p class="section-label secdrag">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
   const staples = lines.filter(away).sort((a, b) => a.item.localeCompare(b.item));
@@ -2600,7 +2609,6 @@ document.addEventListener('click', async (e) => {
     return;
   }
   if (e.target.closest('#addbtn, #addinline')) { addMenu(); return; }
-  if (held) { held = false; e.preventDefault(); return; } // a press-and-hold just opened a menu (don't also open the link)
   const sfl = e.target.closest('[data-storefilter]');
   if (sfl) { ls.set('shop-store-filter', sfl.dataset.storefilter); route(); return; }
   const vok = e.target.closest('[data-varietyok]');
