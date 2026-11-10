@@ -932,3 +932,4 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .untickall[hidden] { display: none; }
 .servings .yunit { color: var(--c0); font-weight: 800; }
 .timer .tadd.tsub { padding: 4px 9px; }
+.item.hasneed { grid-template-columns: 44px 1fr auto; } /* + Need sits on the right, same line */

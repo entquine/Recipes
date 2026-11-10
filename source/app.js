@@ -1672,7 +1672,7 @@ function renderAutoShopping(m) {
   const rank = (x) => { const k = x.toLowerCase(), j = mine.indexOf(k); if (j >= 0) return j; const i = order.indexOf(k); return 100 + (i < 0 ? 50 : i); }; // your store order first (press and hold a section name to move it)
   const sections = [...new Set([...lines.map((l) => l.section), ...Object.values(state.extras).map((x) => x.section || 'Other')])].sort((a, b) => rank(a) - rank(b));
   const row = (l, inStaples) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l)), needed = isStaple(l.item) && !inStaples;
-    return `<li class="item gline${l.done ? ' done' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
+    return `<li class="item gline${l.done ? ' done' : ''}${inStaples && !l.done ? ' hasneed' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
     <span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${o ? '<span class="amtchanged">' : ''}${esc(amt)}${o ? '</span>' : ''}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
     <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
   const away = (l) => isStaple(l.item) && !(state.need || {})[l.key]; // staples stay in "Usually have" unless marked as needed this time
@@ -1692,7 +1692,7 @@ function renderAutoShopping(m) {
   const staples = lines.filter(away).sort((a, b) => a.item.localeCompare(b.item));
   const stapleExtras = extrasListHtml(null, true);
   if (!only && (staples.length || stapleExtras)) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
-    <p class="small">Things you usually have at home. They don't count toward the list. Running low? Tap + Need to put it on this trip's list.</p><ul class="list">${staples.map((l) => row(l, true)).join('')}${stapleExtras}</ul></details>`;
+<ul class="list">${staples.map((l) => row(l, true)).join('')}${stapleExtras}</ul></details>`;
   if (!lines.length && !Object.keys(state.extras).length) h += '<p class="empty">Nothing to buy. Plan a meal on the calendar, or tap + to add an item.</p>';
   return h;
 }
@@ -1956,13 +1956,15 @@ function renderMeals() {
   const todayK = dayKey(new Date()), todays = SLOTS.map(([sl, name]) => [sl, name, slotValue(todayK, sl)]).filter((x) => x[2]);
   const one = todays.length === 1;
   // Several: one "Today" section around them all, each with a Done button; finished ones go to the bottom, greyed.
-  const fin = state.planDone[todayK] || {};
+  const fin = { ...(state.planDone[todayK] || {}) };
+  for (const [sl, , v] of todays) { const mm = mealByName(v), t = mm ? state.ticks[mm.id] || {} : {}; if (mm && mm.keys.length && mm.keys.every((k) => t[k])) fin[sl] = true; } // every step ticked = done
   if (!one) todays.sort((a, b) => !!fin[a[0]] - !!fin[b[0]]);
   // Everything done: the section folds to one line ("Today · all done ✓"); it slides shut when the last one is marked Done
-  const allDone = !one && todays.length > 0 && todays.every(([sl]) => fin[sl]), justDone = allDone && todayWasDone === false;
+  const allDone = todays.length > 0 && todays.every(([sl]) => fin[sl]), justDone = allDone && todayWasDone === false;
   todayWasDone = allDone;
-  if (!one && todays.length) h += allDone
-    ? `<details class="todaybox alldone" id="todaybox" data-autofold="today"${justDone ? ' open' : ''}><summary class="section-label todaylabel">Today · all done ✓</summary>`
+  const doneLabel = one ? `${todays[0][0] === 'dinner' ? 'Tonight' : todays[0][1]} · all done ✓` : 'Today · all done ✓';
+  if (todays.length && (allDone || !one)) h += allDone
+    ? `<details class="todaybox alldone${one ? ' single' : ''}" id="todaybox" data-autofold="today"${justDone ? ' open' : ''}><summary class="section-label todaylabel">${esc(doneLabel)}</summary>`
     : '<section class="todaybox"><p class="section-label todaylabel">Today</p>';
   const shownToday = new Set();
   for (const [sl, name, v] of todays) {
@@ -1973,7 +1975,7 @@ function renderMeals() {
     if (!card) continue;
     h += one ? card : `<div class="todayitem${fin[sl] ? ' finished' : ''}">${card}<button class="todaydone" data-todaydone="${sl}" aria-pressed="${!!fin[sl]}">${fin[sl] ? '↺ Not done' : '✓ Done'}</button></div>`;
   }
-  if (!one && todays.length) h += allDone ? '</details>' : '</section>';
+  if (todays.length && (allDone || !one)) h += allDone ? '</details>' : '</section>';
   if (justDone) setTimeout(() => { const el = $('#todaybox'); if (el && el.open) animateFold(el, true, (c) => { el.open = !c; }); }, 500);
   const tonight = todays.length ? true : null;
   // Order: meals planned for today or later (soonest first), then unplanned meals, then rated meals.
