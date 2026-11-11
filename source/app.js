@@ -1733,7 +1733,9 @@ function planningSwitch(active) {
 }
 // Planned = on the calendar for today or later, or a current meal (Recipes tab) that hasn't been made yet.
 // Used by the Meals list, the Recipe Book's Planned section and the shopping list.
-const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !madeCount(meal) && !isRetired(meal));
+// A current meal stays on the Planned list until it's been cooked on the calendar; times made from before the
+// calendar (Made rows) don't count, so a recipe brought back to make again shows up straight away.
+const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !pastDays(meal.rid).length && !isRetired(meal));
 // Retire: "we didn't like it". Kept in a folded Retired list in the Recipe Book, left out of suggestions and the Planned list.
 const isRetired = (meal, dish = meal.main) => !!(state.retired || {})[dishKey(dish)];
 function setRetired(id, on) {
