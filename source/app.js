@@ -809,7 +809,12 @@ function renderExtras() { // added items sit inside the shopping sections, so re
 // ---------------------------------------------------------------- "+" in the top bar (shopping list)
 function formDialog(html) { // shows a small form dialog; resolves with the submit button's value and the form
   let dlg = $('#formdlg');
-  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'formdlg'; document.body.appendChild(dlg); }
+  if (!dlg) {
+    dlg = document.createElement('dialog'); dlg.id = 'formdlg'; document.body.appendChild(dlg);
+    // a tap outside the box is the same as Cancel
+    dlg.addEventListener('click', (e) => { if (e.target !== dlg) return; const r = dlg.getBoundingClientRect();
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { dlg.returnValue = ''; dlg.close(); } });
+  }
   dlg.className = ''; dlg.innerHTML = `<form method="dialog">${html}</form>`;
   dlg.returnValue = '';
   // Enter in a text box saves (otherwise the first button, Cancel or Remove, would be used)
@@ -2391,7 +2396,9 @@ async function pickMeal(day, slot = 'dinner') {
   const m = state.model; if (!m) return;
   const current = slotValue(day, slot), currentCustom = customText(current);
   let dlg = $('#picker');
-  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg); }
+  if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'picker'; document.body.appendChild(dlg);
+    dlg.addEventListener('click', (e) => { if (e.target !== dlg) return; const r = dlg.getBoundingClientRect(); // a tap outside = Cancel
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) { dlg.returnValue = ''; dlg.close(); } }); }
   // Dinner: a few suggestions first. Breakfast / dessert: every breakfast / dessert first. Otherwise those kinds go last.
   const want = slot === 'breakfast' ? 'Breakfast' : slot === 'dessert' ? 'Dessert' : null;
   const top = slot === 'dinner' ? suggestions(day) : want ? allMeals().filter((x) => x.kind === want) : [];
