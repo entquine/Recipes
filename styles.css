@@ -933,3 +933,15 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .servings .yunit { color: var(--c0); font-weight: 800; }
 .timer .tadd.tsub { padding: 4px 9px; }
 .item.hasneed { grid-template-columns: 44px 1fr auto; } /* + Need sits on the right, same line */
+/* recipe: Hide checked (steps), on the Servings row */
+.servings .hidesw { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.servings .hidesw input { width: 20px; height: 20px; accent-color: var(--accent); margin: 0; }
+.hidesteps .card.dish .item.done:not(.keep), .hidesteps .card.combined .item.done:not(.keep) { display: none; }
+/* Servings row and Hide checked on one line */
+.servings { flex-wrap: nowrap; gap: 5px; }
+.servings .small { font-size: 13px; margin-right: 2px; white-space: nowrap; }
+.servings button { min-width: 36px; padding: 5px 7px; font-size: 14px; flex: none; }
+.servings .hidesw { font-size: 12.5px; gap: 5px; flex: none; }
+.servings .hidesw input { width: 18px; height: 18px; }
+@media (max-width: 360px) { .servings { gap: 4px; } .servings button { min-width: 30px; padding: 5px 5px; font-size: 13.5px; } .servings .small { font-size: 12px; } .servings .hidesw { font-size: 11.5px; gap: 4px; } }
+@media (max-width: 360px) { .servings button { min-width: 28px; padding: 5px 4px; } .servings .small { font-size: 11.5px; margin-right: 0; } .servings .hidesw input { width: 16px; height: 16px; } .servings .mk { display: none; } }

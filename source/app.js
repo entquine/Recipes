@@ -1202,6 +1202,8 @@ function renderTimers() {
 // timer buttons on steps: filled in and counting down while their timer runs
 function markTimerButtons() {
   const now = Date.now();
+  document.querySelectorAll('.item.keep').forEach((x) => x.classList.remove('keep')); // a step with a timer going stays visible with "Hide checked" on
+  for (const t of Object.values(state.session.timers || {})) if (t.step) document.querySelectorAll(`.item[data-key="${CSS.escape(t.step)}"]`).forEach((x) => x.classList.add('keep'));
   document.querySelectorAll('.cooktimer[data-cookstep]').forEach((btn) => { // the timer button in cook mode
     const run = runningTimerFor(btn.dataset.cookstep);
     const left = run ? Math.round((run[1].ends - now) / 1000) : 0;
@@ -1871,8 +1873,8 @@ const scaleServings = (makes, k = curScale) => { if (k === 1 || !yieldOf(makes))
 function servingsHtml(meal) {
   const k = scaleOf(meal.rid), y = yieldOf(meal.main.makes), base = y ? y.a : 0, servings = !y || /^servings?$/.test(y.unit);
   const opts = [0.5, 1, 2, 3];
-  const label = !base ? 'Make' : servings ? 'Servings' : `Makes <span class="yunit">(${esc(y.unit)})</span>`; // muffins: Makes (muffins) 7 · 14 · 28 · 42
-  return `<div class="servings"><span class="small">${label}</span>${opts.map((x) => `<button class="${x === k ? 'on' : ''}" data-scale="${x}" data-rid="${esc(meal.rid)}">${base ? fmtQty(base * x) : (x === 0.5 ? '½' : x) + '×'}</button>`).join('')}</div>${k !== 1 ? `<p class="small scalenote">Amounts are ×${fmtQty(k)}${base ? ` (${fmtQty(base * k)} ${esc(y.unit)})` : ''}, on the shopping list too. Cooking times and pan sizes aren't changed.</p>` : ''}`;
+  const label = !base ? 'Make' : servings ? 'Servings' : `<span class="mk">Makes </span><span class="yunit">(${esc(y.unit)})</span>`; // muffins: Makes (muffins) 7 · 14 · 28 · 42
+  return `<div class="servings"><span class="small">${label}</span>${opts.map((x) => `<button class="${x === k ? 'on' : ''}" data-scale="${x}" data-rid="${esc(meal.rid)}">${base ? fmtQty(base * x) : (x === 0.5 ? '½' : x) + '×'}</button>`).join('')}<label class="hidesw"><input type="checkbox" id="hidesteps"${ls.get('hide-steps', false) ? ' checked' : ''}><span>Hide checked</span></label></div>${k !== 1 ? `<p class="small scalenote">Amounts are ×${fmtQty(k)}${base ? ` (${fmtQty(base * k)} ${esc(y.unit)})` : ''}, on the shopping list too. Cooking times and pan sizes aren't changed.</p>` : ''}`;
 }
 function setScale(rid, k) {
   state.scale = state.scale || {}; if (k === 1) delete state.scale[rid]; else state.scale[rid] = k;
@@ -2795,6 +2797,7 @@ document.addEventListener('submit', async (e) => {
 });
 document.addEventListener('change', (e) => {
   if (e.target.id === 'wake') { ls.set('wake', e.target.checked); updateWakeLock(); }
+  if (e.target.id === 'hidesteps') { ls.set('hide-steps', e.target.checked); view().classList.toggle('hidesteps', e.target.checked); }
   if (e.target.id === 'hideticked') { ls.set('hide-ticked', e.target.checked); refreshTicks(); }
 });
 
@@ -2997,6 +3000,7 @@ function route() {
   $('#quicktimer').hidden = page !== 'meal'; // the clock button: recipes only
   setTimeout(updateWakeLock, 0); // "Keep screen on while cooking": on for recipes and cook mode, off elsewhere
   view().style.minHeight = ''; // only the shopping page stretches to fill the screen
+  view().classList.toggle('hidesteps', page === 'meal' && ls.get('hide-steps', false)); // "Hide checked" on recipe pages (this phone)
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''), sub);
   else if (page === 'shopping') renderShopping();

@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['106', ['Recipes: a Hide checked switch on the Servings row hides ticked steps (a step whose timer is still going stays).']],
   ['105', ['Meals page: a meal with every step ticked counts as done, so today’s card folds to “Tonight · all done ✓” even when it’s the only thing planned.', 'Shopping: Usually have drops its explanation, and + Need sits on the right of each item.']],
   ['104', ['Shopping: after pressing and holding an item, the first tap in its menu works (it was sometimes ignored).', 'Items you add yourself can have a store too (press and hold them); they show under that store’s filter.']],
   ['103', ['Timers: a −1 button beside +1 takes a minute off a running timer.']],
