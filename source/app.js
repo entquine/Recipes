@@ -793,8 +793,9 @@ function writeExtras(changes) {
 // Categories for added items: the shopping list's own sections, plus "Other".
 const shopSections = () => (state.model ? state.model.shopping.map((sec) => sec.name) : []);
 const extraSection = (x) => (shopSections().includes(x.section) ? x.section : 'Other');
+const extraInCheck = (id, x) => !!(state.check || {})[extraKey(id)] && !isStaple(x.name) && !(state.dc || {})[extraKey(id)] && !(state.ticks[SHOP()] || {})[extraKey(id)];
 function extrasListHtml(section, staplesOnly, onlyStore) { // onlyStore: just the items tagged for that store
-  const items = Object.entries(state.extras).filter(([id, x]) => (staplesOnly ? isStaple(x.name) : extraSection(x) === section && !isStaple(x.name)) && (!onlyStore || (state.store || {})[extraKey(id)] === onlyStore)).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
+  const items = Object.entries(state.extras).filter(([id, x]) => (staplesOnly ? isStaple(x.name) : extraSection(x) === section && !isStaple(x.name) && (onlyStore || !extraInCheck(id, x))) && (!onlyStore || (state.store || {})[extraKey(id)] === onlyStore)).sort((a, b) => (a[1].at || 0) - (b[1].at || 0));
   if (!items.length) return '';
   return items.map(([id, x]) => itemHtml(SHOP(), extraKey(id),
     `<span class="body"><strong>${esc(x.name)}</strong>${x.amount ? ` · ${esc(x.amount)}` : ''}<span class="sub">${(state.store || {})[extraKey(id)] ? `<span class="storechip">${esc(state.store[extraKey(id)])}</span> ` : ''}Added by ${esc(nameFor(x.email))}</span></span>${
@@ -1546,8 +1547,10 @@ async function stapleMenu(name, storeKey) { // storeKey: an item you added yours
   if (storeKey) setTimeout(() => { const sel = $('#storesel'); if (sel) sel.addEventListener('change', () => { setStore(storeKey, sel.value); toast(sel.value ? `${sel.value} item` : 'Standard store'); }); }, 0);
   const r = await formDialog(`<p class="picktitle">${esc(name)}</p><p class="small" style="margin:0 0 12px">${on ? 'You marked this as something you usually have.' : 'Usually have this at home? Staples move to a folded "Usually have" card and don’t count toward the list.'}</p>
     ${storeKey ? `<label class="small" for="storesel" style="display:block">Store</label><select id="storesel" class="dlg-input" name="store" style="margin-bottom:12px">${['', ...STORES].map((x) => `<option value="${x}"${((state.store || {})[storeKey] || '') === x ? ' selected' : ''}>${x || 'Standard'}</option>`).join('')}</select>` : ''}
-    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>`);
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>
+    ${storeKey ? `<div class="row-btns linemenu-more"><button class="btn ghost" value="check">${(state.check || {})[storeKey] ? 'Stop checking the pantry' : 'Check the pantry first'}</button></div>` : ''}`);
   if (r.value === 'save') toggleStaple(name);
+  if (r.value === 'check' && storeKey) { const was = !!(state.check || {})[storeKey]; setCheck(storeKey, !was); toast(was ? `${name}: no longer checked first` : `${name}: check the pantry first`); }
 }
 
 // ---------------------------------------------------------------- automatic shopping list
@@ -1714,9 +1717,11 @@ function renderAutoShopping(m) {
   let only = ls.get('shop-store-filter', ''); if (only && !offered.includes(only)) only = '';
   if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
   const dcl = only ? [] : lines.filter(isDoubleCheck).sort((a, b) => a.item.localeCompare(b.item));
-  if (dcl.length) h += `<section class="card dcheck"><p class="section-label">Before you go: check the pantry <span class="bk-count">${dcl.length}</span></p><ul class="list">${dcl.map((l) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l));
-    return `<li class="dcrow"><span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${esc(amt)}` : ''}<span class="sub">For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}</span></span>
-      <span class="dcbtns"><button class="btn ghost" data-dchave="${esc(l.key)}">✓ Have it</button><button class="btn ghost" data-dcneed="${esc(l.key)}">Buy it</button></span></li>`; }).join('')}</ul></section>`;
+  const dcx = only ? [] : Object.entries(state.extras).filter(([id, x]) => extraInCheck(id, x)); // items you added, marked too
+  const dcRow = (key, name, amt, sub, extra) => `<li class="dcrow"><span class="body"><strong>${esc(name)}</strong>${amt ? ` · ${esc(amt)}` : ''}<span class="sub">${esc(sub)}</span></span>
+      <span class="dcbtns"><button class="btn ghost" data-dchave="${esc(key)}"${extra ? ' data-extra="1"' : ''}>✓ Have it</button><button class="btn ghost" data-dcneed="${esc(key)}">Buy it</button></span></li>`;
+  if (dcl.length + dcx.length) h += `<section class="card dcheck"><p class="section-label">Before you go: check the pantry <span class="bk-count">${dcl.length + dcx.length}</span></p><ul class="list">${dcl.map((l) => { const o = amtOverride(l);
+    return dcRow(l.key, l.item, o ? o.text : amountText(lineParts(l)), 'For: ' + [...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '), false); }).join('')}${dcx.map(([id, x]) => dcRow(extraKey(id), x.name, x.amount, 'Added by ' + nameFor(x.email), true)).join('')}</ul></section>`;
   for (const sec of sections) {
     const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && !dcl.includes(l) && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
     const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec, false, only);
@@ -2757,6 +2762,7 @@ document.addEventListener('click', async (e) => {
   if (pt) { const on = !pt.classList.contains('done'); pt.dataset.prepkeys.split(',').forEach((k) => setTick(pt.dataset.scope, k, on)); return; }
   const gl = e.target.closest('.item.gline');
   const dch = e.target.closest('[data-dchave]');
+  if (dch && dch.dataset.extra) { const k = dch.dataset.dchave; setTick(SHOP(), k, true); route(); undoToast(`Have it: ${dch.closest('.dcrow').querySelector('strong').textContent}`, () => { setTick(SHOP(), k, false); route(); }); return; }
   if (dch) { const k = dch.dataset.dchave; toggleLine(k); undoToast(`Have it: ${dch.closest('.dcrow').querySelector('strong').textContent}`, () => toggleLine(k)); return; }
   const dcn = e.target.closest('[data-dcneed]');
   if (dcn) { const k = dcn.dataset.dcneed; setDc(k, true); undoToast(`Buy it: ${dcn.closest('.dcrow').querySelector('strong').textContent} is on the list`, () => setDc(k, false)); return; }
@@ -2784,6 +2790,7 @@ document.addEventListener('click', async (e) => {
   const item = e.target.closest('.item[data-key]');
   if (item) {
     const on = !item.classList.contains('done');
+    if (on && (state.dc || {})[item.dataset.key]) setDc(item.dataset.key, false); // an added item answered "Buy it" and now bought: ask again next time
     setTick(item.dataset.scope, item.dataset.key, on);
     // Undo only where a ticked item disappears: the shopping list with "Hide ticked" on
     if (on && isShopScope(item.dataset.scope) && !!$('#hideticked') && ls.get('hide-ticked', false)) undoToast(`${item.dataset.name || 'Item'} ticked`, () => setTick(item.dataset.scope, item.dataset.key, false));

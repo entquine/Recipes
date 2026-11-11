@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['111', ['Items you add to the shopping list yourself can be marked Check the pantry first too (press and hold).']],
   ['110', ['Tapping outside a pop-up menu closes it, the same as Cancel.']],
   ['109', ['Shopping: press and hold an item and choose Check the pantry first. Marked items gather in a “Before you go: check the pantry” card: ✓ Have it ticks it off; Buy it puts it on the list. It asks again next shop.']],
   ['108', ['A recipe brought back to make again (the quesadillas) stays on the Meals list even though it was cooked before; only cooking it again takes it off.']],
