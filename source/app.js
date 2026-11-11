@@ -270,6 +270,8 @@ const state = {
   staples: {},             // shopping/staples: items we usually have, by name key
   scale: {},               // shopping/bought scale: meal ID -> how many times the recipe (½, 2, 3); missing = 1
   shopOrder: [],           // shopping/bought order: shopping sections in store order
+  check: {},               // shopping/bought check: shop item key -> true, marked "Check the pantry first" (press and hold an item)
+  dc: {},                  // shopping/bought dc: shop item key -> true, answered "We need it" in Double check (back on the list)
   store: {},               // shopping/bought store: shop item key -> 'Marukai' | 'Costco' | 'Ace' (missing = the usual store)
   need: {},                // shopping/bought need: shop item key -> true, a "usually have" item needed this time
   amtOver: {},             // shopping/bought amt: shop item key -> { text, by (email), at, for (meal IDs) }: a changed amount to buy
@@ -399,9 +401,9 @@ function startFirestore() {
   }), (err) => listenerFailed('staples', err));
   unsubBought = onSnapshot(doc(db, 'shopping', 'bought'), { includeMetadataChanges: true }, safely('bought', (snap) => {
     const dd = (snap.exists() && snap.data()) || {};
-    state.bought = { ...(dd.b || {}) }; state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; syncLoaded('bought', snap);
+    state.bought = { ...(dd.b || {}) }; state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; state.dc = { ...(dd.dc || {}) }; state.check = { ...(dd.check || {}) }; syncLoaded('bought', snap);
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
-    if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need, st: state.store })) renderExtras();
+    if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need, st: state.store, dc: state.dc, ck: state.check })) renderExtras();
   }), (err) => listenerFailed('bought', err));
   unsubIdeas = onSnapshot(doc(db, 'ideas', 'list'), { includeMetadataChanges: true }, safely('ideas', (snap) => {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
@@ -1524,8 +1526,9 @@ async function lineMenu(key) {
     <label class="small" for="storesel" style="display:block;margin-top:10px">Store</label>
     <select id="storesel" class="dlg-input" name="store">${['', ...STORES].map((x) => `<option value="${x}"${((state.store || {})[key] || '') === x ? ' selected' : ''}>${x || 'Standard'}</option>`).join('')}</select>
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save amount</button></div>
-    <div class="row-btns linemenu-more">${o ? '<button class="btn ghost" value="reset">Use the recipe amount</button>' : ''}<button class="btn ghost" value="staple">${on ? 'Put it back on the list' : 'We usually have this'}</button></div>`);
+    <div class="row-btns linemenu-more">${o ? '<button class="btn ghost" value="reset">Use the recipe amount</button>' : ''}<button class="btn ghost" value="staple">${on ? 'Put it back on the list' : 'We usually have this'}</button><button class="btn ghost" value="check">${(state.check || {})[key] ? 'Stop checking the pantry' : 'Check the pantry first'}</button></div>`);
   if (r.value === 'staple') { toggleStaple(l.item); return; }
+  if (r.value === 'check') { const was = !!(state.check || {})[key]; setCheck(key, !was); toast(was ? `${l.item}: no longer checked first` : `${l.item}: check the pantry first`); return; }
   if (r.value === 'reset') { saveAmt(key, null); return; }
   if (r.value !== 'save') return;
   const text = String(r.form.amt.value || '').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -1637,6 +1640,24 @@ function amountText(parts) {
   return bits.join(' + ');
 }
 const mealLabel = (m) => m.title; // short meal name, e.g. "Chicken Pot Pie", "Apple Muffins"
+// "Before you go: check the pantry": items you've marked (press and hold → Check the pantry first) that might already
+// be at home. "Have it" ticks it; "Buy it" puts it back on the normal list, unticked. That answer is cleared once it's
+// bought, so the next shop asks again. Nothing is marked to start with.
+const isDoubleCheck = (l) => !!(state.check || {})[l.key] && !l.done && !l.mealDone && !isStaple(l.item) && !(state.dc || {})[l.key];
+function setCheck(key, on) {
+  state.check = state.check || {}; if (on) state.check[key] = true; else delete state.check[key];
+  route();
+  if (!state.firebase) { ls.set('local-check', state.check); return; }
+  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { check: { [key]: on || deleteField() } }, { mergeFields: [new FieldPath('check', key)] })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+function setDc(key, on) {
+  state.dc = state.dc || {}; if (on) state.dc[key] = true; else delete state.dc[key];
+  route();
+  if (!state.firebase) { ls.set('local-dc', state.dc); return; }
+  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { dc: { [key]: on || deleteField() } }, { mergeFields: [new FieldPath('dc', key)] })
+    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
 function setNeed(key, on) {
   state.need = state.need || {}; if (on) state.need[key] = true; else delete state.need[key];
   route();
@@ -1687,8 +1708,12 @@ function renderAutoShopping(m) {
   const offered = STORES.filter((st) => left(st));
   let only = ls.get('shop-store-filter', ''); if (only && !offered.includes(only)) only = '';
   if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
+  const dcl = only ? [] : lines.filter(isDoubleCheck).sort((a, b) => a.item.localeCompare(b.item));
+  if (dcl.length) h += `<section class="card dcheck"><p class="section-label">Before you go: check the pantry <span class="bk-count">${dcl.length}</span></p><ul class="list">${dcl.map((l) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l));
+    return `<li class="dcrow"><span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${esc(amt)}` : ''}<span class="sub">For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}</span></span>
+      <span class="dcbtns"><button class="btn ghost" data-dchave="${esc(l.key)}">✓ Have it</button><button class="btn ghost" data-dcneed="${esc(l.key)}">Buy it</button></span></li>`; }).join('')}</ul></section>`;
   for (const sec of sections) {
-    const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
+    const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && !dcl.includes(l) && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
     const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec, false, only);
     if (rows) h += `<section class="card shopsec" data-sec="${esc(sec)}"><p class="section-label secdrag">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
@@ -2724,10 +2749,15 @@ document.addEventListener('click', async (e) => {
   const pt = e.target.closest('.item.preptask');
   if (pt) { const on = !pt.classList.contains('done'); pt.dataset.prepkeys.split(',').forEach((k) => setTick(pt.dataset.scope, k, on)); return; }
   const gl = e.target.closest('.item.gline');
+  const dch = e.target.closest('[data-dchave]');
+  if (dch) { const k = dch.dataset.dchave; toggleLine(k); undoToast(`Have it: ${dch.closest('.dcrow').querySelector('strong').textContent}`, () => toggleLine(k)); return; }
+  const dcn = e.target.closest('[data-dcneed]');
+  if (dcn) { const k = dcn.dataset.dcneed; setDc(k, true); undoToast(`Buy it: ${dcn.closest('.dcrow').querySelector('strong').textContent} is on the list`, () => setDc(k, false)); return; }
   const nb = e.target.closest('[data-need]');
   if (nb) { e.stopPropagation(); setNeed(nb.dataset.need, true); toast(`${nb.closest('[data-name]').dataset.name} added to the list`); return; }
   if (gl) {
     if (!gl.classList.contains('done') && (state.need || {})[gl.dataset.line]) setNeed(gl.dataset.line, false); // bought: back to "Usually have"
+    if (!gl.classList.contains('done') && (state.dc || {})[gl.dataset.line]) setDc(gl.dataset.line, false); // bought: ask again next time
     const hides = !gl.classList.contains('done') && !!$('#hideticked') && ls.get('hide-ticked', false); // it's about to disappear
     toggleLine(gl.dataset.line);
     if (hides) undoToast(`${gl.dataset.name || 'Item'} ticked`, () => toggleLine(gl.dataset.line));
@@ -3053,7 +3083,7 @@ function start() {
     state.extras = ls.get('local-extras', {});
     state.session = ls.get('local-session', { dinner: {}, timers: {} });
     state.staples = ls.get('local-staples', {});
-    state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {}); state.scale = ls.get('local-scale', {}); state.shopOrder = ls.get('local-shoporder', []); state.need = ls.get('local-need', {}); state.store = ls.get('local-store', {});
+    state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {}); state.scale = ls.get('local-scale', {}); state.shopOrder = ls.get('local-shoporder', []); state.need = ls.get('local-need', {}); state.store = ls.get('local-store', {}); state.dc = ls.get('local-dc', {}); state.check = ls.get('local-check', {});
     state.ideas = ls.get('local-ideas', {});
     state.nextTime = ls.get('local-nexttime', {});
     state.madeAdjust = ls.get('local-adjust', {}); state.retired = ls.get('local-retired', {});

@@ -945,3 +945,20 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .servings .hidesw input { width: 18px; height: 18px; }
 @media (max-width: 360px) { .servings { gap: 4px; } .servings button { min-width: 30px; padding: 5px 5px; font-size: 13.5px; } .servings .small { font-size: 12px; } .servings .hidesw { font-size: 11.5px; gap: 4px; } }
 @media (max-width: 360px) { .servings button { min-width: 28px; padding: 5px 4px; } .servings .small { font-size: 11.5px; margin-right: 0; } .servings .hidesw input { width: 16px; height: 16px; } .servings .mk { display: none; } }
+/* shopping: Double check before we leave */
+.card.dcheck { border: 2px solid var(--c2); }
+.card.dcheck .section-label { color: var(--c2); display: flex; align-items: center; gap: 8px; }
+.dcrow { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.dcrow:last-child { border-bottom: 0; }
+.dcrow .body strong { font-weight: 700; }
+.dcrow .sub { display: block; font-size: 13.5px; color: var(--muted); }
+.dcbtns { display: flex; gap: 8px; }
+.dcbtns .btn { flex: 1; padding: 8px 10px; font-size: 14.5px; }
+.dcbtns [data-dchave] { border-color: var(--ok); color: var(--ok); }
+/* pantry check: one compact row per item */
+.dcrow { flex-direction: row; align-items: center; gap: 10px; padding: 8px 0; }
+.dcrow .body { flex: 1; min-width: 0; }
+.dcrow .body strong { font-size: 15.5px; }
+.dcrow .sub { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dcbtns { flex: none; gap: 6px; }
+.dcbtns .btn { flex: none; width: auto; padding: 6px 10px; font-size: 13.5px; border-radius: 999px; border: 1.5px solid var(--line); }
