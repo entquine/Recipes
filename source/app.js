@@ -149,6 +149,7 @@ function buildMeals(recipes) {
       case 'tip': if (r.text) dish.tips.push(r.text); break;
       case 'ahead': if (r.text) (meal.aheadNotes || (meal.aheadNotes = [])).push({ when: r.amount || '', text: r.text }); break;
       case 'source': dish.source = String(r.text || r.amount || '').trim(); break; // the recipe's original web page
+      case 'again': dish.again = String(r.amount || r.text || '').trim(); break; // brought back to make again on this date (YYYY-MM-DD)
       case 'made with': dish.madeWith = { id: String(r.text || '').trim(), until: String(r.amount || '').trim() }; break; // an archived side: its old meal's calendar days count for it
       case 'made': dish.madeBefore = Math.max(0, parseInt(r.amount, 10) || 0); dish.madeNote = r.text || ''; break;
       default: break;
@@ -1735,7 +1736,8 @@ function planningSwitch(active) {
 // Used by the Meals list, the Recipe Book's Planned section and the shopping list.
 // A current meal stays on the Planned list until it's been cooked on the calendar; times made from before the
 // calendar (Made rows) don't count, so a recipe brought back to make again shows up straight away.
-const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !pastDays(meal.rid).length && !isRetired(meal));
+// An "Again" row (the date it was brought back) means only cooking it after that date counts.
+const isPlannedMeal = (meal) => !!nextPlanned(meal.name) || (!meal.archived && !pastDays(meal.rid).filter((k) => !meal.main.again || k >= meal.main.again).length && !isRetired(meal));
 // Retire: "we didn't like it". Kept in a folded Retired list in the Recipe Book, left out of suggestions and the Planned list.
 const isRetired = (meal, dish = meal.main) => !!(state.retired || {})[dishKey(dish)];
 function setRetired(id, on) {

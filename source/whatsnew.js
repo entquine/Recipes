@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['108', ['A recipe brought back to make again (the quesadillas) stays on the Meals list even though it was cooked before; only cooking it again takes it off.']],
   ['107', ['A recipe brought back to make again (like the quesadillas) shows on the Meals list and shopping list even if it was made before; only cooking it on the calendar takes it off.']],
   ['106', ['Recipes: a Hide checked switch on the Servings row hides ticked steps (a step whose timer is still going stays).']],
   ['105', ['Meals page: a meal with every step ticked counts as done, so today’s card folds to “Tonight · all done ✓” even when it’s the only thing planned.', 'Shopping: Usually have drops its explanation, and + Need sits on the right of each item.']],
