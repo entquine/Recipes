@@ -119,8 +119,8 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: Made with needs the old main dish's ID in Text (e.g. d-lemon-herb-chicken-cutlets), found {text!r}")
             if amount not in (None, "") and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(amount).strip()):
                 errors.append(f"{where}: Made with Amount should be the date it was split off, as YYYY-MM-DD, found {amount!r}")
-        if s == "source" and not re.match(r"^https?://", str(text or "").strip()):
-            warnings.append(f"{where}: Source should be the recipe's web address (starting with https://), found {text!r}")
+        if s == "source" and not str(text or "").strip():
+            warnings.append(f"{where}: Source needs a web address (https://...) or where it's from, e.g. 'Purple People Cookbook'")
         if s == "made":
             d["made"] = d.get("made", 0) + 1
             if d["made"] > 1:

@@ -962,3 +962,4 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .dcrow .sub { font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dcbtns { flex: none; gap: 6px; }
 .dcbtns .btn { flex: none; width: auto; padding: 6px 10px; font-size: 13.5px; border-radius: 999px; border: 1.5px solid var(--line); }
+.srctext { margin: 2px 0 8px; font-size: 14px; font-weight: 600; color: var(--muted); font-style: italic; }

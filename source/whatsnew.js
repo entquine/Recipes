@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['112', ['A recipe’s source can be plain text, like a cookbook: it shows “From the Purple People Cookbook” under the dish name.']],
   ['111', ['Items you add to the shopping list yourself can be marked Check the pantry first too (press and hold).']],
   ['110', ['Tapping outside a pop-up menu closes it, the same as Cancel.']],
   ['109', ['Shopping: press and hold an item and choose Check the pantry first. Marked items gather in a “Before you go: check the pantry” card: ✓ Have it ticks it off; Buy it puts it on the list. It asks again next shop.']],

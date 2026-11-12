@@ -512,7 +512,18 @@ function sourceOf(d) {
   }
   return '';
 }
+// A Source row that isn't a web address is shown as plain text: "Purple People Cookbook" → "From the Purple People Cookbook"
+function sourceTextHtml(t) {
+  t = String(t || '').trim(); if (!t) return '';
+  let line;
+  if (/^from\b/i.test(t)) line = t[0].toUpperCase() + t.slice(1);
+  else if (/^(the|a|an|my|our)\b/i.test(t) || /'s\b/i.test(t)) line = 'From ' + t;
+  else if (/\b(cookbook|book|magazine|blog|website|kit|box|class|show)$/i.test(t)) line = 'From the ' + t;
+  else line = 'From ' + t;
+  return `<p class="srctext">${esc(line)}</p>`;
+}
 function sourceLinkHtml(d) {
+  if (d.source && !/^https?:\/\//i.test(d.source.trim())) return sourceTextHtml(d.source); // plain text, e.g. a cookbook
   const u = sourceOf(d); if (!u) return '';
   let host = ''; try { host = new URL(u).hostname.replace(/^www\./, ''); } catch { return ''; }
   return `<a class="srclink" href="${esc(u)}" target="_blank" rel="noopener noreferrer">View original <span>${esc(host)}</span> ›</a>`;
