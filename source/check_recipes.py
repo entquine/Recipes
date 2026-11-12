@@ -127,7 +127,7 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: more than one Made row for {recipe!r}; use one row with the total")
             if not re.fullmatch(r"\d{1,3}", str(amount if amount is not None else "").strip()):
                 errors.append(f"{where}: Made rows need Amount = how many times it was made before the calendar, as a whole number, found {amount!r}")
-        elif not text:
+        elif not text and s != "again":
             warnings.append(f"{where}: empty Text")
         if timer not in (None, ""):
             if s != "step":
