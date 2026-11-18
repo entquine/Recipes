@@ -963,3 +963,9 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .dcbtns { flex: none; gap: 6px; }
 .dcbtns .btn { flex: none; width: auto; padding: 6px 10px; font-size: 13.5px; border-radius: 999px; border: 1.5px solid var(--line); }
 .srctext { margin: 2px 0 8px; font-size: 14px; font-weight: 600; color: var(--muted); font-style: italic; }
+/* calendar picker: Takeout */
+.takeoutbtn { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; width: 100%; margin: 12px 0 0; text-align: left; justify-content: flex-start; }
+.takeoutbtn .ic { width: 20px; height: 20px; }
+.takeoutbtn .small { flex-basis: 100%; margin-left: 28px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spotlist { margin: 6px 0 12px; }
+.spotedit { margin: 0 0 8px; }

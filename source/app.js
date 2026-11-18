@@ -77,6 +77,7 @@ function confirmDialog(text, okLabel = 'Clear') {
 const IC = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 const ICONS = {
   cal: IC('M4.5 6.5h15v13h-15zM4.5 10.5h15M8.5 4v4M15.5 4v4'),
+  bag: IC('M6 8h12l-1 12H7zM9 8V6.5a3 3 0 0 1 6 0V8'),
   trash: IC('M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 12.5h9l1-12.5M10.2 10.5v6M13.8 10.5v6'),
   timer: IC('M12 21a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15zM12 10v3.5l2.5 1.5M9.5 3h5'),
   cook: IC('M7.5 17.5h9v3h-9zM7.5 17.5v-4A4 4 0 0 1 8.4 6a4 4 0 0 1 7.2 0 4 4 0 0 1 .9 7.5v4'),
@@ -361,6 +362,7 @@ function startFirestore() {
     state.plan = { ...((snap.exists() && snap.data().d) || {}) }; syncLoaded('calendar', snap);
     state.planX = { ...((snap.exists() && snap.data().x) || {}) }; // breakfast / lunch / dessert per day
     state.planDone = { ...((snap.exists() && snap.data().f) || {}) }; // finished today: day -> { slot: true }
+    state.spots = [...((snap.exists() && snap.data().spots) || [])]; // our usual takeout spots
     if (changed('calendar', [state.plan, state.planX]) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
   }), (err) => listenerFailed('calendar', err));
   unsubRatings = onSnapshot(collection(db, 'ratings'), { includeMetadataChanges: true }, safely('ratings', (snap) => {
@@ -2408,6 +2410,37 @@ async function pickSlot(day) { // the + on a calendar day: which meal?
   if (r.value) pickMeal(day, r.value);
 }
 const pkThumb = (x) => { const th = state.thumbs[dishKey(x.main)]; return th ? `<img class="pk-thumb" src="${th}" alt="">` : ''; };
+// Takeout: pick one of our usual spots (shared list, kept in calendar/plan), plain "Takeout", or add / edit spots.
+function saveSpots(list) {
+  state.spots = list.map((x) => String(x).replace(/\s+/g, ' ').trim().slice(0, 40)).filter(Boolean).filter((x, i, a) => a.findIndex((y) => y.toLowerCase() === x.toLowerCase()) === i);
+  if (!state.firebase) { ls.set('local-spots', state.spots); return; }
+  setDoc(doc(state.firebase.db, 'calendar', 'plan'), { spots: state.spots }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+async function takeoutMenu(day, slot) {
+  const spots = state.spots || [], cur = slotValue(day, slot), curSpot = cur && typeof cur === 'object' ? cur.takeout : null;
+  const r = await formDialog(`<p class="picktitle">Takeout · ${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'short', day: 'numeric' }))}</p>
+    <div class="picklist spotlist">${spots.map((sp, i) => `<button class="pickopt${curSpot === sp ? ' sel' : ''}" value="s${i}"><strong>${esc(sp)}</strong></button>`).join('')}
+      <button class="pickopt${curSpot === true ? ' sel' : ''}" value="plain"><strong>Takeout</strong><span class="small">Not sure where yet</span></button></div>
+    <label class="small" for="spotnew">Add a spot</label>
+    <div class="customrow"><input type="text" id="spotnew" class="dlg-input" name="spot" maxlength="40" placeholder="e.g. Chipotle" autocomplete="off"><button class="btn" value="save">Add</button></div>
+    <div class="row-btns">${spots.length ? '<button class="btn ghost" value="edit">Edit spots</button>' : ''}<button class="btn ghost" value="">Cancel</button></div>`);
+  if (!r.value) return;
+  if (r.value === 'edit') { await editSpots(); takeoutMenu(day, slot); return; }
+  if (r.value === 'plain') { setPlan(day, { text: 'Takeout', takeout: true }, slot); return; }
+  let spot = '';
+  if (r.value === 'save') { spot = String(r.form.spot.value || '').replace(/\s+/g, ' ').trim().slice(0, 40); if (!spot) { takeoutMenu(day, slot); return; } if (!spots.some((x) => x.toLowerCase() === spot.toLowerCase())) saveSpots([...spots, spot]); }
+  else if (/^s\d+$/.test(r.value)) spot = spots[+r.value.slice(1)];
+  if (spot) setPlan(day, { text: `Takeout · ${spot}`, takeout: spot }, slot);
+}
+async function editSpots() { // rename a spot, or clear its name to remove it
+  const spots = state.spots || [];
+  const r = await formDialog(`<p class="picktitle">Our usual spots</p><p class="small" style="margin:0 0 8px">Change a name, or clear it to remove that spot.</p>
+    ${spots.map((sp, i) => `<input class="dlg-input spotedit" name="sp${i}" maxlength="40" value="${esc(sp)}" autocomplete="off">`).join('')}
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
+  if (r.value !== 'save') return;
+  saveSpots(spots.map((_, i) => r.form[`sp${i}`].value));
+  toast('Spots saved');
+}
 async function pickMeal(day, slot = 'dinner') {
   const m = state.model; if (!m) return;
   const current = slotValue(day, slot), currentCustom = customText(current);
@@ -2433,6 +2466,7 @@ async function pickMeal(day, slot = 'dinner') {
       const other = plannedElsewhere(x.rid, day);
       return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div></div>
+    ${slot === 'dinner' || slot === 'lunch' ? `<button class="btn ghost takeoutbtn" value="__takeout">${ICONS.bag} Takeout<span class="small">${(state.spots || []).length ? esc(state.spots.slice(0, 3).join(' · ')) + (state.spots.length > 3 ? ' …' : '') : 'Pick one of your usual spots'}</span></button>` : ''}
     <div class="custom">
       <label class="small" for="customtext">Or type your own</label>
       <div class="customrow"><input type="text" id="customtext" maxlength="80" placeholder="e.g. Chipotle + Leftovers" value="${esc(currentCustom)}" autocomplete="off"><button class="btn" value="__custom" id="customsave">Save</button></div>
@@ -2460,6 +2494,7 @@ async function pickMeal(day, slot = 'dinner') {
     if (text && text !== currentCustom) setPlan(day, { text }, slot);
     return;
   }
+  if (choice === '__takeout') { takeoutMenu(day, slot); return; }
   if (choice === '__notdone') { if ((state.planDone[day] || {})[slot]) markDone(day, slot); return; }
   if (choice === '__none') setPlan(day, null, slot);
   else if (choice && choice !== planKey(current) && !plannedElsewhere(choice, day)) setPlan(day, choice, slot);
@@ -3100,7 +3135,7 @@ function start() {
     });
   } else {
     state.ticks = ls.get('local-ticks', {});
-    state.plan = ls.get('local-plan', {});
+    state.plan = ls.get('local-plan', {}); state.spots = ls.get('local-spots', []);
     state.planX = ls.get('local-planx', {}); state.planDone = ls.get('local-plandone', {});
     state.ratings = ls.get('local-ratings', {});
     state.notes = ls.get('local-notes', {});

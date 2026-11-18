@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['113', ['Calendar: a Takeout choice for dinner or lunch, with your usual spots to pick from. Add a spot right there, or Edit spots to rename or remove them (shared by both phones).']],
   ['112', ['A recipe’s source can be plain text, like a cookbook: it shows “From the Purple People Cookbook” under the dish name.']],
   ['111', ['Items you add to the shopping list yourself can be marked Check the pantry first too (press and hold).']],
   ['110', ['Tapping outside a pop-up menu closes it, the same as Cancel.']],
