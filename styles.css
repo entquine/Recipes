@@ -969,3 +969,11 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .takeoutbtn .small { flex-basis: 100%; margin-left: 28px; font-weight: 500; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .spotlist { margin: 6px 0 12px; }
 .spotedit { margin: 0 0 8px; }
+/* Edit spots: one list to add, rename, remove and reorder */
+.spotrows { display: flex; flex-direction: column; gap: 8px; margin: 4px 0 10px; }
+.spotrow { display: flex; align-items: center; gap: 6px; }
+.spotrow .dlg-input { flex: 1; margin: 0; }
+.spotrow button { flex: none; width: 36px; height: 36px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--muted); font-size: 17px; cursor: pointer; }
+.spotrow .spotdel { color: var(--danger); }
+.spotrow:first-child .spotmove { visibility: hidden; }
+.spotadd { width: 100%; margin: 0 0 4px; }

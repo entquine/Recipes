@@ -2421,24 +2421,30 @@ async function takeoutMenu(day, slot) {
   const r = await formDialog(`<p class="picktitle">Takeout · ${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'short', day: 'numeric' }))}</p>
     <div class="picklist spotlist">${spots.map((sp, i) => `<button class="pickopt${curSpot === sp ? ' sel' : ''}" value="s${i}"><strong>${esc(sp)}</strong></button>`).join('')}
       <button class="pickopt${curSpot === true ? ' sel' : ''}" value="plain"><strong>Takeout</strong><span class="small">Not sure where yet</span></button></div>
-    <label class="small" for="spotnew">Add a spot</label>
-    <div class="customrow"><input type="text" id="spotnew" class="dlg-input" name="spot" maxlength="40" placeholder="e.g. Chipotle" autocomplete="off"><button class="btn" value="save">Add</button></div>
-    <div class="row-btns">${spots.length ? '<button class="btn ghost" value="edit">Edit spots</button>' : ''}<button class="btn ghost" value="">Cancel</button></div>`);
+    <div class="row-btns"><button class="btn ghost" value="edit">${spots.length ? 'Edit spots' : 'Add our spots'}</button><button class="btn ghost" value="">Cancel</button></div>`);
   if (!r.value) return;
   if (r.value === 'edit') { await editSpots(); takeoutMenu(day, slot); return; }
   if (r.value === 'plain') { setPlan(day, { text: 'Takeout', takeout: true }, slot); return; }
-  let spot = '';
-  if (r.value === 'save') { spot = String(r.form.spot.value || '').replace(/\s+/g, ' ').trim().slice(0, 40); if (!spot) { takeoutMenu(day, slot); return; } if (!spots.some((x) => x.toLowerCase() === spot.toLowerCase())) saveSpots([...spots, spot]); }
-  else if (/^s\d+$/.test(r.value)) spot = spots[+r.value.slice(1)];
+  const spot = /^s\d+$/.test(r.value) ? spots[+r.value.slice(1)] : '';
   if (spot) setPlan(day, { text: `Takeout · ${spot}`, takeout: spot }, slot);
 }
-async function editSpots() { // rename a spot, or clear its name to remove it
-  const spots = state.spots || [];
-  const r = await formDialog(`<p class="picktitle">Our usual spots</p><p class="small" style="margin:0 0 8px">Change a name, or clear it to remove that spot.</p>
-    ${spots.map((sp, i) => `<input class="dlg-input spotedit" name="sp${i}" maxlength="40" value="${esc(sp)}" autocomplete="off">`).join('')}
+// Edit spots: the one place to add, rename, remove and reorder our usual spots; saved all at once.
+async function editSpots() {
+  const row = (v) => `<div class="spotrow"><button type="button" class="spotmove" data-spotup aria-label="Move up">↑</button><input class="dlg-input" maxlength="40" value="${esc(v)}" placeholder="e.g. Chipotle" autocomplete="off"><button type="button" class="spotdel" data-spotdel aria-label="Remove">×</button></div>`;
+  const dlgP = formDialog(`<p class="picktitle">Our usual spots</p>
+    <div class="spotrows">${(state.spots || []).map(row).join('')}${row('')}</div>
+    <button type="button" class="btn ghost spotadd">+ Add a spot</button>
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
-  if (r.value !== 'save') return;
-  saveSpots(spots.map((_, i) => r.form[`sp${i}`].value));
+  const f = $('#formdlg'), rows = f.querySelector('.spotrows');
+  f.querySelector('.spotadd').addEventListener('click', () => { rows.insertAdjacentHTML('beforeend', row('')); rows.lastElementChild.querySelector('input').focus(); });
+  rows.addEventListener('click', (e) => {
+    const r = e.target.closest('.spotrow'); if (!r) return;
+    if (e.target.closest('[data-spotdel]')) { r.remove(); if (!rows.children.length) rows.insertAdjacentHTML('beforeend', row('')); }
+    if (e.target.closest('[data-spotup]') && r.previousElementSibling) r.previousElementSibling.before(r);
+  });
+  const res = await dlgP;
+  if (res.value !== 'save') return;
+  saveSpots([...rows.querySelectorAll('input')].map((x) => x.value));
   toast('Spots saved');
 }
 async function pickMeal(day, slot = 'dinner') {
