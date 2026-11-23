@@ -1545,6 +1545,7 @@ document.addEventListener('pointerdown', (e) => {
 });
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[data-name], .bookrow')) e.preventDefault(); });
 // No browser "Open link address / Copy link" menu when pressing and holding parts of the app (they're links underneath).
+document.addEventListener('change', (e) => { const sel = e.target.closest('[data-dishfilter]'); if (sel) { ls.set('shop-dish-filter', sel.value); route(); } });
 // Text boxes keep their menu, for copy and paste.
 document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea, [contenteditable="true"]')) e.preventDefault(); });
 // Press and hold a shopping line: change how much to buy (shared, with who changed it), or mark it as usually have.
@@ -1628,6 +1629,8 @@ function cooked(rid) { // a calendar day for this meal has passed since it was b
   const today = dayKey(new Date());
   return planList().some(([k, v]) => k >= (b.since || '') && k < today && planKey(v) === rid);
 }
+const partId = (x) => (x.dish ? x.dish.id || 'd-' + slug(x.dish.name) : '');
+const partBought = (key, x) => isBought(x.rid, key) || (!!x.dish && isFeast(x.meal) && isBought(x.rid, `${key}~${partId(x)}`)); // a feast dish can be shopped for on its own
 const isBought = (rid, key) => !!(state.bought[rid] && state.bought[rid].i && state.bought[rid].i[key]) && !cooked(rid);
 function shopLines() {
   const lines = new Map();
@@ -1640,7 +1643,7 @@ function shopLines() {
     }
   }
   for (const l of lines.values()) {
-    l.open = l.parts.filter((x) => !isBought(x.rid, l.key));
+    l.open = l.parts.filter((x) => !partBought(l.key, x));
     l.done = l.open.length === 0;
     l.partly = !l.done && l.open.length < l.parts.length;
   }
@@ -1725,15 +1728,29 @@ function setNeed(key, on) {
   setDoc(doc(state.firebase.db, 'shopping', 'bought'), { need: { [key]: on || deleteField() } }, { mergeFields: [new FieldPath('need', key)] })
     .catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
+// Shop for one dish of a feast (just the cheesecake): the list shows that dish's items and amounts, and ticks count for it alone.
+function dishFilter() { const id = ls.get('shop-dish-filter', ''); return id && shopMeals().some((m) => isFeast(m) && m.dishes.some((d) => (d.id || 'd-' + slug(d.name)) === id)) ? id : ''; }
+function forDish(lines, id) {
+  return lines.map((l) => { const parts = l.parts.filter((x) => partId(x) === id); if (!parts.length) return null; const open = parts.filter((x) => !partBought(l.key, x));
+    return { ...l, parts, open, done: open.length === 0, partly: false }; }).filter(Boolean);
+}
 function toggleLine(key) {
-  const l = shopLines().find((x) => x.key === key); if (!l) return;
+  const fid = dishFilter();
+  const l = (fid ? forDish(shopLines(), fid) : shopLines()).find((x) => x.key === key); if (!l) return;
   const today = dayKey(new Date()), changes = {};
   const set = (rid, on) => {
     const cur = cooked(rid) ? { since: today, i: {} } : { since: (state.bought[rid] && state.bought[rid].since) || today, i: { ...((state.bought[rid] && state.bought[rid].i) || {}) } };
     if (on) cur.i[key] = true; else delete cur.i[key];
     state.bought[rid] = cur; changes[rid] = cur;
   };
-  if (l.done) l.parts.forEach((x) => set(x.rid, false)); else { l.open.forEach((x) => set(x.rid, true)); if (navigator.vibrate) navigator.vibrate(12); }
+  if (fid) { // one dish: mark just its share; unticking a line bought for everything keeps the other dishes bought
+    const setK = (rid, k, on) => { const cur = cooked(rid) ? { since: today, i: {} } : { since: (state.bought[rid] && state.bought[rid].since) || today, i: { ...((state.bought[rid] && state.bought[rid].i) || {}) } }; if (on) cur.i[k] = true; else delete cur.i[k]; state.bought[rid] = cur; changes[rid] = cur; };
+    if (!l.done) { l.open.forEach((x) => setK(x.rid, `${key}~${fid}`, true)); if (navigator.vibrate) navigator.vibrate(12); }
+    else for (const x of l.parts) {
+      if (isBought(x.rid, key)) { const others = (shopLines().find((y) => y.key === key) || { parts: [] }).parts.filter((y) => y.rid === x.rid && partId(y) !== fid); setK(x.rid, key, false); others.forEach((y) => setK(x.rid, `${key}~${partId(y)}`, true)); }
+      setK(x.rid, `${key}~${fid}`, false);
+    }
+  } else if (l.done) l.parts.forEach((x) => set(x.rid, false)); else { l.open.forEach((x) => set(x.rid, true)); if (navigator.vibrate) navigator.vibrate(12); }
   route();
   if (!state.firebase) { ls.set('local-bought', state.bought); return; }
   const b = {}; for (const [rid, v] of Object.entries(changes)) b[rid] = Object.keys(v.i).length ? v : deleteField();
@@ -1751,14 +1768,14 @@ function tidyBought() {
   setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: Object.fromEntries(gone.map((rid) => [rid, deleteField()])) }, { merge: true }).catch(() => {});
 }
 function renderAutoShopping(m) {
-  const lines = shopLines();
+  const all = shopLines(), fid = dishFilter(), lines = fid ? forDish(all, fid) : all;
   const order = ['other', 'meat', 'produce', 'dairy', 'frozen', 'bakery', 'pantry'], mine = (state.shopOrder || []).map((x) => String(x).toLowerCase());
   const rank = (x) => { const k = x.toLowerCase(), j = mine.indexOf(k); if (j >= 0) return j; const i = order.indexOf(k); return 100 + (i < 0 ? 50 : i); }; // your store order first (press and hold a section name to move it)
   const sections = [...new Set([...lines.map((l) => l.section), ...Object.values(state.extras).map((x) => x.section || 'Other')])].sort((a, b) => rank(a) - rank(b));
   const row = (l, inStaples) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l)), needed = isStaple(l.item) && !inStaples;
     return `<li class="item gline${l.done ? ' done' : ''}${inStaples && !l.done ? ' hasneed' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
     <span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${o ? '<span class="amtchanged">' : ''}${esc(amt)}${o ? '</span>' : ''}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
-    <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}For: ${esc(forList(lineParts(l)))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
+    <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}${fid ? '' : `For: ${esc(forList(lineParts(l)))}`}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
   const away = (l) => isStaple(l.item) && !(state.need || {})[l.key]; // staples stay in "Usually have" unless marked as needed this time
   let h = '';
   // Store filter: only offered while a specialty store has something left to buy; everything shows by default
@@ -1767,6 +1784,14 @@ function renderAutoShopping(m) {
     + Object.entries(state.extras).filter(([id, x]) => (state.store || {})[extraKey(id)] === st && !tk[extraKey(id)] && !isStaple(x.name)).length; // and items you added
   const offered = STORES.filter((st) => left(st));
   let only = ls.get('shop-store-filter', ''); if (only && !offered.includes(only)) only = '';
+  { // feasts: shop for one dish
+    const feasts = shopMeals().filter(isFeast);
+    if (feasts.length) {
+      const leftFor = (id) => forDish(all, id).filter((l) => !l.done && !l.mealDone && !away(l)).length;
+      h += `<label class="dishfilter${fid ? ' on' : ''}"><span>Shop for</span><select data-dishfilter><option value="">Everything</option>${feasts.map((f) => `<optgroup label="${esc(f.title)}">${f.dishes.map((d) => { const id = d.id || 'd-' + slug(d.name), n = leftFor(id);
+        return `<option value="${esc(id)}"${id === fid ? ' selected' : ''}>${esc(d.name)}${n ? ` (${n} left)` : ' ✓'}</option>`; }).join('')}</optgroup>`).join('')}</select></label>`;
+    }
+  }
   if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
   const dcl = only ? [] : lines.filter(isDoubleCheck).sort((a, b) => a.item.localeCompare(b.item));
   const dcx = only ? [] : Object.entries(state.extras).filter(([id, x]) => extraInCheck(id, x)); // items you added, marked too
@@ -1776,11 +1801,11 @@ function renderAutoShopping(m) {
     return dcRow(l.key, l.item, o ? o.text : amountText(lineParts(l)), 'For: ' + forList(lineParts(l)), false); }).join('')}${dcx.map(([id, x]) => dcRow(extraKey(id), x.name, x.amount, 'Added by ' + nameFor(x.email), true)).join('')}</ul></section>`;
   for (const sec of sections) {
     const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && !dcl.includes(l) && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
-    const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec, false, only);
+    const rows = here.map((l) => row(l)).join('') + (fid ? '' : extrasListHtml(sec, false, only));
     if (rows) h += `<section class="card shopsec" data-sec="${esc(sec)}"><p class="section-label secdrag">${esc(sec)}</p><ul class="list">${rows}</ul></section>`;
   }
   const staples = lines.filter(away).sort((a, b) => a.item.localeCompare(b.item));
-  const stapleExtras = extrasListHtml(null, true);
+  const stapleExtras = fid ? '' : extrasListHtml(null, true);
   if (!only && (staples.length || stapleExtras)) h += `<details class="card staples"${staplesOpen ? ' open' : ''}><summary class="section-label">Usually have (${staples.length + (stapleExtras.match(/data-key=/g) || []).length})</summary>
 <ul class="list">${staples.map((l) => row(l, true)).join('')}${stapleExtras}</ul></details>`;
   if (!lines.length && !Object.keys(state.extras).length) h += '<p class="empty">Nothing to buy. Plan a meal on the calendar, or tap + to add an item.</p>';

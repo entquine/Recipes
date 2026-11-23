@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['122', ['Shopping: with Thanksgiving planned, “Shop for” picks one dish (say the cheesecake bars): the list shows just its items and amounts, and ticking them counts for that dish only.']],
   ['121', ['Timeline: pinch to zoom (or − / + / Fit), from the whole day on one screen up to close enough to read every 5-minute job.']],
   ['120', ['Thanksgiving page: a View Thursday’s timeline button right under the days.', 'Shopping: items for Thanksgiving say which dish they’re for (Turkey, Gravy, Mushrooms…) instead of just “Thanksgiving Dinner”.']],
   ['119', ['Thanksgiving: View timeline opens a full-screen timeline you can scroll sideways, with the oven, stove, grill and air fryer, and when each dish is being worked on. Tap a bar for details.', 'The dish buttons are a little wider and coloured by type (Main, Side, Dessert), with the type written on them. The ham is a Main again.']],
