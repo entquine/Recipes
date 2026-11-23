@@ -953,7 +953,7 @@ function nextTimeCardHtml(meal) { // under the rating: add or edit the note (aft
 }
 async function editNextTime(meal) {
   const x = state.nextTime[meal.rid];
-  const r = await formDialog(`<p class="picktitle">Note for next time</p><p class="small" style="margin:0 0 8px">${esc(meal.main.name)}</p>
+  const r = await formDialog(`<p class="picktitle">Note for next time</p><p class="small" style="margin:0 0 8px">${esc(dinnerName(meal))}</p>
     <textarea class="dlg-input" name="text" rows="4" maxlength="400">${esc(x ? x.text : '')}</textarea>
     <div class="row-btns">${x ? '<button class="btn outline-danger" value="delete" style="width:auto;margin-right:auto">Delete</button>' : ''}<button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>`);
   if (r.value === 'delete') { writeNextTime(meal.rid, null); undoToast('Note deleted', () => writeNextTime(meal.rid, x)); return; }
@@ -1432,7 +1432,7 @@ function writeMadeOff(rid, list) {
 }
 async function madeItFor(meal) {
   const today = dayKey(new Date()), y = new Date(); y.setDate(y.getDate() - 1); const yest = dayKey(y);
-  const r = await formDialog(`<p class="picktitle">We made ${esc(meal.main.name)}</p>
+  const r = await formDialog(`<p class="picktitle">We made ${esc(dinnerName(meal))}</p>
     <p class="small">When? It counts as made that day, moves to Made before and comes off the shopping list.</p>
     <div class="picklist"><button class="pickopt" value="${today}"><strong>Today</strong></button><button class="pickopt" value="${yest}"><strong>Yesterday</strong></button></div>
     <div class="madeitdate"><input type="date" class="dlg-input" id="madeitday" max="${today}" value="${today}"><button class="btn ghost" value="pick">Use this day</button></div>
@@ -1442,7 +1442,7 @@ async function madeItFor(meal) {
   if (day > today) day = today;
   const before = [...((state.madeOff || {})[meal.rid] || [])];
   writeMadeOff(meal.rid, [...new Set([...before, day])].sort());
-  undoToast(`${meal.main.name}: marked as made`, () => writeMadeOff(meal.rid, before));
+  undoToast(`${dinnerName(meal)}: marked as made`, () => writeMadeOff(meal.rid, before));
 }
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
 // calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
@@ -1983,19 +1983,19 @@ function stepIngredients(dish, text) {
 }
 function mealCardHtml(meal, tonight, label = 'Tonight') { // tonight: today's highlighted card; label: Tonight / For lunch / Dessert ...
   const ri = ratingInfo(meal.name);
-  const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
+  const sides = isFeast(meal) ? `${meal.dishes.length} dishes` : meal.sides.map((d) => esc(d.name)).join(' &amp; ');
   const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;(]/)[0].trim().replace(/\s+on \w+day$/i, '')) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
   const timeAndProgress = `${time ? `<span class="time">${ICONS.timer} ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
   return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
-      <div class="eyebrow">${tonight ? `<span class="tonight-label">${esc(label)}</span>` : `${esc(meal.title)}${plannedChip(meal)}`}</div>
-      ${(() => { const th = state.thumbs[dishKey(meal.main)]; return th ? `<div class="mc-titlerow"><h2>${esc(meal.main.name)}</h2><img class="mc-thumb" src="${th}" alt=""></div>` : `<h2>${esc(meal.main.name)}</h2>`; })()}
-      ${sides ? `<p class="sides">with ${sides}</p>` : ''}
+      <div class="eyebrow">${tonight ? `<span class="tonight-label">${esc(label)}</span>` : `${isFeast(meal) ? '' : esc(meal.title)}${plannedChip(meal)}`}</div>
+      ${(() => { const th = state.thumbs[dishKey(meal.main)]; return th ? `<div class="mc-titlerow"><h2>${esc(dinnerName(meal))}</h2><img class="mc-thumb" src="${th}" alt=""></div>` : `<h2>${esc(dinnerName(meal))}</h2>`; })()}
+      ${sides ? `<p class="sides">${isFeast(meal) ? '' : 'with '}${sides}</p>` : ''}
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
       ${tonight || nextPlanned(meal.name) ? '' : `<span class="mc-actions"><span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span><span class="pickday madeit" role="button" tabindex="0" data-madeit="${esc(meal.id)}">✓ We made it</span></span>`}
       <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg, ri.mine)}</span>` : timeAndProgress}</div>
       ${tonight ? headStartReminder(meal) : ''}
       ${tonight && meal.clock != null ? `<div class="tlbanner mc-tl" data-tlbanner="${esc(meal.id)}">${tlBannerHtml(meal)}</div>` : ''}
-      ${tonight ? (() => { const first = meal.starts.length ? meal.starts[0].dish : meal.dishes.find((x) => x.steps.length); const i = first ? meal.dishes.indexOf(first) : -1;
+      ${tonight && !isFeast(meal) ? (() => { const first = meal.starts.length ? meal.starts[0].dish : meal.dishes.find((x) => x.steps.length); const i = first ? meal.dishes.indexOf(first) : -1;
         if (i < 0) return '';
         const nx = nextStepOf(meal); // started cooking: the next step to do
         if (nx) return `<span class="tonightcook" role="button" tabindex="0" data-tonightcook="${esc(meal.id)}" data-dish="${meal.dishes.indexOf(nx.d)}"><span class="tc-main">${ICONS.cook} Keep cooking</span><span class="tc-sub">Next${meal.dishes.length > 1 ? ` (${esc(cookTabName(meal, nx.d))})` : ''}: ${esc(nx.st.text.length > 90 ? nx.st.text.slice(0, 88) + '…' : nx.st.text)}</span></span>`;
@@ -2013,7 +2013,7 @@ function ratePromptHtml() {
     const meal = mealByName(v); if (!meal || dismissed[dk] || ratingInfo(meal.name).mine) continue;
     const when = ago === 1 ? (slot === 'dinner' ? 'last night' : 'yesterday') : 'on ' + fmtDay(keyToDate(k), { weekday: 'long' });
     return `<section class="card rateprompt"><button class="rp-x" data-ratedismiss="${dk}" aria-label="Not now">×</button>
-      <p class="rp-q">How was <strong>${esc(meal.main.name)}</strong> ${esc(when)}?</p>
+      <p class="rp-q">How was <strong>${esc(dinnerName(meal))}</strong> ${esc(when)}?</p>
       <div class="menustars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-quickrate="${n}" data-meal="${esc(meal.id)}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div></section>`;
   }
   return '';
@@ -2022,8 +2022,8 @@ function ratePromptHtml() {
 async function pickDayFor(meal) {
   const today = new Date(), days = [];
   for (let i = 0; i < 14; i++) { const d = new Date(today); d.setDate(d.getDate() + i); days.push(d); }
-  const dlg = formDialog(`<p class="picktitle">${esc(meal.main.name)}</p><p class="small" style="margin:0 0 10px">Which day?</p>
-    <div class="picklist daylist">${days.map((d, i) => { const k = dayKey(d), cur = state.plan[k], other = customText(cur) || (mealByName(cur) ? mealByName(cur).main.name : '');
+  const dlg = formDialog(`<p class="picktitle">${esc(dinnerName(meal))}</p><p class="small" style="margin:0 0 10px">Which day?</p>
+    <div class="picklist daylist">${days.map((d, i) => { const k = dayKey(d), cur = state.plan[k], other = customText(cur) || (mealByName(cur) ? dinnerName(mealByName(cur)) : '');
       return `<button class="pickopt" value="${k}"><strong>${i === 0 ? 'Tonight' : i === 1 ? 'Tomorrow' : esc(fmtDay(d, { weekday: 'long' }))} <span class="small">${esc(fmtDay(d, { month: 'short', day: 'numeric' }))}</span></strong>${other ? `<span class="small">Replaces ${esc(other)}</span>` : ''}</button>`; }).join('')}</div>
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
   $('#formdlg').classList.add('centered');
@@ -2178,6 +2178,8 @@ function planRowKeys(meal, p) {
   }
   return keys.length ? keys : [p.key]; // a row without steps ("Eat.") ticks itself
 }
+const isFeast = (meal) => !!meal && meal.clock != null; // a big meal (Thanksgiving): its own hub page, and named by the meal, not the turkey
+const dinnerName = (meal) => (isFeast(meal) ? meal.title : meal.main.name);
 function tlRows(meal) { return meal.plan.filter((p) => p.min != null).slice().sort((a, b) => a.min - b.min || a.order - b.order); }
 const tlDay = (meal) => nextPlanned(meal.name);
 const nowMinutes = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
@@ -2194,9 +2196,9 @@ function tlBannerHtml(meal) {
   const now = late ? `<p class="tlnow"><span class="tlwhen">Now${n.late.length > 1 ? ` · ${n.late.length} to catch up on` : ''}</span>${esc(tlStrip(late.text))}</p>` : '';
   return now || nx ? now + nx : '<p class="tlnx"><span class="tlwhen">All done</span>Time to eat!</p>';
 }
-function timelineHtml(meal) {
+function timelineHtml(meal, dayOnly = false) {
   if (meal.clock == null || !meal.plan.length) return '';
-  const day = tlDay(meal), today = dayKey(new Date()), rows = tlRows(meal), before = meal.plan.filter((p) => p.min == null);
+  const day = tlDay(meal), today = dayKey(new Date()), rows = tlRows(meal), before = dayOnly ? [] : meal.plan.filter((p) => p.min == null);
   const eat = rows.length ? tlClock(meal, rows[rows.length - 1].min) : null, sh = feastShift(meal);
   const row = (p, timed) => { const keys = planRowKeys(meal, p);
     return `<li class="item preptask tlrow" data-prepkeys="${esc(keys.join(','))}" data-scope="${esc(meal.id)}"${timed ? ` data-tlat="${tlClock(meal, p.min)}"` : ''} role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
@@ -2247,6 +2249,77 @@ function equipHtml(meal) {
     ${clashes.map((c) => `<div class="startfirst eqclash"><strong>${ICONS.warn} ${fmtClock(tlClock(meal, c.at))}</strong>${esc(c.msg)}: ${c.items.map((u) => esc(u.text.split(/[,(]/)[0])).join(' and ')}</div>`).join('')}
     <div class="eqchart">${axis}${laneHtml}</div>
     <details class="ingfold eqfold"><summary><h3>As a list</h3></summary>${listHtml}</details></details>`;
+}
+// ---- The feast hub: buttons for each day ahead, the day itself, and one big button per dish (by start time; done ones last)
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const rowDay = (p) => { const m = String(p.text).match(/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/i); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : 'Before'; };
+function feastWeekday(meal) {
+  const d = tlDay(meal); if (d) return WEEKDAYS[keyToDate(d).getDay()];
+  const m = String(meal.clockNote || '').match(/^(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/i); return m ? m[1][0].toUpperCase() + m[1].slice(1).toLowerCase() : 'The day';
+}
+function aheadDays(meal) { // [{ day, rows }] in plan order (Sunday … Wednesday)
+  const out = [];
+  for (const p of meal.plan.filter((x) => x.min == null)) { const d = rowDay(p); let g = out.find((x) => x.day === d); if (!g) out.push(g = { day: d, rows: [] }); g.rows.push(p); }
+  return out;
+}
+function daysBefore(meal, day) {
+  const f = WEEKDAYS.indexOf(feastWeekday(meal)), d = WEEKDAYS.indexOf(day); if (f < 0 || d < 0) return '';
+  const n = (f - d + 7) % 7; return n === 1 ? 'The day before' : n ? `${n} days before` : '';
+}
+function dishStart(meal, d) { // when a dish starts: the first plan row that mentions it
+  const rows = meal.plan.filter((p) => p.dishes && p.dishes.has(d));
+  const before = rows.filter((p) => p.min == null), timed = rows.filter((p) => p.min != null).sort((a, b) => a.min - b.min);
+  if (before.length) { const p = before[0]; return { rank: meal.plan.filter((x) => x.min == null).indexOf(p), text: rowDay(p) }; }
+  if (timed.length) return { rank: 1000 + timed[0].min, text: fmtClock(tlClock(meal, timed[0].min)) };
+  return { rank: 5000, text: '' };
+}
+function dishProgress(meal, d) { const t = state.ticks[meal.id] || {}; const n = d.steps.filter((x) => t[x.key]).length; return { n, total: d.steps.length, done: d.steps.length > 0 && n === d.steps.length }; }
+function feastDishStatusHtml(meal, d) { const s = dishStart(meal, d), pr = dishProgress(meal, d); return pr.done ? '<p class="fdstatus done">✓ Done</p>' : s.text ? `<p class="fdstatus">Starts ${/^\d/.test(s.text) ? 'at ' : ''}${esc(s.text)}${pr.n ? ` · ${pr.n} of ${pr.total} steps done` : ''}</p>` : ''; }
+function hubSignature(meal) { return meal.dishes.map((d) => +dishProgress(meal, d).done).join('') + aheadDays(meal).map((g) => +g.rows.every((p) => tlRowDone(meal, p))).join(''); }
+function renderFeastHub(meal) {
+  setTitle(meal.title, true); setTab('meals'); curScale = scaleOf(meal.rid);
+  const S = meal.id, ahead = aheadDays(meal), wd = feastWeekday(meal), today = dayKey(new Date());
+  const dayBtn = (href, title, sub, done, cls = '') => `<a class="fbtn fday${done ? ' done' : ''}${cls}" href="${href}"><b>${esc(title)}</b><span>${done ? '✓ Done' : esc(sub)}</span></a>`;
+  const days = ahead.map((g) => { const n = g.rows.filter((p) => tlRowDone(meal, p)).length;
+    return dayBtn(`#/meal/${S}/ahead-${encodeURIComponent(g.day)}`, g.day, `${daysBefore(meal, g.day) || 'Ahead'} · ${n} of ${g.rows.length} jobs`, n === g.rows.length); });
+  const rows = tlRows(meal), eat = rows.length ? fmtClock(tlClock(meal, rows[rows.length - 1].min)) : '';
+  days.push(dayBtn(`#/meal/${S}/day`, tlDay(meal) === today ? 'Today' : wd, `The timeline${eat ? ` · eat at ${eat}` : ''}`, rows.length > 0 && rows.every((p) => tlRowDone(meal, p)), ' fthe'));
+  const dishes = meal.dishes.map((d, i) => ({ d, i, s: dishStart(meal, d), p: dishProgress(meal, d) }))
+    .sort((a, b) => a.p.done - b.p.done || a.s.rank - b.s.rank || a.i - b.i);
+  let h = banners();
+  h += `<div class="listhead">${progressHtml(S, meal.keys)}</div>`;
+  h += `<div class="tlbanner" data-tlbanner="${esc(S)}">${tlBannerHtml(meal)}</div>`;
+  h += `<p class="section-label fhlabel">Days</p><div class="fgrid">${days.join('')}</div>`;
+  h += `<p class="section-label fhlabel">Dishes <span class="small">by when they start</span></p><div class="fgrid">${dishes.map(({ d, i, s, p }) =>
+    `<a class="fbtn fdish ${d.chip}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
+  h += `<a class="partof fhall" href="#/meal/${S}/all">Everything on one page<span>›</span></a>`;
+  h += ratingCardHtml(meal) + nextTimeCardHtml(meal);
+  view().innerHTML = `<div class="feasthub" data-sig="${hubSignature(meal)}" data-meal="${esc(S)}">${h}</div>`;
+  refreshTicks();
+}
+function renderFeastDay(meal) {
+  setTitle(`${feastWeekday(meal)} · ${meal.title}`, true); setTab('meals'); curScale = scaleOf(meal.rid);
+  let h = banners() + `<a class="partof" href="#/meal/${esc(meal.id)}">Back to <b>${esc(meal.title)}</b><span>All the dishes ›</span></a>`;
+  h += timelineHtml(meal, true) + equipHtml(meal) + headStartHtml(meal) + prepCardHtml(meal);
+  view().innerHTML = h; refreshTicks();
+}
+function renderFeastAhead(meal, day) {
+  const g = aheadDays(meal).find((x) => x.day === day); if (!g) { location.replace(`#/meal/${meal.id}`); return; }
+  setTitle(`${day} · ${meal.title}`, true); setTab('meals'); curScale = scaleOf(meal.rid);
+  const S = meal.id, prepOf = new Map();
+  let h = banners() + `<a class="partof" href="#/meal/${esc(S)}">Back to <b>${esc(meal.title)}</b><span>All the dishes ›</span></a>`;
+  h += `<section class="card"><p class="section-label">${esc(day)}${daysBefore(meal, day) ? ` · ${esc(daysBefore(meal, day).toLowerCase())}` : ''}</p><ul class="list tllist">${g.rows.map((p) => { const keys = planRowKeys(meal, p);
+    return `<li class="item preptask tlrow" data-prepkeys="${esc(keys.join(','))}" data-scope="${esc(S)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span><span class="tltext">${linkRefs(p.text, meal)}</span></li>`; }).join('')}</ul></section>`;
+  // the steps those jobs cover, dish by dish (same ticks and timers as the full recipe)
+  const want = new Map();
+  for (const p of g.rows) for (const m of String(p.text).matchAll(REF_RE)) { const d = resolveRef(m[1], meal); if (!d) continue; const a = +m[3], b = m[4] ? +m[4].replace(/\D/g, '') : a; if (!want.has(d)) want.set(d, new Set()); for (let i = a; i <= b; i++) want.get(d).add(i); }
+  for (const [d, nums] of want) {
+    const steps = d.steps.filter((x, i) => nums.has(i + 1)), di = meal.dishes.indexOf(d);
+    h += `<section class="card dish" id="${d.anchor}" data-meal="${esc(S)}"><div class="dish-head ${d.dc}"><p class="section-label">${d.type}</p><h2><a class="fdlink" href="#/meal/${esc(S)}/${di}">${esc(d.name)} ›</a></h2></div>`;
+    if (d.groups.length) h += `<details class="ingfold"><summary><h3>Ingredients</h3></summary>${d.groups.map((gr) => `${gr.name ? `<h4>${esc(gr.name)}</h4>` : ''}<ul class="list ings">${gr.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(scaleText(it.amount))}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</details>`;
+    h += stepsHeadHtml(meal, steps.map((x) => x.key)) + '<ul class="list">' + steps.map((x) => stepItemHtml(meal, d, x, prepOf, false)).join('') + '</ul></section>';
+  }
+  view().innerHTML = h; refreshTicks();
 }
 function setFeastShift(id, n) {
   state.feastShift = state.feastShift || {};
@@ -2308,6 +2381,12 @@ function prepCardHtml(meal) {
 function renderMeal(id, only) {
   const full = mealById(id);
   if (!full) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
+  if (isFeast(full)) {
+    if (only == null) return renderFeastHub(full);
+    if (only === 'day') return renderFeastDay(full);
+    if (/^ahead-/.test(only)) return renderFeastAhead(full, decodeURIComponent(only.slice(6)));
+    if (only === 'all') only = null;
+  }
   // #/meal/<id>/<n>: just one dish of the meal (from the Recipe Book). Same ticks; the meal's plan and rating stay with the whole meal.
   const one = only != null && full.dishes.length > 1 ? full.dishes[+only] : null;
   const meal = one ? Object.assign(Object.create(full), { dishes: [one], combined: null, starts: [], planTotal: '', planFirst: '', aheadNotes: one === full.main ? full.aheadNotes : [], keys: one.steps.map((x) => x.key) }) : full;
@@ -2320,7 +2399,8 @@ function renderMeal(id, only) {
   h += banners();
   // Everything ticked: a button at the top to start fresh (shown and hidden as you tick, in refreshTicks)
   h += `<button class="btn ghost untickall" data-untickall="${esc(S)}" data-keys="${esc(meal.keys.join(','))}" hidden>↺ Untick everything</button>`;
-  if (one) h += `<a class="partof" href="#/meal/${esc(full.id)}">${one === full.main ? 'Served with' : 'Part of'} <b>${esc(one === full.main ? full.sides.map((x) => x.name).join(' & ') : full.title)}</b><span>See the whole meal ›</span></a>`;
+  if (one) h += isFeast(full) ? `<a class="partof" href="#/meal/${esc(full.id)}">Part of <b>${esc(full.title)}</b><span>All the dishes ›</span></a>${feastDishStatusHtml(full, one)}`
+    : `<a class="partof" href="#/meal/${esc(full.id)}">${one === full.main ? 'Served with' : 'Part of'} <b>${esc(one === full.main ? full.sides.map((x) => x.name).join(' & ') : full.title)}</b><span>See the whole meal ›</span></a>`;
   else { const ri = ratingInfo(meal.name); h += `<div class="listhead">${progressHtml(S, meal.keys)}<a href="#" data-jump="${meal.id}-rate" class="rate-link">${ri.done ? starsText(ri.avg, ri.mine) : ri.mine ? '★ Rated' : '☆ Rate'}</a></div>`; }
   if (!one || one === full.main) h += nextTimeTopHtml(meal);
   h += servingsHtml(full);
@@ -2339,7 +2419,7 @@ function renderMeal(id, only) {
     h += '</details>';
   }
 
-  if (!one) h += timelineHtml(meal) + equipHtml(meal);
+  if (!one && !isFeast(meal)) h += timelineHtml(meal) + equipHtml(meal);
   h += headStartHtml(meal);
   h += prepCardHtml(meal);
   const prepOf = new Map(); prepTasks(meal).forEach((t, ti) => t.parts.forEach((x) => prepOf.set(x.key, `${meal.id}-p${ti}`)));
@@ -2502,7 +2582,7 @@ function renderCalendar() {
     const k = dayKey(d), custom = customText(state.plan[k]), name = custom ? '' : state.plan[k], meal = name ? mealByName(name) : null;
     const past = k < today;
     const extras = SLOTS.filter(([sl]) => sl !== 'dinner' && slotValue(k, sl)).map(([sl, label]) => { const v = slotValue(k, sl), mm = mealByName(v);
-      return `<span class="xslot${(state.planDone[k] || {})[sl] ? ' isdone' : ''}" role="button" tabindex="0" data-slotpick="${k}|${sl}"><b>${label}</b> ${esc(customText(v) || (mm ? mm.main.name.replace(/\s+with\s+.*$/i, '') : 'No longer in the recipes'))}</span>`; }).join('');
+      return `<span class="xslot${(state.planDone[k] || {})[sl] ? ' isdone' : ''}" role="button" tabindex="0" data-slotpick="${k}|${sl}"><b>${label}</b> ${esc(customText(v) || (mm ? dinnerName(mm).replace(/\s+with\s+.*$/i, '') : 'No longer in the recipes'))}</span>`; }).join('');
     h += `<li class="day${k === today ? ' today' : ''}${past ? ' past' : ''}${state.plan[k] || extras ? '' : ' noplan'}">
       <div class="date"><span>${esc(fmtDay(d, { weekday: 'short' }))}</span><b>${d.getDate()}</b>${state.plan[k] || extras ? `<button class="addslot" data-addslot="${k}" aria-label="Add breakfast, lunch or dessert">＋</button>` : ''}</div>
       <button class="pick${(state.planDone[k] || {}).dinner ? ' dinnerdone' : ''}" data-day="${k}">${custom
@@ -2510,8 +2590,8 @@ function renderCalendar() {
         : name
         ? (() => {
           const ri = ratingInfo(name), rec = ri.record;
-          const main = meal ? meal.main.name : rec && rec.main ? rec.main : displayMealName(name);
-          const sides = meal ? meal.sides.map((x) => x.name) : rec && rec.sides ? rec.sides : [];
+          const main = meal ? dinnerName(meal) : rec && rec.main ? rec.main : displayMealName(name);
+          const sides = meal ? (isFeast(meal) ? [] : meal.sides.map((x) => x.name)) : rec && rec.sides ? rec.sides : [];
           return `${meal && meal.kind !== 'Main' ? kindBadge(meal) : ''}<strong>${esc(main)}</strong>${sides.length ? `<span class="small">with ${sides.map(esc).join(' &amp; ')}</span>` : ''}${ri.done ? `<span class="avg">${starsText(ri.avg, ri.mine)}</span>` : ''}${meal ? '' : '<span class="small">No longer in the recipes</span>'}`;
         })()
         : `<span class="addmeal">${k === today ? '+ Plan tonight' : '+ Add meal'}</span>`}${extras ? `<span class="xslots">${extras}</span>` : ''}</button>
@@ -2538,7 +2618,7 @@ async function rateDialog(meal) {
   const status = ri.done ? `<strong class="avg">${starsText(ri.avg, ri.mine)}</strong> average of ${ri.count} votes`
     : ri.count && !ri.mine ? 'The other vote is in. Add yours to see the average.'
     : ri.mine ? 'Waiting for the other vote.' : 'The average shows once you have both voted.';
-  dlg.innerHTML = `<form method="dialog"><p class="picktitle">Rate ${esc(meal.main.name)}</p>
+  dlg.innerHTML = `<form method="dialog"><p class="picktitle">Rate ${esc(dinnerName(meal))}</p>
     <div class="stars-input">${[1, 2, 3, 4, 5].map((n) => `<button class="star${n <= ri.mine ? ' on' : ''}" value="${n}" aria-label="${n} star${n > 1 ? 's' : ''}">★</button>`).join('')}</div>
     <p class="small">${status}</p>
     <div class="row-btns">${ri.mine ? '<button class="btn outline-danger" value="clear" style="width:auto">Remove my vote</button>' : ''}<button class="btn ghost" value="">Close</button></div></form>`;
@@ -2550,7 +2630,7 @@ async function rateDialog(meal) {
 async function pickSlot(day) { // the + on a calendar day: which meal?
   const r = await formDialog(`<p class="picktitle">${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}</p>
     <div class="picklist">${SLOTS.map(([sl, label]) => { const v = slotValue(day, sl), mm = mealByName(v);
-      return `<button class="pickopt" value="${sl}"><strong>${label}</strong>${v ? `<span class="small">${esc(customText(v) || (mm ? mm.main.name : ''))}</span>` : ''}</button>`; }).join('')}</div>
+      return `<button class="pickopt" value="${sl}"><strong>${label}</strong>${v ? `<span class="small">${esc(customText(v) || (mm ? dinnerName(mm) : ''))}</span>` : ''}</button>`; }).join('')}</div>
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
   if (r.value) pickMeal(day, r.value);
 }
@@ -2609,13 +2689,13 @@ async function pickMeal(day, slot = 'dinner') {
   dlg.innerHTML = `<form method="dialog"><p class="picktitle" tabindex="-1" autofocus>${esc(fmtDay(keyToDate(day), { weekday: 'long', month: 'long', day: 'numeric' }))}${slot === 'dinner' ? '' : ` · ${slotName(slot)}`}</p>
     ${(state.planDone[day] || {})[slot] ? '<button class="btn ghost pk-notdone" value="__notdone">↺ Mark not done</button>' : ''}
     ${many ? '<input type="search" class="dlg-input pksearch" placeholder="Search meals" autocomplete="off" enterkeyhint="search">' : ''}
-    <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${pkThumb(x)}${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(x.main.name)}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
+    <div class="pk-body">${(() => { const sg = top; return sg.length ? `<p class="section-label pastlabel" style="margin-top:0">${topLabel}</p><div class="picklist suggest">${sg.map((x) => `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}">${pkThumb(x)}${x.archived && !want ? kindBadge(x) : ''}<strong>${esc(dinnerName(x))}</strong><span class="small">${esc(lastMadeText(x))}${ratingInfo(x.name).done ? ` · ${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}` : ''}</span></button>`).join('')}</div><p class="section-label pastlabel">All meals</p>` : ''; })()}
     <div class="picklist">${[...m.meals].filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day) || ratingInfo(a.name).done - ratingInfo(b.name).done).map((x) => {
       const other = plannedElsewhere(x.rid, day);
-      return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}<strong>${esc(dinnerName(x))}</strong>${x.sides.length && !isFeast(x) ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}${pastSorted.filter((x) => !sgIds.has(x.rid)).length ? `<p class="section-label pastlabel">Recipe Book</p>${pastSorted.filter((x) => !sgIds.has(x.rid)).sort((a, b) => !!plannedElsewhere(a.rid, day) - !!plannedElsewhere(b.rid, day)).map((x) => {
       const other = plannedElsewhere(x.rid, day);
-      return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}${kindBadge(x)}<strong>${esc(x.main.name)}</strong>${x.sides.length ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
+      return `<button class="pickopt past${x.rid === planKey(current) ? ' sel' : ''}" value="${esc(x.rid)}"${other ? ' disabled' : ''}>${pkThumb(x)}${kindBadge(x)}<strong>${esc(dinnerName(x))}</strong>${x.sides.length && !isFeast(x) ? `<span class="small">with ${x.sides.map((s) => esc(s.name)).join(' &amp; ')}</span>` : ''}${ratingInfo(x.name).done ? `<span class="small avg">${starsText(ratingInfo(x.name).avg, ratingInfo(x.name).mine)}</span>` : ''}${other ? `<span class="small taken">Already planned for ${esc(fmtDay(keyToDate(other)))}</span>` : ''}</button>`;
     }).join('')}` : ''}</div></div>
     ${slot === 'dinner' || slot === 'lunch' ? `<button class="btn ghost takeoutbtn" value="__takeout">${ICONS.bag} Takeout<span class="small">${(state.spots || []).length ? esc(state.spots.slice(0, 3).join(' · ')) + (state.spots.length > 3 ? ' …' : '') : 'Pick one of your usual spots'}</span></button>` : ''}
     <div class="custom">
@@ -2628,7 +2708,7 @@ async function pickMeal(day, slot = 'dinner') {
   const curMeal = current && !currentCustom ? mealByName(current) : null;
   if (curMeal) {
     const go = `#/meal/${curMeal.id}`, close = () => dlg.close('');
-    const row = document.createElement('a'); row.className = 'pk-openrow'; row.href = go; row.innerHTML = `<span>Open <b>${esc(curMeal.main.name)}</b></span><span aria-hidden="true">›</span>`;
+    const row = document.createElement('a'); row.className = 'pk-openrow'; row.href = go; row.innerHTML = `<span>Open <b>${esc(dinnerName(curMeal))}</b></span><span aria-hidden="true">›</span>`;
     dlg.querySelector('.picktitle').after(row); row.addEventListener('click', close);
     dlg.querySelectorAll('.pickopt.sel').forEach((b) => { const wrap = document.createElement('div'); wrap.className = 'pk-selrow'; b.replaceWith(wrap); wrap.appendChild(b);
       const a = document.createElement('a'); a.className = 'pk-open'; a.href = go; a.setAttribute('aria-label', 'Open recipe'); a.textContent = '›'; a.addEventListener('click', close); wrap.appendChild(a); });
@@ -2738,7 +2818,8 @@ function renderLogin(err = '') {
 
 // ---------------------------------------------------------------- tick rendering
 function refreshTicks() {
-  refreshSince(); renderTimers(); setTimeout(tlAlerts, 0); // count-ups in the timer bar follow the ticks
+  refreshSince(); renderTimers(); setTimeout(tlAlerts, 0);
+  { const hub = document.querySelector('.feasthub'); if (hub) { const m = mealById(hub.dataset.meal); if (m && hubSignature(m) !== hub.dataset.sig) setTimeout(() => renderFeastHub(m), 0); } } // count-ups in the timer bar follow the ticks
   document.querySelectorAll('[data-untickall]').forEach((b) => { const t = state.ticks[b.dataset.untickall] || {}, ks = b.dataset.keys.split(',').filter(Boolean); b.hidden = !ks.length || !ks.every((k) => t[k]); });
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
@@ -3227,7 +3308,7 @@ document.addEventListener('pointerup', () => {
     dragCleanup();
     if (remove) { // dropped on Remove: off the calendar, with Undo
       const sl = slot || 'dinner', was = slotValue(from, sl), mm = mealByName(was);
-      setPlan(from, null, sl); undoToast(`${customText(was) || (mm ? mm.main.name : 'Meal')} removed`, () => setPlan(from, was, sl));
+      setPlan(from, null, sl); undoToast(`${customText(was) || (mm ? dinnerName(mm) : 'Meal')} removed`, () => setPlan(from, was, sl));
     } else if (to && to !== from) { if (slot) moveSlot(from, to, slot); else movePlan(from, to); toast('Moved'); }
   } else dragCleanup();
 });
