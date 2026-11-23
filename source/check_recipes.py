@@ -128,6 +128,8 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: Uses needs a time range in Amount, on the Plan's clock, e.g. 1:30-4:15, found {amount!r}")
         if s in ("clock", "uses"):
             d["planrows"] += 1
+        if s == "clock":
+            d["clock"] = True
         if s == "source" and not str(text or "").strip():
             warnings.append(f"{where}: Source needs a web address (https://...) or where it's from, e.g. 'Purple People Cookbook'")
         if s == "made":
@@ -205,6 +207,14 @@ def check_meals(ws, tab, errors, warnings):
             for n in mains + desserts + breakfasts:
                 if dishes[n]["sideref"]:
                     warnings.append(f"Archive entry {meal!r}: Plan text still mentions a side step; rewrite it without the side")
+        elif any(d.get("clock") for d in dishes.values()):
+            # a feast (Thanksgiving): several mains are fine; the one with the Clock row carries the plan
+            host = [n for n in mains if dishes[n].get("clock")]
+            if len(host) != 1:
+                errors.append(f"Meal {meal!r}: the Clock row (and the Plan rows) go on one Main's rows")
+            for n in mains:
+                if n not in host and (dishes[n]["plan"] or dishes[n]["planrows"]):
+                    errors.append(f"Meal {meal!r}: {n!r} has Plan rows; in a feast they all go on the Main with the Clock row")
         else:
             if len(mains) + len(breakfasts) != 1:
                 errors.append(f"Meal {meal!r}: needs exactly one Main (or, for a breakfast meal, one Breakfast), found {len(mains)} Main and {len(breakfasts)} Breakfast")

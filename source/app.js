@@ -142,7 +142,7 @@ function buildMeals(recipes) {
       case 'makes': dish.makes = r.text; break;
       case 'plan total': meal.planTotal = r.text; break;
       case 'plan first': meal.planFirst = r.text; break;
-      case 'clock': meal.clock = clockMinutes(r.amount); meal.clockNote = r.text || ''; break; // the clock time of the plan's 0:00 (big meals)
+      case 'clock': dish.planHost = true; meal.clock = clockMinutes(r.amount); meal.clockNote = r.text || ''; break; // the clock time of the plan's 0:00 (big meals)
       case 'uses': { const m = String(r.amount || '').match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/); // oven, stove, grill...: what's in it, when
         if (m) meal.uses.push({ what: norm(r.group) || 'Other', from: toMinutes(m[1]), to: toMinutes(m[2]), text: r.text || '', temp: +((String(r.text || '').match(/(\d{2,3})\s*°\s*F/) || [])[1] || 0), burners: +((String(r.text || '').match(/(\d)\s*burners/i) || [])[1] || 1), order });
         break; }
@@ -179,7 +179,7 @@ function buildMeals(recipes) {
     });
     meal.plan.sort(byOrder);
     meal.plan.forEach((p) => { p.key = uniq(`plan|${p.when}|${p.text}`); p.min = toMinutes(p.when); });
-    meal.main = dishes.find((d) => d.type === 'Main') || dishes.find((d) => d.type === 'Breakfast') || dishes[0];
+    meal.main = dishes.find((d) => d.type === 'Main' && d.planHost) || dishes.find((d) => d.type === 'Main') || dishes.find((d) => d.type === 'Breakfast') || dishes[0];
     meal.sides = dishes.filter((d) => d !== meal.main);
     meal.kind = meal.main.type; // 'Main' or 'Side' (past entries are one dish each)
     meal.rid = meal.main.id || 'd-' + slug(meal.main.name); // ratings and calendar entries are keyed on the main dish's ID
@@ -2247,7 +2247,7 @@ function equipHtml(meal) {
   const listHtml = lanes.map((what) => `<h4>${esc(what)}</h4><ul class="eqlist">${meal.uses.filter((u) => u.what === what).slice().sort((a, b) => a.from - b.from).map((u) => `<li${bad.has(u) ? ' class="clash"' : ''}><span class="tltime">${fmtClock(tlClock(meal, u.from))}–${fmtClock(tlClock(meal, u.to))}</span>${esc(u.text)}</li>`).join('')}</ul>`).join('');
   return `<details class="card equip" open><summary class="plan-sum"><div class="planhead"><p class="section-label">Oven, stove &amp; grill</p>${clashes.length ? `<span class="plantime eqwarn">${ICONS.warn} ${clashes.length} clash${clashes.length > 1 ? 'es' : ''}</span>` : '<span class="plantime">No clashes</span>'}</div></summary>
     ${clashes.map((c) => `<div class="startfirst eqclash"><strong>${ICONS.warn} ${fmtClock(tlClock(meal, c.at))}</strong>${esc(c.msg)}: ${c.items.map((u) => esc(u.text.split(/[,(]/)[0])).join(' and ')}</div>`).join('')}
-    <div class="eqchart">${axis}${laneHtml}</div>
+    <button type="button" class="btn tlviewbtn" data-tlview="${esc(meal.id)}">${ICONS.cal} View timeline</button>
     <details class="ingfold eqfold"><summary><h3>As a list</h3></summary>${listHtml}</details></details>`;
 }
 // ---- The feast hub: buttons for each day ahead, the day itself, and one big button per dish (by start time; done ones last)
@@ -2291,7 +2291,7 @@ function renderFeastHub(meal) {
   h += `<div class="tlbanner" data-tlbanner="${esc(S)}">${tlBannerHtml(meal)}</div>`;
   h += `<p class="section-label fhlabel">Days</p><div class="fgrid">${days.join('')}</div>`;
   h += `<p class="section-label fhlabel">Dishes <span class="small">by when they start</span></p><div class="fgrid">${dishes.map(({ d, i, s, p }) =>
-    `<a class="fbtn fdish ${d.chip}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
+    `<a class="fbtn fdish ft-${d.type.toLowerCase()}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><em class="ftype">${esc(d.type)}</em><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
   h += `<a class="partof fhall" href="#/meal/${S}/all">Everything on one page<span>›</span></a>`;
   h += ratingCardHtml(meal) + nextTimeCardHtml(meal);
   view().innerHTML = `<div class="feasthub" data-sig="${hubSignature(meal)}" data-meal="${esc(S)}">${h}</div>`;
@@ -2320,6 +2320,44 @@ function renderFeastAhead(meal, day) {
     h += stepsHeadHtml(meal, steps.map((x) => x.key)) + '<ul class="list">' + steps.map((x) => stepItemHtml(meal, d, x, prepOf, false)).join('') + '</ul></section>';
   }
   view().innerHTML = h; refreshTicks();
+}
+// Full-screen timeline: one lane per appliance, then one per dish (from its first to its last job on the day),
+// at a readable width (scrolls sideways), with the time now marked on the day.
+function openTimeline(meal) {
+  const PX = 200, rows = tlRows(meal); if (!rows.length) return;
+  const isToday = tlDay(meal) === dayKey(new Date()), now = nowMinutes();
+  const dishLanes = meal.dishes.map((d) => { const mine = rows.filter((p) => p.dishes && p.dishes.has(d)); if (!mine.length) return null;
+    const last = mine[mine.length - 1], nxt = rows.find((p) => p.min > last.min);
+    return { d, from: tlClock(meal, mine[0].min), to: tlClock(meal, nxt ? nxt.min : last.min + 10), jobs: mine }; }).filter(Boolean).sort((a, b) => a.from - b.from);
+  const ahead = meal.dishes.filter((d) => !dishLanes.some((x) => x.d === d));
+  const uses = meal.uses.map((u) => ({ ...u, a: tlClock(meal, u.from), b: tlClock(meal, u.to) }));
+  const all = [...uses.flatMap((u) => [u.a, u.b]), ...dishLanes.flatMap((x) => [x.from, x.to]), ...rows.map((p) => tlClock(meal, p.min))];
+  const lo = Math.floor(Math.min(...all) / 60) * 60, hi = Math.ceil(Math.max(...all) / 60) * 60, W = ((hi - lo) / 60) * PX, x = (m) => ((m - lo) / 60) * PX;
+  const bad = new Set(equipClashes(meal).flatMap((c) => c.items.map((u) => u.text + u.from)));
+  const grid = []; for (let m = lo; m <= hi; m += 30) grid.push(`<i class="tg${m % 60 ? ' half' : ''}" style="left:${x(m)}px"></i>`);
+  const axis = []; for (let m = lo; m < hi; m += 60) axis.push(`<span style="left:${x(m)}px">${fmtClock(m).replace(':00', '')}</span>`);
+  const stack = (items) => { const ends = []; items.forEach((it) => { let r = ends.findIndex((e) => e <= it.a); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = it.b; it.row = r; }); return Math.max(1, ends.length); };
+  const lane = (name, items, cls = '') => { const n = stack(items); return `<div class="tlane${cls}"><div class="tlname">${name}</div><div class="tltrack" style="width:${W}px;height:${n * 44 + 6}px">${grid.join('')}${items.map((it) =>
+    `<button type="button" class="tbar ${it.cls || ''}" style="left:${x(it.a) + 1}px;width:${Math.max(x(it.b) - x(it.a) - 2, 14)}px;top:${it.row * 44 + 4}px" data-eqtip="${esc(it.tip)}"><b>${esc(it.label)}</b><small>${fmtClock(it.a)}–${fmtClock(it.b)}</small></button>`).join('')}</div></div>`; };
+  const whats = [...new Set(uses.map((u) => u.what))].sort((a, b) => ['oven', 'stove', 'grill', 'air fryer'].indexOf(a.toLowerCase()) - ['oven', 'stove', 'grill', 'air fryer'].indexOf(b.toLowerCase()));
+  let body = `<div class="tlaxis" style="width:${W}px">${axis.join('')}</div>`;
+  body += whats.map((w) => lane(esc(w), uses.filter((u) => u.what === w).sort((a, b) => a.a - b.a).map((u) => ({ a: u.a, b: u.b, label: u.text, tip: `${fmtClock(u.a)}–${fmtClock(u.b)} · ${w}: ${u.text}`, cls: 'eq' + (bad.has(u.text + u.from) ? ' clash' : '') })))).join('');
+  body += `<div class="tlsep">Dishes</div>`;
+  body += dishLanes.map(({ d, from, to, jobs }) => lane(`<span class="${d.chip} tldot"></span>${esc(cookTabName(meal, d))}`, [{ a: from, b: to, label: d.name, tip: `${d.name}: ${jobs.map((p) => `${fmtClock(tlClock(meal, p.min))} ${tlStrip(p.text)}`).join(' · ')}`, cls: `dish ${d.chip}` }], ' dl')).join('');
+  if (isToday && now >= lo && now <= hi) body += `<i class="tlnowline" style="left:${x(now)}px"></i>`;
+  let dlg = $('#tldlg'); if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'tldlg'; document.body.appendChild(dlg); }
+  dlg.innerHTML = `<div class="tldhead"><div><p class="section-label">Timeline</p><h2>${esc(meal.title)}</h2></div><button type="button" class="btn ghost" data-tlclose>Close</button></div>
+    <p class="small tldnote">Scroll sideways. Tap a bar for details.${ahead.length ? ` Made ahead: ${ahead.map((d) => esc(d.name)).join(', ')}.` : ''}</p>
+    <div class="tlscroll"><div class="tlinner" style="width:${W + 108}px">${body}</div></div><p class="tldetail" hidden></p>`;
+  dlg.onclick = (e) => { const b = e.target.closest('[data-eqtip]'); if (!b) return; e.stopPropagation(); const d = dlg.querySelector('.tldetail'); d.textContent = b.dataset.eqtip; d.hidden = false; };
+  dlg.querySelector('[data-tlclose]').addEventListener('click', () => dlg.close());
+  dlg.showModal();
+  const sc = dlg.querySelector('.tlscroll');
+  const bars = [...dlg.querySelectorAll('.tbar')].map((el) => ({ el, left: parseFloat(el.style.left), w: parseFloat(el.style.width), kids: [...el.children] }));
+  const keepLabels = () => { const v = sc.scrollLeft; for (const b of bars) { const off = Math.max(0, Math.min(v - b.left, b.w - 70)); const t = off > 0 ? `translateX(${off}px)` : ''; b.kids.forEach((k) => { k.style.transform = t; }); } }; // a bar that starts off to the left keeps its name in view
+  sc.addEventListener('scroll', () => requestAnimationFrame(keepLabels), { passive: true });
+  if (isToday && now > lo) sc.scrollLeft = Math.max(0, x(now) - 60);
+  keepLabels();
 }
 function setFeastShift(id, n) {
   state.feastShift = state.feastShift || {};
@@ -3040,6 +3078,8 @@ document.addEventListener('click', async (e) => {
   }
   const tls = e.target.closest('[data-tlshift]');
   if (tls) { const meal = mealById(tls.dataset.meal); if (meal) { const v = +tls.dataset.tlshift; setFeastShift(meal.id, v ? feastShift(meal) + v : 0); } return; }
+  const tlv = e.target.closest('[data-tlview]');
+  if (tlv) { const meal = mealById(tlv.dataset.tlview); if (meal) openTimeline(meal); return; }
   const eqt = e.target.closest('[data-eqtip]');
   if (eqt) { toast(eqt.dataset.eqtip, 5000); return; }
   const pt = e.target.closest('.item.preptask');
