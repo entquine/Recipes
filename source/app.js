@@ -2373,7 +2373,7 @@ function renderFeastHub(meal) {
   h += `<p class="section-label fhlabel">Dishes <span class="small">by when they start</span></p><div class="fgrid">${dishes.map(({ d, i, s, p }) =>
     `<a class="fbtn fdish ft-${d.type.toLowerCase()}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><em class="ftype">${esc(d.type)}</em><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
   h += `<a class="partof fhall" href="#/meal/${S}/all">Everything on one page<span>›</span></a>`;
-  h += state.guest ? guestFooterHtml() : ratingCardHtml(meal) + nextTimeCardHtml(meal);
+  if (!state.guest) h += ratingCardHtml(meal) + nextTimeCardHtml(meal);
   view().innerHTML = `<div class="feasthub" data-sig="${hubSignature(meal)}" data-meal="${esc(S)}">${h}</div>`;
   refreshTicks();
 }
@@ -2928,7 +2928,7 @@ function renderSettings() {
     ${!state.firebase ? '<p>Not set up: everything stays on this phone.</p>' : state.user ? `<div class="signedin"><span>${esc(state.user.email)}</span><button class="btn ghost" id="signout">Sign out</button></div>` : ''}
     <form id="nameform"><label class="field">Your name <span class="small">(on your notes, items and ideas; saves by itself)</span>
     <input type="text" id="myname" class="dlg-input" maxlength="40" placeholder="${esc((state.user && state.user.email) || 'Your name')}" value="${esc(state.myName)}" autocomplete="off" enterkeyhint="done"></label></form></details>`;
-  if (state.firebase && state.user) {
+  if (state.firebase && state.user && !state.guest) {
     const row = (what, n) => { const x = syncInfo[what]; return `<li>${esc(what)}: ${x ? (x.ok ? `${n} ${x.server ? '✓' : '(from this phone, not yet confirmed)'}` : `<span class="err">error: ${esc(x.error)}</span>`) : 'not loaded yet'}</li>`; };
     h += `<details class="card synccheck"><summary class="section-label">Diagnostics</summary><ul class="small">
       ${row('notes', Object.keys(state.notes).length + ' notes')}${row('added items', Object.keys(state.extras).length + ' items')}
@@ -3248,7 +3248,7 @@ function saveName() { // the Your name box saves itself when you leave it
     if (state.firebase && state.user) setDoc(doc(state.firebase.db, 'profiles', state.user.uid), { name, email: state.user.email }, { merge: true }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
     else ls.set('local-name', name);
     toast(name ? `Saved. Your notes and items will show "${name}"` : 'Saved. Your notes and items will show your email');
-  const who = $('.acct-who'); if (who) who.textContent = name || (state.user && state.user.email) || '';
+  const who = $('.account .acct-who'); if (who) who.textContent = name || (state.user && state.user.email) || '';
 }
 document.addEventListener('change', (e) => { if (e.target.id === 'myname') saveName(); });
 document.addEventListener('submit', async (e) => {
@@ -3462,10 +3462,10 @@ let lastRoute = '', navCount = 0;
 function route() {
   if (state.firebase && !state.authReady) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   if (state.firebase && !state.user) { renderLogin(); return; }
-  $('#tabs').hidden = !!state.guest;
+  $('#tabs').hidden = false;
   if (state.guest) { // a guest only sees the feast(s) shared with them
     const ok = Object.keys(state.guest.meals || {}), [pg, ar] = location.hash.replace(/^#\/?/, '').split('/');
-    if (!(pg === 'meal' && ok.includes(decodeURIComponent(ar || '')))) {
+    if (!(pg === 'meal' && ok.includes(decodeURIComponent(ar || ''))) && pg !== 'settings') { // Meals goes straight to the feast; Settings is theirs too
       if (ok.length && state.model && mealById(ok[0])) { location.replace('#/meal/' + ok[0]); return; }
       setTitle(APP_NAME); view().innerHTML = `<p class="empty">${state.model ? 'Nothing has been shared with you yet.' : 'Loading…'}</p>${guestFooterHtml()}`; return;
     }
