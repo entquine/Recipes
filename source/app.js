@@ -2327,42 +2327,62 @@ function renderFeastAhead(meal, day) {
   }
   view().innerHTML = h; refreshTicks();
 }
-// Full-screen timeline: one lane per appliance, then one per dish (from its first to its last job on the day),
-// at a readable width (scrolls sideways), with the time now marked on the day.
+// Full-screen timeline: one lane per appliance, then one per dish (from its first to its last job on the day).
+// It scrolls sideways and zooms: pinch (or − / + / Fit), from the whole day on one screen up to every 5-minute job readable.
+// Everything is placed in hours times --px (pixels per hour), so zooming only changes that one number.
 function openTimeline(meal) {
-  const PX = 200, rows = tlRows(meal); if (!rows.length) return;
-  const isToday = tlDay(meal) === dayKey(new Date()), now = nowMinutes();
+  const rows = tlRows(meal); if (!rows.length) return;
+  const NAME = 108, MAXPX = 1200, isToday = tlDay(meal) === dayKey(new Date()), now = nowMinutes();
   const dishLanes = meal.dishes.map((d) => { const mine = rows.filter((p) => p.dishes && p.dishes.has(d)); if (!mine.length) return null;
     const last = mine[mine.length - 1], nxt = rows.find((p) => p.min > last.min);
     return { d, from: tlClock(meal, mine[0].min), to: tlClock(meal, nxt ? nxt.min : last.min + 10), jobs: mine }; }).filter(Boolean).sort((a, b) => a.from - b.from);
   const ahead = meal.dishes.filter((d) => !dishLanes.some((x) => x.d === d));
   const uses = meal.uses.map((u) => ({ ...u, a: tlClock(meal, u.from), b: tlClock(meal, u.to) }));
   const all = [...uses.flatMap((u) => [u.a, u.b]), ...dishLanes.flatMap((x) => [x.from, x.to]), ...rows.map((p) => tlClock(meal, p.min))];
-  const lo = Math.floor(Math.min(...all) / 60) * 60, hi = Math.ceil(Math.max(...all) / 60) * 60, W = ((hi - lo) / 60) * PX, x = (m) => ((m - lo) / 60) * PX;
+  const lo = Math.floor(Math.min(...all) / 60) * 60, hi = Math.ceil(Math.max(...all) / 60) * 60, H = (hi - lo) / 60;
+  const h = (m) => ((m - lo) / 60).toFixed(4); // hours from the left edge
+  const at = (m) => `calc(var(--px) * ${h(m)})`;
   const bad = new Set(equipClashes(meal).flatMap((c) => c.items.map((u) => u.text + u.from)));
-  const grid = []; for (let m = lo; m <= hi; m += 30) grid.push(`<i class="tg${m % 60 ? ' half' : ''}" style="left:${x(m)}px"></i>`);
-  const axis = []; for (let m = lo; m < hi; m += 60) axis.push(`<span style="left:${x(m)}px">${fmtClock(m).replace(':00', '')}</span>`);
+  const grid = []; for (let m = lo; m <= hi; m += 30) grid.push(`<i class="tg${m % 60 ? ' half' : ''}" style="left:${at(m)}"></i>`);
+  const axis = []; for (let m = lo; m < hi; m += 60) axis.push(`<span class="${((m - lo) / 60) % 2 ? 'odd' : ''}" style="left:${at(m)}">${fmtClock(m).replace(':00', '')}</span>`);
   const stack = (items) => { const ends = []; items.forEach((it) => { let r = ends.findIndex((e) => e <= it.a); if (r < 0) { r = ends.length; ends.push(0); } ends[r] = it.b; it.row = r; }); return Math.max(1, ends.length); };
-  const lane = (name, items, cls = '') => { const n = stack(items); return `<div class="tlane${cls}"><div class="tlname">${name}</div><div class="tltrack" style="width:${W}px;height:${n * 44 + 6}px">${grid.join('')}${items.map((it) =>
-    `<button type="button" class="tbar ${it.cls || ''}" style="left:${x(it.a) + 1}px;width:${Math.max(x(it.b) - x(it.a) - 2, 14)}px;top:${it.row * 44 + 4}px" data-eqtip="${esc(it.tip)}"><b>${esc(it.label)}</b><small>${fmtClock(it.a)}–${fmtClock(it.b)}</small></button>`).join('')}</div></div>`; };
-  const whats = [...new Set(uses.map((u) => u.what))].sort((a, b) => ['oven', 'stove', 'grill', 'air fryer'].indexOf(a.toLowerCase()) - ['oven', 'stove', 'grill', 'air fryer'].indexOf(b.toLowerCase()));
-  let body = `<div class="tlaxis" style="width:${W}px">${axis.join('')}</div>`;
+  const lane = (name, items, cls = '') => { const n = stack(items); return `<div class="tlane${cls}"><div class="tlname">${name}</div><div class="tltrack" style="width:calc(var(--px) * ${H});height:calc(var(--lh) * ${n} + 6px)">${grid.join('')}${items.map((it) =>
+    `<button type="button" class="tbar ${it.cls || ''}" data-h0="${h(it.a)}" data-h1="${h(it.b)}" style="left:calc(var(--px) * ${h(it.a)} + 1px);width:max(14px, calc(var(--px) * ${(((it.b - it.a) / 60)).toFixed(4)} - 2px));top:calc(var(--lh) * ${it.row} + 4px)" data-eqtip="${esc(it.tip)}"><b>${esc(it.label)}</b><small>${fmtClock(it.a)}–${fmtClock(it.b)}</small></button>`).join('')}</div></div>`; };
+  const order = ['oven', 'stove', 'grill', 'air fryer'], whats = [...new Set(uses.map((u) => u.what))].sort((a, b) => order.indexOf(a.toLowerCase()) - order.indexOf(b.toLowerCase()));
+  let body = `<div class="tlaxis" style="width:calc(var(--px) * ${H})">${axis.join('')}</div>`;
   body += whats.map((w) => lane(esc(w), uses.filter((u) => u.what === w).sort((a, b) => a.a - b.a).map((u) => ({ a: u.a, b: u.b, label: u.text, tip: `${fmtClock(u.a)}–${fmtClock(u.b)} · ${w}: ${u.text}`, cls: 'eq' + (bad.has(u.text + u.from) ? ' clash' : '') })))).join('');
   body += `<div class="tlsep">Dishes</div>`;
   body += dishLanes.map(({ d, from, to, jobs }) => lane(`<span class="${d.chip} tldot"></span>${esc(cookTabName(meal, d))}`, [{ a: from, b: to, label: d.name, tip: `${d.name}: ${jobs.map((p) => `${fmtClock(tlClock(meal, p.min))} ${tlStrip(p.text)}`).join(' · ')}`, cls: `dish ${d.chip}` }], ' dl')).join('');
-  if (isToday && now >= lo && now <= hi) body += `<i class="tlnowline" style="left:${x(now)}px"></i>`;
+  if (isToday && now >= lo && now <= hi) body += `<i class="tlnowline" style="left:${at(now)}"></i>`;
   let dlg = $('#tldlg'); if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'tldlg'; document.body.appendChild(dlg); }
   dlg.innerHTML = `<div class="tldhead"><div><p class="section-label">Timeline</p><h2>${esc(meal.title)}</h2></div><button type="button" class="btn ghost" data-tlclose>Close</button></div>
-    <p class="small tldnote">Scroll sideways. Tap a bar for details.${ahead.length ? ` Made ahead: ${ahead.map((d) => esc(d.name)).join(', ')}.` : ''}</p>
-    <div class="tlscroll"><div class="tlinner" style="width:${W + 108}px">${body}</div></div><p class="tldetail" hidden></p>`;
-  dlg.onclick = (e) => { const b = e.target.closest('[data-eqtip]'); if (!b) return; e.stopPropagation(); const d = dlg.querySelector('.tldetail'); d.textContent = b.dataset.eqtip; d.hidden = false; };
+    <div class="tlzoom"><span class="small">Pinch to zoom.${ahead.length ? ` Made ahead: ${ahead.map((d) => esc(cookTabName(meal, d))).join(', ')}.` : ''}</span><span class="tlzbtns"><button type="button" data-tlz="out" aria-label="Zoom out">−</button><button type="button" data-tlz="fit">Fit</button><button type="button" data-tlz="in" aria-label="Zoom in">+</button></span></div>
+    <div class="tlscroll"><div class="tlinner">${body}</div></div><p class="tldetail" hidden></p>`;
   dlg.querySelector('[data-tlclose]').addEventListener('click', () => dlg.close());
+  dlg.onclick = (e) => {
+    const z = e.target.closest('[data-tlz]');
+    if (z) { e.stopPropagation(); const mid = sc.clientWidth / 2; if (z.dataset.tlz === 'fit') zoomTo(fitPx(), mid); else zoomTo(px * (z.dataset.tlz === 'in' ? 1.6 : 1 / 1.6), mid); return; }
+    const b = e.target.closest('[data-eqtip]'); if (!b) return; e.stopPropagation(); const d = dlg.querySelector('.tldetail'); d.textContent = b.dataset.eqtip; d.hidden = false;
+  };
   dlg.showModal();
-  const sc = dlg.querySelector('.tlscroll');
-  const bars = [...dlg.querySelectorAll('.tbar')].map((el) => ({ el, left: parseFloat(el.style.left), w: parseFloat(el.style.width), kids: [...el.children] }));
-  const keepLabels = () => { const v = sc.scrollLeft; for (const b of bars) { const off = Math.max(0, Math.min(v - b.left, b.w - 70)); const t = off > 0 ? `translateX(${off}px)` : ''; b.kids.forEach((k) => { k.style.transform = t; }); } }; // a bar that starts off to the left keeps its name in view
+  const sc = dlg.querySelector('.tlscroll'), inner = dlg.querySelector('.tlinner');
+  const fitPx = () => Math.max(20, (sc.clientWidth - NAME - 8) / H), minPx = () => Math.min(fitPx(), 200);
+  let px = 200;
+  const bars = [...dlg.querySelectorAll('.tbar')].map((el) => ({ h0: +el.dataset.h0, h1: +el.dataset.h1, kids: [...el.children] }));
+  const keepLabels = () => { const v = sc.scrollLeft; for (const b of bars) { const left = b.h0 * px, w = (b.h1 - b.h0) * px; const off = Math.max(0, Math.min(v - left, w - 70)); const t = off > 0 ? `translateX(${off}px)` : ''; b.kids.forEach((k) => { k.style.transform = t; }); } }; // a bar that starts off to the left keeps its name in view
+  const apply = () => { inner.style.setProperty('--px', px + 'px'); inner.style.width = `${px * H + NAME}px`; inner.classList.toggle('dense', px < 90); inner.classList.toggle('tiny', px < 55); keepLabels(); };
+  // zoom keeping the time under `x` (pixels from the left of the scroll box) in place
+  const zoomTo = (want, x) => { const t = (sc.scrollLeft + x - NAME) / px; px = Math.max(minPx(), Math.min(MAXPX, want)); apply(); sc.scrollLeft = t * px + NAME - x; };
   sc.addEventListener('scroll', () => requestAnimationFrame(keepLabels), { passive: true });
-  if (isToday && now > lo) sc.scrollLeft = Math.max(0, x(now) - 60);
+  let pinch = null;
+  const two = (e) => { const [a, b] = e.touches, r = sc.getBoundingClientRect(); return { d: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), x: (a.clientX + b.clientX) / 2 - r.left }; };
+  sc.addEventListener('touchstart', (e) => { if (e.touches.length === 2) { const t = two(e); pinch = { d: t.d, px }; } }, { passive: true });
+  sc.addEventListener('touchmove', (e) => { if (!pinch || e.touches.length !== 2) return; e.preventDefault(); const t = two(e); zoomTo(pinch.px * (t.d / pinch.d), t.x); }, { passive: false });
+  sc.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; }, { passive: true });
+  sc.addEventListener('gesturestart', (e) => e.preventDefault()); // Safari: don't zoom the whole page
+  sc.addEventListener('wheel', (e) => { if (!e.ctrlKey) return; e.preventDefault(); const r = sc.getBoundingClientRect(); zoomTo(px * Math.exp(-e.deltaY / 200), e.clientX - r.left); }, { passive: false }); // trackpad pinch on a computer
+  apply();
+  if (isToday && now > lo) sc.scrollLeft = Math.max(0, ((now - lo) / 60) * px - 60);
   keepLabels();
 }
 function setFeastShift(id, n) {

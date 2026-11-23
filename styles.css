@@ -1077,7 +1077,9 @@ html .fbtn.fdish.chip-alt { box-shadow: inset 0 0 0 1.5px var(--dot), inset 0 4p
 .tltrack { position: relative; flex: none; }
 .tg { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .tg.half { opacity: .45; }
-.tbar { position: absolute; height: 38px; padding: 3px 7px; border: 0; border-radius: 6px; text-align: left; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
+.tlinner { --lh: 44px; }
+.tlinner.tiny { --lh: 24px; }
+.tbar { position: absolute; height: calc(var(--lh) - 6px); padding: 3px 7px; border: 0; border-radius: 6px; text-align: left; overflow: hidden; cursor: pointer; display: flex; flex-direction: column; justify-content: center; }
 .tbar b, .tbar small { display: block; max-width: 100%; }
 .tbar b { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; }
 .tbar small { font-size: 11px; white-space: nowrap; opacity: .85; }
@@ -1090,5 +1092,17 @@ html .tbar.dish::before { display: none; }
 .tlsep { position: sticky; left: 0; padding: 10px 12px 4px; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .tlnowline { position: absolute; top: 26px; bottom: 0; width: 2px; margin-left: 96px; background: var(--danger); z-index: 1; pointer-events: none; }
 .tlnowline { margin-left: 108px; }
+.tlzoom { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 16px 8px; color: var(--muted); }
+.tlzbtns { display: inline-flex; gap: 6px; flex: none; }
+.tlzbtns button { min-width: 42px; height: 36px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font-weight: 750; font-size: 16px; cursor: pointer; }
+.tlscroll { touch-action: pan-x pan-y; }
+.tlinner.dense .tg.half { display: none; }
+.tlinner.tiny .tlaxis span.odd { display: none; }
+.tlinner.dense .tbar small { display: none; }
+.tlinner.tiny .tbar { padding: 3px 4px; }
+.tlinner.tiny .tbar b { font-size: 11px; }
+.tlinner.tiny .tlname { padding: 3px 8px; font-size: 11.5px; line-height: 1.15; }
+.tlinner.tiny .tlsep { padding: 4px 12px 2px; }
+.tlinner.tiny .tldot { width: 8px; height: 8px; margin-top: 2px; }
 .tldetail { margin: 0; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); border-top: 1px solid var(--line); font-size: 14.5px; background: var(--surface); }
 .fhtl { margin-top: 10px; }
