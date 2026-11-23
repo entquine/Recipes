@@ -1730,6 +1730,7 @@ function setNeed(key, on) {
 }
 // Shop for one dish of a feast (just the cheesecake): the list shows that dish's items and amounts, and ticks count for it alone.
 function dishFilter() { const id = ls.get('shop-dish-filter', ''); return id && shopMeals().some((m) => isFeast(m) && m.dishes.some((d) => (d.id || 'd-' + slug(d.name)) === id)) ? id : ''; }
+const menuName = (meal, d) => { const n = cookTabName(meal, d); return d.name.includes(`(${n})`) ? d.name.replace(/\s*\(.*\)/, '') : n; }; // short, but "Stovetop Stuffing", not "Backup"
 function forDish(lines, id) {
   return lines.map((l) => { const parts = l.parts.filter((x) => partId(x) === id); if (!parts.length) return null; const open = parts.filter((x) => !partBought(l.key, x));
     return { ...l, parts, open, done: open.length === 0, partly: false }; }).filter(Boolean);
@@ -1788,8 +1789,8 @@ function renderAutoShopping(m) {
     const feasts = shopMeals().filter(isFeast);
     if (feasts.length) {
       const leftFor = (id) => forDish(all, id).filter((l) => !l.done && !l.mealDone && !away(l)).length;
-      h += `<label class="dishfilter${fid ? ' on' : ''}"><span>Shop for</span><select data-dishfilter><option value="">Everything</option>${feasts.map((f) => `<optgroup label="${esc(f.title)}">${f.dishes.map((d) => { const id = d.id || 'd-' + slug(d.name), n = leftFor(id);
-        return `<option value="${esc(id)}"${id === fid ? ' selected' : ''}>${esc(d.name)}${n ? ` (${n} left)` : ' ✓'}</option>`; }).join('')}</optgroup>`).join('')}</select></label>`;
+      h += `<label class="dishfilter${fid ? ' on' : ''}"><span>Shop for</span><select data-dishfilter><option value="">Everything</option>${feasts.map((f) => `<optgroup label="${esc(f.title)}">${f.dishes.slice().sort((a, b) => menuName(f, a).localeCompare(menuName(f, b))).map((d) => { const id = d.id || 'd-' + slug(d.name), n = leftFor(id);
+        return `<option value="${esc(id)}"${id === fid ? ' selected' : ''}>${esc(menuName(f, d))}${n ? ` · ${n} left` : ' ✓'}</option>`; }).join('')}</optgroup>`).join('')}</select></label>`;
     }
   }
   if (offered.length) h += `<div class="storefilter"><button class="${only ? '' : 'on'}" data-storefilter="">All</button>${offered.map((st) => `<button class="${only === st ? 'on' : ''}" data-storefilter="${esc(st)}">${esc(st)} <b>${left(st)}</b></button>`).join('')}</div>`;
