@@ -2919,7 +2919,7 @@ function renderSettings() {
     ${info.error ? `<p class="err">${esc(info.error)}</p>` : ''}</section>`;
   // What's new: the version history, folded (newest first)
   const wn = ([v, items]) => `<div class="wn"><p class="wn-v">v-${esc(v)}</p><ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></div>`;
-  h += `<details class="card whatsnew"><summary class="section-label">What’s new</summary>${WHATS_NEW.slice(0, 5).map(wn).join('')}${WHATS_NEW.length > 5 ? `<details class="wn-older"><summary>Older</summary>${WHATS_NEW.slice(5).map(wn).join('')}</details>` : ''}</details>`;
+  if (!state.guest) h += `<details class="card whatsnew"><summary class="section-label">What’s new</summary>${WHATS_NEW.slice(0, 5).map(wn).join('')}${WHATS_NEW.length > 5 ? `<details class="wn-older"><summary>Older</summary>${WHATS_NEW.slice(5).map(wn).join('')}</details>` : ''}</details>`;
   const cur = ls.get('color-theme', 'teal');
   const curT = THEMES.find((x) => x[0] === cur) || THEMES[0]; // folded: the summary shows the color in use
   h += `<details class="card colorfold"><summary class="section-label">Color<span class="acct-who"><i class="colordot" style="background:${curT[2]}"></i>${esc(curT[1])}</span></summary><div class="swatches">${THEMES.map(([id, name, sw]) => `<button class="swatch${id === cur ? ' on' : ''}" data-colortheme="${id}" aria-pressed="${id === cur}"><i style="background:${sw}"></i>${name}</button>`).join('')}</div></details>`;
