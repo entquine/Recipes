@@ -172,7 +172,7 @@ function buildMeals(recipes) {
     const used = new Map();
     const uniq = (base) => { const n = (used.get(base) || 0) + 1; used.set(base, n); return hash(n > 1 ? `${base}#${n}` : base); };
     dishes.forEach((d, i) => {
-      d.color = Math.min(i, 3); d.anchor = `${meal.id}-d${i}`;
+      d.color = i % 8; d.chip = `chip-${i % 8}${i >= 8 ? ' chip-alt' : ''}`; d.dc = `dc${i % 8}${i >= 8 ? ' dc-alt' : ''}`; d.anchor = `${meal.id}-d${i}`;
       d.steps.sort(byOrder);
       d.steps.forEach((s, j) => { s.num = isNaN(s.order) ? j + 1 : s.order; s.key = uniq(`step|${d.name}|${s.text}`); });
       for (const g of d.groups) for (const it of g.items) it.key = uniq(`ing|${d.name}|${g.name}|${it.text}`);
@@ -228,7 +228,9 @@ function resolveRef(phrase, meal) {
   let best = null, bestScore = 0;
   for (const d of [...meal.sides, meal.main]) {
     const nameWords = new Set(d.name.split(/[\s-]+/).map(stem));
-    const score = words.filter((w) => nameWords.has(w)).length + (d === meal.main ? -0.5 : 0);
+    const head = stem(d.name.replace(/\s*\(.*$/, '').replace(/\s+(with|and|in|on)\s.*$/i, '').split(/[\s-]+/).pop() || ''); // the dish's own noun: "Turkey" in Herb Butter Turkey, not in Turkey Gravy
+    const hits = words.filter((w) => nameWords.has(w)).length;
+    const score = hits ? hits + (words.includes(head) ? 1 : 0) + (d === meal.main ? -0.5 : 0) : 0;
     if (score > bestScore) { best = d; bestScore = score; }
   }
   return best;
@@ -248,7 +250,7 @@ function linkRefs(text, meal) {
   return esc(text).replace(REF_RE, (all, name, _w, first) => {
     const d = resolveRef(name, meal);
     if (!d) return all;
-    return `<a class="ref chip-${d.color}" href="#" data-jump="${d.anchor}-s${first}">${all}</a>`;
+    return `<a class="ref ${d.chip}" href="#" data-jump="${d.anchor}-s${first}">${all}</a>`;
   });
 }
 
@@ -1277,7 +1279,7 @@ function ring(beeps = 6) {
 let cook = null; // { meal, dish }
 // Cook mode's "All" tab (dish -1): the combined order as one list, each step still the dish's own (same ticks).
 function combinedDish(meal) {
-  return { name: 'All dishes', type: 'Combined', color: 0, anchor: `${meal.id}-combined`, combined: true,
+  return { name: 'All dishes', type: 'Combined', color: 0, chip: 'chip-0', dc: 'dc0', anchor: `${meal.id}-combined`, combined: true,
     steps: meal.combined.map((x, i) => ({ ...x.s, num: i + 1, dishNum: x.s.num, dish: x.d })),
     groups: meal.dishes.flatMap((x) => x.groups.map((g) => ({ name: `${cookTabName(meal, x)}${g.name ? ' · ' + g.name : ''}`, items: g.items }))) };
 }
@@ -1300,22 +1302,22 @@ function renderCook() {
   if (cook.step == null) { const i = d.steps.findIndex((x) => !ticks[x.key]); cook.step = i < 0 ? n : i; }
   const others = meal.dishes.length > 1 ? `<div class="cooknext"><p class="small">Cook another part of the meal:</p>${meal.dishes.map((x, i) => { if (i === cook.dish || !x.steps.length) return '';
     const left = x.steps.filter((st2) => !ticks[st2.key]).length;
-    return `<button class="btn ghost chip-${x.color}" data-cook="dish:${i}">${esc(x.name)}<span class="small">${left ? `${left} step${left > 1 ? 's' : ''} to go` : 'Done ✓'}</span></button>`; }).join('')}</div>` : '';
+    return `<button class="btn ghost ${x.chip}" data-cook="dish:${i}">${esc(x.name)}<span class="small">${left ? `${left} step${left > 1 ? 's' : ''} to go` : 'Done ✓'}</span></button>`; }).join('')}</div>` : '';
   // A wheel of steps: the current one in the middle at full size; the ones around it smaller and fainter
   // (done ones in green). Scroll it, tap a nearby step, or use Back / Next.
   el.innerHTML = `<div class="cookhead"><button class="cookx" data-cook="close" aria-label="Close cook mode">×</button>
-      <div class="cooktabs">${meal.combined ? `<button class="chip-all${cook.dish === -1 ? ' on' : ''}" data-cook="dish:-1">All</button>` : ''}${meal.dishes.map((x, i) => `<button class="chip-${x.color}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(cookTabName(meal, x))}</button>`).join('')}</div></div>
-    <div class="cookdishrow"><p class="cookdish c${d.color}"><span>${esc(d.type)}</span><b class="cd-name">${esc(d.name)}</b></p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
+      <div class="cooktabs">${meal.combined ? `<button class="chip-all${cook.dish === -1 ? ' on' : ''}" data-cook="dish:-1">All</button>` : ''}${meal.dishes.map((x, i) => `<button class="${x.chip}${i === cook.dish ? ' on' : ''}" data-cook="dish:${i}">${esc(cookTabName(meal, x))}</button>`).join('')}</div></div>
+    <div class="cookdishrow"><p class="cookdish ${d.dc}"><span>${esc(d.type)}</span><b class="cd-name">${esc(d.name)}</b></p>${d.groups.length ? `<button class="btn ghost cookingsbtn" data-cook="ings">${ICONS.list} Ingredients</button>` : ''}</div>
     <div class="cooksheet" id="cooksheet" hidden><div class="cs-back" data-cook="ingsclose"></div><div class="cs-panel"><div class="cs-head"><strong>Ingredients · ${esc(shortName(d))}</strong><button class="cookx" data-cook="ingsclose" aria-label="Close">×</button></div>
       <div class="cs-body">${d.groups.map((g) => `${g.name ? `<h4>${esc(g.name)}</h4>` : ''}<ul class="list ings">${g.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(scaleText(it.amount))}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</div></div></div>
     <div class="cookwheel" id="cookwheel"><div class="cw-pad"></div>
       ${d.steps.map((st, i) => { const cu = countUpStep(meal.id, st.key), mins = cu ? 0 : stepMinutes(st.text); return `<div class="cw-step" data-cwi="${i}" data-cwkey="${esc(st.key)}">
-        <p class="cookcount">${st.dish ? `<span class="cw-dish chip-${st.dish.color}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
+        <p class="cookcount">${st.dish ? `<span class="cw-dish ${st.dish.chip}">${esc(cookTabName(meal, st.dish))}</span>` : ''}Step ${esc(st.num)} of ${n}<span class="cw-donemark"> · done</span></p>
         <p class="cooktext">${esc(st.text)}</p>${(() => { const used = st.amount ? scaleText(st.amount) : stepIngredients(st.dish || d, st.text); return used ? `<p class="cookused">${esc(used)}</p>` : ''; })()}${cu ? `<div class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</div>` : ''}
         ${mins ? `<button class="btn ghost cooktimer" data-cook="timer" data-cookstep="${esc(st.key)}" data-mins="${mins}">${ICONS.timer} Start ${mins} min timer</button>` : ''}
         <button class="btn ghost cw-untick" data-cook="untick">↺ Mark not done</button></div>`; }).join('')}
       <div class="cw-step cw-end" data-cwi="${n}"><div class="cw-dishdone"><p class="cookdone">${esc(d.name)} is done 🎉</p>${others}</div>
-        <div class="cw-serve"><p class="cookdone">Time to eat! 🍽️</p><ul class="servelist">${meal.dishes.map((x) => `<li><span class="chip-${x.color}">✓</span> ${esc(x.name)}</li>`).join('')}</ul>
+        <div class="cw-serve"><p class="cookdone">Time to eat! 🍽️</p><ul class="servelist">${meal.dishes.map((x) => `<li><span class="${x.chip}">✓</span> ${esc(x.name)}</li>`).join('')}</ul>
           <button class="btn ghost" data-addphoto="${esc(dishKey(meal.main))}" hidden>${ICONS.camera} Photo of the plate</button><button class="btn" data-cook="close">Close cook mode</button></div></div>
       <div class="cw-pad"></div></div>
     <div class="timerbar cooktimers" id="cooktimers" hidden></div>
@@ -1826,7 +1828,7 @@ function setRetired(id, on) {
   if (!state.firebase) { ls.set('local-retired', state.retired); return; }
   setDoc(doc(state.firebase.db, 'history', 'adjust'), { r: { [id]: on ? Date.now() : deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
 }
-const kindBadge = (meal) => `<span class="kind chip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : meal.kind === 'Breakfast' ? 2 : 0}">${meal.kind}</span>`;
+const kindBadge = (meal) => `<span class="kind kchip-${meal.kind === 'Side' ? 1 : meal.kind === 'Dessert' ? 3 : meal.kind === 'Breakfast' ? 2 : 0}">${meal.kind}</span>`;
 function plannedChip(meal) {
   const n = nextPlanned(meal.name);
   return n ? `<span class="planned">${ICONS.cal} ${n === dayKey(new Date()) ? 'Tonight' : esc(fmtDay(keyToDate(n), { weekday: 'short', month: 'short', day: 'numeric' }))}</span>` : '';
@@ -2147,7 +2149,7 @@ function headStartHtml(meal) {
   const list = headStart(meal); if (!list.length) return '';
   const t = state.ticks[meal.id] || {}, allDone = list.every((x) => t[x.st.key]);
   return `<details class="card headstart"${allDone ? '' : ' open'} id="${meal.id}-ahead" data-autofold="ahead" data-meal="${esc(meal.id)}"><summary class="section-label">${ICONS.bell} Head start · do these early</summary>${meal.aheadNotes && meal.aheadNotes.length ? `<p class="aheadsum">${esc(headStartSummary(meal))}</p>` : ''}
-    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(scaleText(st.amount))}</span>` : ''}${st.countUp ? `<span class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</span>` : ''}<span class="sub"><span class="chip-${d.color} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
+    <ul class="list">${list.map(({ d, st }) => itemHtml(meal.id, st.key, `<span class="body"><span class="aheadwhen">${esc(aheadLabel(st.ahead))}</span><strong>${esc(st.text)}</strong>${st.amount ? `<span class="used">${esc(scaleText(st.amount))}</span>` : ''}${st.countUp ? `<span class="curow">${sinceHtml(meal, st.key)}${countBtnHtml(meal, st.key, true)}</span>` : ''}<span class="sub"><span class="${d.chip} prepdish">${esc(cookTabName(meal, d))}</span> step ${esc(st.num)}</span></span>`, 'aheaditem')).join('')}</ul></details>`;
 }
 // A short summary of the head start for the Meals card and the top of the Head start card: the spreadsheet's
 // "Ahead" rows if there are any ("Marinate the steak · about 1 hour ahead"); otherwise the early step that actually
@@ -2299,7 +2301,7 @@ function prepCardHtml(meal) {
   const allPrepped = tasks.every((t) => t.parts.every((x) => (state.ticks[meal.id] || {})[x.key]));
   return `<details class="card prep"${allPrepped ? '' : ' open'} id="${meal.id}-prep" data-autofold="prep" data-meal="${esc(meal.id)}"><summary class="section-label">Prep list · do these first</summary>
     <ul class="list">${tasks.map((t, ti) => `<li class="item preptask" id="${esc(meal.id)}-p${ti}" data-prepkeys="${esc(t.parts.map((x) => x.key).join(','))}" data-scope="${esc(meal.id)}" role="checkbox" aria-checked="false" tabindex="0"><span class="box">${CHECK_SVG}</span>
-      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="chip-${d.color} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span>
+      <span class="body"><strong>${esc(t.name)}</strong><span class="sub">${prepByDish(t).map(([d, amts]) => `${amts.length ? esc(amts.join(' + ')) + ' · ' : ''}<span class="${d.chip} prepdish">${esc(shortName(d))}</span>`).join(' + ')}</span></span>
       <button class="prepgo" data-prepgo="${esc(prepByDish(t).map(([d]) => `${d.anchor}-s${t.parts.find((x) => x.dish === d).num}|${d.type + ': ' + d.name.replace(/;|\|/g, ' ')}`).join(';'))}" aria-label="Go to the step">↓</button></li>`).join('')}</ul></details>`;
 }
 
@@ -2314,7 +2316,7 @@ function renderMeal(id, only) {
   const hasPlan = !!(meal.planTotal || meal.planFirst || meal.starts.length > 1);
   let h = '<nav class="jump">' + (hasPlan ? '<a href="#" data-jump="' + S + '-plan">Plan</a>' : '') + (prepTasks(meal).length ? '<a href="#" data-jump="' + S + '-prep">Prep</a>' : '') +
     (meal.combined ? '<a href="#" class="jump-all" data-jump="' + S + '-combined">All</a>' : '') +
-    meal.dishes.map((d) => `<a href="#" class="chip-${d.color}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
+    meal.dishes.map((d) => `<a href="#" class="${d.chip}" data-jump="${d.anchor}">${esc(cookTabName(meal, d))}</a>`).join('') + '</nav>';
   h += banners();
   // Everything ticked: a button at the top to start fresh (shown and hidden as you tick, in refreshTicks)
   h += `<button class="btn ghost untickall" data-untickall="${esc(S)}" data-keys="${esc(meal.keys.join(','))}" hidden>↺ Untick everything</button>`;
@@ -2331,7 +2333,7 @@ function renderMeal(id, only) {
       const mainStart = (meal.starts.find((s) => s.dish === meal.main) || {}).min;
       h += '<p class="section-label">Start order</p><ol class="startorder">' + meal.starts.map((s, i) => {
         const early = i === 0 && s.dish !== meal.main && mainStart != null && s.min < mainStart;
-        return `<li class="chip-${s.dish.color}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
+        return `<li class="${s.dish.chip}" data-jump="${s.dish.anchor}">${early ? '<span class="first-badge">First</span>' : ''}${esc(s.dish.name)}<span class="at">${s.min === 0 ? 'at 0:00' : 'at ' + Math.floor(s.min / 60) + ':' + String(s.min % 60).padStart(2, '0')}</span></li>`;
       }).join('') + '</ol>';
     }
     h += '</details>';
@@ -2348,7 +2350,7 @@ function renderMeal(id, only) {
   if (meal.combined) h += `<nav class="seg viewseg" aria-label="Steps"><a href="#" data-stepview="split" class="${combinedView ? '' : 'on'}">By dish</a><a href="#" data-stepview="combined" class="${combinedView ? 'on' : ''}">Combined</a></nav>`;
   if (combinedView) {
     const ingAnchor = `${S}-combined`; // all the dishes' ingredients, grouped by dish, folded like each dish's own list
-    const ings = meal.dishes.filter((x) => x.groups.length).map((x) => x.groups.map((g) => `<h4><span class="stepdish chip-${x.color}">${esc(cookTabName(meal, x))}</span>${g.name ? esc(g.name) : ''}</h4><ul class="list ings">${g.items.map((it) =>
+    const ings = meal.dishes.filter((x) => x.groups.length).map((x) => x.groups.map((g) => `<h4><span class="stepdish ${x.chip}">${esc(cookTabName(meal, x))}</span>${g.name ? esc(g.name) : ''}</h4><ul class="list ings">${g.items.map((it) =>
       `<li class="ing">${it.amount ? `<span class="amt">${esc(scaleText(it.amount))}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')).join('');
     const allDone = meal.combined.every((x) => (state.ticks[meal.id] || {})[x.s.key]);
     h += `<details class="card combined" id="${S}-combined" data-autofold="all" data-meal="${esc(meal.id)}"${allDone ? '' : ' open'}><summary class="comb-sum"><div class="dish-head comb-head"><p class="section-label">Combined</p><h2>All steps, in order</h2></div></summary>
@@ -2361,7 +2363,7 @@ function renderMeal(id, only) {
   h += `<div class="dishes cols-${meal.dishes.length}">`;
   for (const d of meal.dishes) {
     const pk = dishKey(d);
-    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable c${d.color}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(scaleServings(d.makes))}</p>` : ''}${sourceLinkHtml(d)}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${full.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
+    h += `<section class="card dish${foldedDishes.has(d.anchor) ? ' folded' : ''}" id="${d.anchor}" data-dishkeys="${esc(d.steps.map((x) => x.key).join(','))}" data-meal="${esc(meal.id)}"><div class="dishphoto" data-photo="${esc(pk)}" data-name="${esc(d.name)}" hidden></div><div class="dish-head foldable ${d.dc}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2>${d.makes ? `<p class="makes">${esc(scaleServings(d.makes))}</p>` : ''}${sourceLinkHtml(d)}<div class="dishbtns">${d.steps.length ? `<button class="cookdishbtn" data-opencook="${esc(meal.id)}" data-dish="${full.dishes.indexOf(d)}">${ICONS.cook} Cook mode</button>` : ''}<button class="photobtn" data-addphoto="${esc(pk)}" hidden>${ICONS.camera} Add photo</button></div></div>`;
     for (const t of d.tips) h += `<div class="tip tip-top"><strong>Tip:</strong> ${esc(t)}</div>`; // read before cooking, not after
     if (d.groups.length) {
       h += `<details class="ingfold" data-ings="${esc(d.anchor)}"${openIngs.has(d.anchor) ? ' open' : ''}><summary><h3>Ingredients</h3></summary>`;
@@ -2435,7 +2437,7 @@ const stepsHeadHtml = (meal, keys) => `<div class="stepshead"><h3>Steps</h3><spa
 function stepItemHtml(meal, d, s, prepOf, tagged) {
   const mins = s.countUp ? 0 : stepMinutes(s.text);
   return itemHtml(meal.id, s.key,
-    `<span class="body">${tagged ? `<span class="stepdish chip-${d.color}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(scaleText(s.amount))}</span>` : ''}${sinceHtml(meal, s.key)}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : s.countUp ? countBtnHtml(meal, s.key) : ''}`,
+    `<span class="body">${tagged ? `<span class="stepdish ${d.chip}">${esc(cookTabName(meal, d))} ${esc(s.num)}</span>` : `<span class="num">${esc(s.num)}.</span>`}${prepOf.has(s.key) ? `<a href="#" class="toprep toprep-ic" data-jump="${esc(prepOf.get(s.key))}" aria-label="In the prep list" title="In the prep list">↑</a>` : ''}${esc(s.text)}${s.amount ? `<br><span class="used">${esc(scaleText(s.amount))}</span>` : ''}${sinceHtml(meal, s.key)}</span>${mins ? `<button class="timerbtn tb-side" data-timer="${mins}" data-step="${esc(s.key)}" data-label="${esc(timerLabel(d, s))}" data-meal="${esc(meal.id)}" aria-label="Start a ${mins} minute timer">${ICONS.timer}<span>${mins}m</span></button>` : s.countUp ? countBtnHtml(meal, s.key) : ''}`,
     mins || s.countUp ? 'hastimer' : '', `${d.anchor}-s${s.num}`);
 }
 function fitJumpBar() { // keep every top button on screen: shrink the text a little (down to 12.5px) if they don't fit

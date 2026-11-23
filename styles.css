@@ -94,10 +94,18 @@ a.meal-card:active { background: var(--surface-2); }
 .jump { position: sticky; top: 56px; z-index: 10; display: flex; gap: 8px; overflow-x: auto; padding: 10px 16px; margin: -14px -16px 12px; background: var(--bg); border-bottom: 1px solid var(--line); scrollbar-width: none; }
 .jump::-webkit-scrollbar { display: none; }
 .jump a { flex: none; padding: 7px 14px; border-radius: 999px; font-size: 15px; font-weight: 600; text-decoration: none; background: var(--surface-2); color: var(--text); white-space: nowrap; }
-.chip-0, .jump a.chip-0 { background: var(--c0-soft); color: var(--c0); }
-.chip-1, .jump a.chip-1 { background: var(--c1-soft); color: var(--c1); }
-.chip-2, .jump a.chip-2 { background: var(--c2-soft); color: var(--c2); }
-.chip-3, .jump a.chip-3 { background: var(--c3-soft); color: var(--c3); }
+.kchip-0 { background: var(--c0-soft); color: var(--c0); } .kchip-1 { background: var(--c1-soft); color: var(--c1); } .kchip-2 { background: var(--c2-soft); color: var(--c2); } .kchip-3 { background: var(--c3-soft); color: var(--c3); }
+/* Dish colors: 8 distinct hues (checked for colour blindness); the dish name is always written beside its colour.
+   Text stays in normal ink; the colour is a dot and a light tint. From the 9th dish on, the same hues come outlined, with a hollow dot. */
+:root { --d0: #2a78d6; --d1: #eb6834; --d2: #1baf7a; --d3: #eda100; --d4: #e87ba4; --d5: #008300; --d6: #6250d6; --d7: #e34948; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --d0: #3987e5; --d1: #d95926; --d2: #199e70; --d3: #c98500; --d4: #d55181; --d5: #0ca30c; --d6: #9085e9; --d7: #e66767; } }
+.chip-0 { --dot: var(--d0); } .chip-1 { --dot: var(--d1); } .chip-2 { --dot: var(--d2); } .chip-3 { --dot: var(--d3); }
+.chip-4 { --dot: var(--d4); } .chip-5 { --dot: var(--d5); } .chip-6 { --dot: var(--d6); } .chip-7 { --dot: var(--d7); }
+html :is(.chip-0, .chip-1, .chip-2, .chip-3, .chip-4, .chip-5, .chip-6, .chip-7) { background: color-mix(in srgb, var(--dot) 15%, var(--surface)); color: var(--text); }
+:is(.chip-0, .chip-1, .chip-2, .chip-3, .chip-4, .chip-5, .chip-6, .chip-7):not(.servelist span)::before { content: ''; display: inline-block; flex: none; width: .55em; height: .55em; border-radius: 50%; background: var(--dot); margin-right: .38em; vertical-align: .08em; }
+html .chip-alt { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--dot); }
+.chip-alt::before { background: transparent !important; box-shadow: inset 0 0 0 2px var(--dot); }
+.dc0 { --dot: var(--d0); } .dc1 { --dot: var(--d1); } .dc2 { --dot: var(--d2); } .dc3 { --dot: var(--d3); } .dc4 { --dot: var(--d4); } .dc5 { --dot: var(--d5); } .dc6 { --dot: var(--d6); } .dc7 { --dot: var(--d7); }
 
 .section-label { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700; color: var(--muted); margin: 0 0 4px; }
 .plan h2, .dish h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.25; }
@@ -112,9 +120,9 @@ a.meal-card:active { background: var(--surface-2); }
 .timeline-head { display: grid; grid-template-columns: 44px 80px 1fr; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 0 0 4px; border-bottom: 1px solid var(--line); }
 .timeline-head span:first-child { grid-column: 2; }
 .dish-head { border-left: 6px solid var(--c0); padding-left: 12px; margin-bottom: 8px; }
-.dish-head.c1 { border-color: var(--c1); } .dish-head.c2 { border-color: var(--c2); } .dish-head.c3 { border-color: var(--c3); }
+.dish-head[class*=" dc"] { border-color: var(--dot); } .dish-head.dc-alt { border-left-style: double; border-left-width: 7px; }
 .dish-head .section-label { color: var(--c0); }
-.dish-head.c1 .section-label { color: var(--c1); } .dish-head.c2 .section-label { color: var(--c2); } .dish-head.c3 .section-label { color: var(--c3); }
+.dish-head[class*=" dc"] .section-label { color: var(--muted); }
 .makes { color: var(--muted); margin: 0; }
 h3 { font-size: 16px; text-transform: uppercase; letter-spacing: .06em; margin: 18px 0 2px; color: var(--muted); }
 h4 { font-size: 16px; margin: 12px 0 0; font-weight: 700; }
@@ -324,7 +332,7 @@ body.cooking { overflow: hidden; }
 .cookx { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--surface-2); color: var(--text); font-size: 26px; cursor: pointer; }
 .cooktabs { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
 .cooktabs button { flex: none; border: 2px solid transparent; border-radius: 999px; padding: 7px 12px; font-weight: 650; cursor: pointer; }
-.cooktabs button.on { border-color: currentColor; }
+.cooktabs button.on { border-color: var(--dot, currentColor); }
 .cookbody { flex: 1; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; gap: 14px; padding: 16px 4px; }
 .cookcount { margin: 0; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; font-size: 14px; }
 .cooktext { margin: 0; font-size: 28px; line-height: 1.3; font-weight: 650; }
@@ -353,9 +361,7 @@ body.has-timers .toast { bottom: calc(150px + env(safe-area-inset-bottom)); }
 .cookdishbtn { margin-top: 10px; border: 0; border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 15px; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
 .cookdish { margin: 12px 0 0; font-size: 20px; font-weight: 750; line-height: 1.25; padding-left: 10px; border-left: 5px solid var(--c0); }
 .cookdish span { display: block; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--c0); }
-.cookdish.c1 { border-color: var(--c1); } .cookdish.c1 span { color: var(--c1); }
-.cookdish.c2 { border-color: var(--c2); } .cookdish.c2 span { color: var(--c2); }
-.cookdish.c3 { border-color: var(--c3); } .cookdish.c3 span { color: var(--c3); }
+.cookdish[class*=" dc"] { border-color: var(--dot); } .cookdish[class*=" dc"] span { color: var(--muted); } .cookdish.dc-alt { border-left-style: double; border-left-width: 7px; }
 
 /* ---------- prep list ---------- */
 .card.prep summary { cursor: pointer; margin: 0; }
@@ -987,7 +993,7 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 /* Big meals: timeline with clock times */
 .timeline .tleat { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; font-size: 15.5px; }
 .tlshift { display: inline-flex; gap: 6px; }
-.tlshift button { min-width: 44px; height: 34px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 14px; cursor: pointer; }
+.tlshift button { min-width: 44px; height: 34px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; }
 .tlbanner:empty { display: none; }
 .tlbanner { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
 .tlbanner p { margin: 0; padding: 9px 12px; border-radius: 12px; background: var(--accent-bg, rgba(31,110,104,.10)); font-size: 14.5px; line-height: 1.35; }

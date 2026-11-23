@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['117', ['Dishes get 8 clearly different colours (picked to work for colour blindness too), shown as a dot beside each dish’s name; from the 9th dish on, the same colours come outlined, so a big meal like Thanksgiving no longer turns everything purple.', 'Thanksgiving: “Turkey steps” in the plan now point at the turkey (they were pointing at the turkey gravy), so the start order and the Timeline ticks are right.']],
   ['116', ['Big meals (Thanksgiving): a Timeline with real clock times, from the day before through to Eat, with −15 / +15 to move the whole day (both phones). On the day it shows what’s due now and next, and gives a heads-up when a step comes due while the app is open.', 'An Oven, stove & grill chart shows what’s in each one when, and warns about clashes (two oven temperatures at once, too many burners).', 'The ham is now part of the Thanksgiving dinner, so one plan covers everything.']],
   ['115', ['Meals: ✓ We made it (beside Pick a day, and in a recipe’s press-and-hold menu in the Recipe Book) marks a meal as made on a day you choose, even if it was never on the calendar. It counts as made, moves to Made before and comes off the shopping list (with Undo).']],
   ['114', ['Takeout: Edit spots is now the one place to add, rename, remove and reorder your spots, saved together; the takeout menu is just the list to pick from.']],
