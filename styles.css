@@ -1110,3 +1110,8 @@ html .tbar.dish::before { display: none; }
 .dishfilter { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1.5px solid var(--line); font-weight: 700; font-size: 14.5px; }
 .dishfilter.on { border-color: var(--c0); background: var(--c0-soft); }
 .dishfilter select { flex: 1; min-width: 0; font: inherit; font-weight: 650; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+/* Guest (one feast only): no tabs, no photo or rating controls */
+body.guest #tabs { display: none !important; }
+body.guest [data-addphoto], body.guest [data-replacephoto], body.guest [data-removephoto], body.guest .rate-link, body.guest #quickname { display: none !important; }
+.guestfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 20px 0 8px; color: var(--muted); font-size: 14px; }
+.guestfoot span { flex: 1 1 100%; }

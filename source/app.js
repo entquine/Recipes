@@ -10,7 +10,7 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager, terminate, clearIndexedDbPersistence,
-  collection, doc, onSnapshot, setDoc, deleteDoc, deleteField, FieldPath, serverTimestamp, connectFirestoreEmulator,
+  collection, doc, onSnapshot, getDoc, setDoc, deleteDoc, deleteField, FieldPath, serverTimestamp, connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const APP_NAME = "What's Cooking with Brian";
@@ -352,6 +352,14 @@ async function clearScope(scope, k = {}) { // k: the ticks to put back (for Undo
 function startFirestore() {
   const { db } = state.firebase;
   stopFirestore();
+  if (state.guest === undefined) { // owner or guest? A guest can't read the calendar (the Firestore rules say so).
+    const uid = state.user && state.user.uid, cachedRole = uid ? ls.get('role-' + uid, '') : '';
+    if (cachedRole === 'guest') { state.guest = { meals: {} }; startGuest(); }
+    getDoc(doc(db, 'calendar', 'plan')).then(() => { if (uid) ls.set('role-' + uid, 'owner'); if (state.guest !== null) { state.guest = null; document.body.classList.remove('guest'); startFirestore(); route(); } })
+      .catch((err) => { if (err && err.code === 'permission-denied') { if (uid) ls.set('role-' + uid, 'guest'); if (!state.guest) { state.guest = { meals: {} }; startGuest(); } } else if (state.guest === undefined) { state.guest = null; startFirestore(); } });
+    return;
+  }
+  if (state.guest) { startGuest(); return; }
   unsubTicks = onSnapshot(collection(db, 'ticks'), { includeMetadataChanges: true }, safely('ticks', (snap) => {
     const ticks = {};
     snap.forEach((d) => { ticks[d.id] = { ...(d.data().k || {}) }; });
@@ -372,6 +380,7 @@ function startFirestore() {
     state.planX = { ...((snap.exists() && snap.data().x) || {}) }; // breakfast / lunch / dessert per day
     state.planDone = { ...((snap.exists() && snap.data().f) || {}) }; // finished today: day -> { slot: true }
     state.spots = [...((snap.exists() && snap.data().spots) || [])]; // our usual takeout spots
+    setTimeout(syncGuestFeast, 0);
     { const fs = { ...((snap.exists() && snap.data().fs) || {}) }; const moved = JSON.stringify(fs) !== JSON.stringify(state.feastShift || {}); state.feastShift = fs; if (moved && /^#\/meal\//.test(location.hash)) route(); } // big-meal timeline moved earlier or later
     if (changed('calendar', [state.plan, state.planX]) && /^#?\/?(calendar|past|planning)?$/.test(location.hash)) route(); // re-draw Calendar, Meals or Recipe Book
   }), (err) => listenerFailed('calendar', err));
@@ -475,7 +484,43 @@ async function resetLocalData() {
     setTimeout(() => location.reload(), 8000);
   }
 }
-function stopFirestore() { for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs, unsubNext]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = unsubNext = null; }
+// A guest (a helper for one feast, e.g. Thanksgiving) reads guest/feast (which feast, its day and time shift, written by
+// our phones), ticks for that feast only, the cooking timers, names and dish photos. Nothing else.
+let guestTickUnsubs = {};
+function startGuest() {
+  const { db } = state.firebase;
+  document.body.classList.add('guest');
+  state.plan = {}; state.planX = {}; state.feastShift = {};
+  unsubPlan = onSnapshot(doc(db, 'guest', 'feast'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
+    const m = (snap.exists() && snap.data().m) || {};
+    state.guest = { meals: m }; state.plan = {}; state.feastShift = {};
+    for (const [id, v] of Object.entries(m)) { if (v && v.day && v.rid) state.plan[v.day] = v.rid; if (v && v.fs) state.feastShift[id] = v.fs; }
+    for (const id of Object.keys(m)) if (!guestTickUnsubs[id]) guestTickUnsubs[id] = onSnapshot(doc(db, 'ticks', id), { includeMetadataChanges: true }, safely('ticks', (t) => {
+      state.ticks[id] = { ...((t.exists() && t.data().k) || {}) }; state.dbError = ''; updateSync(t.metadata.fromCache); refreshTicks();
+    }), (err) => listenerFailed('ticks', err));
+    syncLoaded('calendar', snap); route();
+  }), (err) => listenerFailed('calendar', err));
+  unsubSession = onSnapshot(doc(db, 'cooking', 'session'), { includeMetadataChanges: true }, safely('cooking', (snap) => {
+    const d = (snap.exists() && snap.data()) || {};
+    state.session = { dinner: { ...(d.dinner || {}) }, timers: { ...(d.timers || {}) } }; syncLoaded('cooking', snap); renderTimers();
+  }), (err) => listenerFailed('cooking', err));
+  unsubProfile = onSnapshot(collection(db, 'profiles'), safely('names', (snap) => {
+    const names = {}; snap.forEach((d) => { const x = d.data(); if (x.email) names[String(x.email).toLowerCase()] = x.name || ''; if (d.id === (state.user && state.user.uid)) state.myName = x.name || ''; });
+    state.names = names;
+  }), () => {});
+  unsubThumbs = onSnapshot(doc(db, 'photos', '_thumbs'), safely('photos', (snap) => { state.thumbs = { ...((snap.exists() && snap.data().t) || {}) }; thumbsLoaded = true; }), () => {});
+  route();
+}
+// Our phones keep guest/feast up to date: each feast in the Recipes tab, the day it's on the calendar and its time shift.
+function syncGuestFeast() {
+  if (!state.firebase || state.guest !== null || !state.model || !state.user) return;
+  const m = {};
+  for (const meal of state.model.meals.filter(isFeast)) m[meal.id] = { rid: meal.rid, day: tlDay(meal) || '', fs: feastShift(meal) };
+  const j = JSON.stringify(m); if (j === ls.get('guest-feast-sent', '')) return;
+  ls.set('guest-feast-sent', j);
+  setDoc(doc(state.firebase.db, 'guest', 'feast'), { m }).catch(() => ls.set('guest-feast-sent', ''));
+}
+function stopFirestore() { for (const k in guestTickUnsubs) { guestTickUnsubs[k](); delete guestTickUnsubs[k]; } for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs, unsubNext]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = unsubNext = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -1079,7 +1124,7 @@ function setRows(rows, info) {
   if (!model.meals.length && !model.past.length) throw new Error('No recipes found in recipes.xlsx. Is there a tab named "Recipes" with the usual columns?');
   const sig = JSON.stringify(rows);
   const changed = sig !== state.rowsSig;
-  state.rowsSig = sig; state.model = model;
+  state.rowsSig = sig; state.model = model; setTimeout(syncGuestFeast, 0);
   ls.set('recipes-cache', rows);
   state.recipeInfo = info; ls.set('recipes-info', info);
   if (changed) route();
@@ -2237,7 +2282,7 @@ function timelineHtml(meal, dayOnly = false) {
   const dayLabel = day ? (day === today ? 'Today' : fmtDay(keyToDate(day), { weekday: 'long', month: 'short', day: 'numeric' })) : 'Not on the calendar yet';
   return `<details class="card timeline" id="${esc(meal.id)}-timeline" open><summary class="plan-sum"><div class="planhead"><p class="section-label">Timeline</p><span class="plantime">${ICONS.cal} ${esc(dayLabel)}</span></div></summary>
     ${eat != null ? `<div class="tleat"><span>Eat at <strong>${fmtClock(eat)}</strong>${sh ? ` <span class="small">(${fmtDuration(Math.abs(sh))} ${sh > 0 ? 'later' : 'earlier'} than planned)</span>` : ''}</span>
-      <span class="tlshift"><button type="button" data-tlshift="-15" data-meal="${esc(meal.id)}" aria-label="15 minutes earlier">−15</button><button type="button" data-tlshift="15" data-meal="${esc(meal.id)}" aria-label="15 minutes later">+15</button>${sh ? `<button type="button" data-tlshift="0" data-meal="${esc(meal.id)}">Reset</button>` : ''}</span></div>` : ''}
+      <span class="tlshift"${state.guest ? ' hidden' : ''}><button type="button" data-tlshift="-15" data-meal="${esc(meal.id)}" aria-label="15 minutes earlier">−15</button><button type="button" data-tlshift="15" data-meal="${esc(meal.id)}" aria-label="15 minutes later">+15</button>${sh ? `<button type="button" data-tlshift="0" data-meal="${esc(meal.id)}">Reset</button>` : ''}</span></div>` : ''}
     <div class="tlbanner" data-tlbanner="${esc(meal.id)}">${tlBannerHtml(meal)}</div>
     ${before.length ? `<p class="section-label">Before the day</p><ul class="list tllist">${before.map((p) => row(p, false)).join('')}</ul>` : ''}
     <p class="section-label">${day === today ? 'Today' : 'On the day'}</p><ul class="list tllist">${rows.map((p) => row(p, true)).join('')}</ul></details>`;
@@ -2307,6 +2352,9 @@ function dishStart(meal, d) { // when a dish starts: the first plan row that men
 function dishProgress(meal, d) { const t = state.ticks[meal.id] || {}; const n = d.steps.filter((x) => t[x.key]).length; return { n, total: d.steps.length, done: d.steps.length > 0 && n === d.steps.length }; }
 function feastDishStatusHtml(meal, d) { const s = dishStart(meal, d), pr = dishProgress(meal, d); return pr.done ? '<p class="fdstatus done">✓ Done</p>' : s.text ? `<p class="fdstatus">Starts ${/^\d/.test(s.text) ? 'at ' : ''}${esc(s.text)}${pr.n ? ` · ${pr.n} of ${pr.total} steps done` : ''}</p>` : ''; }
 function hubSignature(meal) { return meal.dishes.map((d) => +dishProgress(meal, d).done).join('') + aheadDays(meal).map((g) => +g.rows.every((p) => tlRowDone(meal, p))).join(''); }
+function guestFooterHtml() {
+  return `<div class="guestfoot"><span>Signed in as ${esc((state.user && state.user.email) || '')}</span><button type="button" class="btn ghost" data-guestupdate>Check for updates</button><button type="button" class="btn ghost" id="signout">Sign out</button></div>`;
+}
 function renderFeastHub(meal) {
   setTitle(meal.title, true); setTab('meals'); curScale = scaleOf(meal.rid);
   const S = meal.id, ahead = aheadDays(meal), wd = feastWeekday(meal), today = dayKey(new Date());
@@ -2325,7 +2373,7 @@ function renderFeastHub(meal) {
   h += `<p class="section-label fhlabel">Dishes <span class="small">by when they start</span></p><div class="fgrid">${dishes.map(({ d, i, s, p }) =>
     `<a class="fbtn fdish ft-${d.type.toLowerCase()}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><em class="ftype">${esc(d.type)}</em><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
   h += `<a class="partof fhall" href="#/meal/${S}/all">Everything on one page<span>›</span></a>`;
-  h += ratingCardHtml(meal) + nextTimeCardHtml(meal);
+  h += state.guest ? guestFooterHtml() : ratingCardHtml(meal) + nextTimeCardHtml(meal);
   view().innerHTML = `<div class="feasthub" data-sig="${hubSignature(meal)}" data-meal="${esc(S)}">${h}</div>`;
   refreshTicks();
 }
@@ -2548,7 +2596,7 @@ function renderMeal(id, only) {
     h += '</section>';
   }
   h += '</div>';
-  if (!one) { h += ratingCardHtml(meal); h += nextTimeCardHtml(meal); }
+  if (!one && !state.guest) { h += ratingCardHtml(meal); h += nextTimeCardHtml(meal); }
   if (!one) h += `<button class="btn outline-danger" data-clear="${S}" data-label="${esc(meal.title)}">Clear ticks for this meal</button>`;
   view().innerHTML = h;
   fitJumpBar();
@@ -3128,8 +3176,9 @@ document.addEventListener('click', async (e) => {
     const a = document.createElement('a'); a.dataset.jump = go; a.hidden = true; document.body.appendChild(a); a.click(); a.remove();
     return;
   }
+  if (e.target.closest('[data-guestupdate]')) { checkForUpdates(); return; }
   const tls = e.target.closest('[data-tlshift]');
-  if (tls) { const meal = mealById(tls.dataset.meal); if (meal) { const v = +tls.dataset.tlshift; setFeastShift(meal.id, v ? feastShift(meal) + v : 0); } return; }
+  if (tls && !state.guest) { const meal = mealById(tls.dataset.meal); if (meal) { const v = +tls.dataset.tlshift; setFeastShift(meal.id, v ? feastShift(meal) + v : 0); } return; }
   const tlv = e.target.closest('[data-tlview]');
   if (tlv) { const meal = mealById(tlv.dataset.tlview); if (meal) openTimeline(meal); return; }
   const eqt = e.target.closest('[data-eqtip]');
@@ -3414,7 +3463,14 @@ let lastRoute = '', navCount = 0;
 function route() {
   if (state.firebase && !state.authReady) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   if (state.firebase && !state.user) { renderLogin(); return; }
-  $('#tabs').hidden = false;
+  $('#tabs').hidden = !!state.guest;
+  if (state.guest) { // a guest only sees the feast(s) shared with them
+    const ok = Object.keys(state.guest.meals || {}), [pg, ar] = location.hash.replace(/^#\/?/, '').split('/');
+    if (!(pg === 'meal' && ok.includes(decodeURIComponent(ar || '')))) {
+      if (ok.length && state.model && mealById(ok[0])) { location.replace('#/meal/' + ok[0]); return; }
+      setTitle(APP_NAME); view().innerHTML = `<p class="empty">${state.model ? 'Nothing has been shared with you yet.' : 'Loading…'}</p>${guestFooterHtml()}`; return;
+    }
+  }
   const hash = location.hash.replace(/^#\/?/, '');
   const [page, arg, sub] = hash.split('/');
   const keepScroll = hash === lastRoute;
@@ -3460,7 +3516,7 @@ function start() {
     state.firebase = { auth, db };
     onAuthStateChanged(auth, (user) => {
       state.user = user; state.authReady = true; state.dbError = '';
-      if (user) startFirestore(); else { stopFirestore(); state.ticks = {}; }
+      if (user) startFirestore(); else { stopFirestore(); state.ticks = {}; state.guest = undefined; document.body.classList.remove('guest'); }
       updateSync(true); route();
     });
   } else {

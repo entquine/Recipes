@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['124', ['Guest sign-in for a feast: a helper’s account (set up in Firebase) sees only the Thanksgiving page, its recipes, ticks, timers and timeline. They can’t see the calendar, other meals, ratings or shopping, and can’t move the dinner time.']],
   ['122', ['Shopping: with Thanksgiving planned, “Shop for” picks one dish (say the cheesecake bars): the list shows just its items and amounts, and ticking them counts for that dish only. (The menu uses short names, A to Z.)']],
   ['121', ['Timeline: pinch to zoom (or − / + / Fit), from the whole day on one screen up to close enough to read every 5-minute job.']],
   ['120', ['Thanksgiving page: a View Thursday’s timeline button right under the days.', 'Shopping: items for Thanksgiving say which dish they’re for (Turkey, Gravy, Mushrooms…) instead of just “Thanksgiving Dinner”.']],

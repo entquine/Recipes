@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Only these two accounts can read or change anything.
+    // Only these two accounts can read or change everything.
     // Replace the two addresses with yours (lower-case).
     function isUs() {
       return request.auth != null
@@ -10,5 +10,22 @@ service cloud.firestore {
     match /{document=**} {
       allow read, write: if isUs();
     }
+
+    // Guests: a helper for one feast (Thanksgiving). Replace the address with theirs (lower-case).
+    // They can read which feast is shared and its day, tick that feast's steps, use the cooking timers,
+    // see names and dish photos, and save their own name. Nothing else: no calendar, other meals,
+    // ratings, notes, ideas or shopping.
+    function isGuest() {
+      return request.auth != null
+        && request.auth.token.email.lower() in ['guest@example.com'];
+    }
+    match /guest/feast { allow read: if isGuest(); }
+    match /ticks/m-14-thanksgiving-dinner { allow read, write: if isGuest(); }
+    match /cooking/session { allow read, write: if isGuest(); }
+    match /profiles/{uid} {
+      allow read: if isGuest();
+      allow write: if isGuest() && request.auth.uid == uid;
+    }
+    match /photos/{id} { allow read: if isGuest(); }
   }
 }
