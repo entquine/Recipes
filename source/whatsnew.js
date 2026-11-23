@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['115', ['Meals: ✓ We made it (beside Pick a day, and in a recipe’s press-and-hold menu in the Recipe Book) marks a meal as made on a day you choose, even if it was never on the calendar. It counts as made, moves to Made before and comes off the shopping list (with Undo).']],
   ['114', ['Takeout: Edit spots is now the one place to add, rename, remove and reorder your spots, saved together; the takeout menu is just the list to pick from.']],
   ['113', ['Calendar: a Takeout choice for dinner or lunch, with your usual spots to pick from. Add a spot right there, or Edit spots to rename or remove them (shared by both phones).']],
   ['112', ['A recipe’s source can be plain text, like a cookbook: it shows “From the Purple People Cookbook” under the dish name.']],

@@ -84,8 +84,8 @@ a.meal-card:active { background: var(--surface-2); }
 .meal-card .eyebrow { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
 .meal-card h2 { margin: 2px 0 4px; font-size: 21px; line-height: 1.25; }
 .meal-card .sides { color: var(--muted); margin: 0 0 10px; }
-.meal-card .meta { display: flex; align-items: center; gap: 12px; font-size: 15px; }
-.meal-card .time { font-weight: 650; white-space: nowrap; }
+.meal-card .meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 15px; min-width: 0; }
+.meal-card .time { font-weight: 650; }
 .progress { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
 .bar { flex: 1; height: 8px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
 .bar > b { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 99px; transition: width .25s; }
@@ -977,3 +977,10 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .spotrow .spotdel { color: var(--danger); }
 .spotrow:first-child .spotmove { visibility: hidden; }
 .spotadd { width: 100%; margin: 0 0 4px; }
+/* We made it: beside Pick a day on a Meals card */
+.mc-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mc-actions .pickday { margin-top: 8px; }
+.madeitdate { display: flex; gap: 8px; align-items: center; margin: 10px 0 4px; min-width: 0; }
+.madeitdate .dlg-input { flex: 1 1 0; min-width: 0; width: 100%; margin: 0; }
+.madeitdate .btn { flex: none; white-space: nowrap; }
+.mc-actions { margin-bottom: 6px; }

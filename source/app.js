@@ -264,6 +264,7 @@ const state = {
   thumbs: {},              // photos/_thumbs: dish ID -> tiny JPEG for the Recipe Book list
   photos: {},              // photos/<dish ID>: dish ID -> shrunk JPEG (data URL), or null when there's none
   nextTime: {},            // notes/nexttime: main dish ID -> { text, email, at } (note for next time)
+  madeOff: {},            // history/adjust m: main dish ID -> days it was made without being on the calendar
   madeAdjust: {},          // history/adjust: dish ID -> change (+/-) to the counted times made
   retired: {},             // history/adjust r: dish ID -> when it was retired ("we didn't like it")
   ideas: {},               // Planning tab: recipe ideas, id -> { text, email, at, sent }
@@ -420,8 +421,9 @@ function startFirestore() {
     if (changed('next-time notes', state.nextTime) && /^#\/meal\//.test(location.hash)) route();
   }), (err) => listenerFailed('next-time notes', err));
   unsubAdjust = onSnapshot(doc(db, 'history', 'adjust'), { includeMetadataChanges: true }, safely('times made', (snap) => {
-    state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; state.retired = { ...((snap.exists() && snap.data().r) || {}) }; syncLoaded('times made', snap);
-    if (changed('times made', { a: state.madeAdjust, r: state.retired }) && /^#?\/?(past|planning)?$/.test(location.hash)) route();
+    state.madeAdjust = { ...((snap.exists() && snap.data().a) || {}) }; state.retired = { ...((snap.exists() && snap.data().r) || {}) }; const mo = { ...((snap.exists() && snap.data().m) || {}) }; syncLoaded('times made', snap);
+    const moChanged = JSON.stringify(mo) !== JSON.stringify(state.madeOff); state.madeOff = mo;
+    if ((changed('times made', { a: state.madeAdjust, r: state.retired }) && /^#?\/?(past|planning)?$/.test(location.hash)) || moChanged) route();
   }), (err) => listenerFailed('times made', err));
 }
 // Redraw only when a list's contents change, not when only its "confirmed by server" status changes.
@@ -1411,7 +1413,28 @@ function cookAction(a) {
 
 // Last made and times made: calendar days before today, plus the dish's "Made" row in the spreadsheet
 // (times made before the calendar). A side served in a current meal also counts that meal's calendar days.
-const pastDays = (rid) => { const today = dayKey(new Date()); return [...new Set(planList().filter(([k, v]) => k < today && planKey(v) === rid).map(([k]) => k))].sort(); };
+const pastDays = (rid) => { const today = dayKey(new Date()); return [...new Set([...planList().filter(([k, v]) => k < today && planKey(v) === rid).map(([k]) => k), ...((state.madeOff || {})[rid] || []).filter((k) => k <= today)])].sort(); }; // calendar days, plus days marked "We made it" (today counts at once)
+// "We made it": a meal made without being on the calendar. Saved as a day, so it counts like a calendar day (times made, Made before, off the shopping list).
+function writeMadeOff(rid, list) {
+  if (list.length) state.madeOff[rid] = list; else delete state.madeOff[rid];
+  route();
+  if (!state.firebase) { ls.set('local-madeoff', state.madeOff); return; }
+  setDoc(doc(state.firebase.db, 'history', 'adjust'), { m: { [rid]: list.length ? list : deleteField() } }, { merge: true }).catch((e) => toast('Could not save: ' + (e.code || e.message)));
+}
+async function madeItFor(meal) {
+  const today = dayKey(new Date()), y = new Date(); y.setDate(y.getDate() - 1); const yest = dayKey(y);
+  const r = await formDialog(`<p class="picktitle">We made ${esc(meal.main.name)}</p>
+    <p class="small">When? It counts as made that day, moves to Made before and comes off the shopping list.</p>
+    <div class="picklist"><button class="pickopt" value="${today}"><strong>Today</strong></button><button class="pickopt" value="${yest}"><strong>Yesterday</strong></button></div>
+    <div class="madeitdate"><input type="date" class="dlg-input" id="madeitday" max="${today}" value="${today}"><button class="btn ghost" value="pick">Use this day</button></div>
+    <div class="row-btns"><button class="btn ghost" value="">Cancel</button></div>`);
+  let day = r.value === 'pick' ? ($('#madeitday').value || '') : r.value;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) return;
+  if (day > today) day = today;
+  const before = [...((state.madeOff || {})[meal.rid] || [])];
+  writeMadeOff(meal.rid, [...new Set([...before, day])].sort());
+  undoToast(`${meal.main.name}: marked as made`, () => writeMadeOff(meal.rid, before));
+}
 function lastMade(meal) { return pastDays(meal.rid).pop() || null; }
 // calendar + spreadsheet. A side in a meal without its own Made row shares the main's (they were made together).
 // A side split off from a meal ("Made with" row): the days that meal was on the calendar, up to when the side was split off
@@ -1438,6 +1461,7 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
     <div class="menuphotobtns"><button type="button" class="photobtn" data-addphoto="${esc(id)}" hidden>${ICONS.camera} Add photo</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-replacephoto="${esc(id)}" hidden>Replace</button><button type="button" class="photobtn" data-hasphoto="${esc(id)}" data-removephoto="${esc(id)}" data-name="${esc(dish.name)}" hidden>Remove</button></div>
     ${rateable ? `<p class="small menulabel">Your rating</p><div class="menustars">${[1, 2, 3, 4, 5].map((k) => `<button type="button" data-menustar="${k}" aria-label="${k} star${k > 1 ? 's' : ''}">★</button>`).join('')}</div>` : ''}
     <div class="row-btns"><button class="btn ghost" value="">Cancel</button><button class="btn" value="save">Save</button></div>
+    ${rateable ? '<div class="row-btns retirerow"><button class="btn ghost" value="madeit">✓ We made it (pick the day)</button></div>' : ''}
     <div class="row-btns retirerow">${(state.retired || {})[id] ? '<button class="btn ghost" value="unretire">Bring it back</button>' : '<button class="btn ghost retirebtn" value="retire">Retire (we didn’t like it)</button>'}</div>`);
   const f = $('#formdlg');
   f.classList.add('centered'); // no keyboard here, so it can sit in the middle
@@ -1447,6 +1471,7 @@ async function madeMenu(meal, dish) { // press and hold a Recipe Book line: time
   f.querySelectorAll('[data-menustar]').forEach((b) => b.addEventListener('click', () => { const k = +b.dataset.menustar; stars = stars === k ? 0 : k; paint(); }));
   f.querySelectorAll('[data-step]').forEach((b) => b.addEventListener('click', () => { n = Math.max(0, Math.min(999, n + Number(b.dataset.step))); $('#madeval').textContent = n; }));
   const r = await dlg;
+  if (r.value === 'madeit') { madeItFor(meal); return; }
   if (r.value === 'retire') { setRetired(id, true); undoToast(`${dish.name} retired`, () => setRetired(id, false)); return; }
   if (r.value === 'unretire') { setRetired(id, false); toast(`${dish.name} is back`); return; }
   if (r.value !== 'save') return;
@@ -1461,7 +1486,7 @@ function lastMadeText(meal, dish = meal.main) {
   if (!n) return 'Not made yet';
   if (!k) return timesText(n) + (dish.madeNote ? ` · last ${dish.madeNote}` : '');
   const days = Math.round((keyToDate(dayKey(new Date())) - keyToDate(k)) / 86400000);
-  const ago = days <= 1 ? 'yesterday' : days < 14 ? `${days} days ago` : days < 60 ? `${Math.round(days / 7)} weeks ago` : `${Math.round(days / 30)} months ago`;
+  const ago = days <= 0 ? 'today' : days === 1 ? 'yesterday' : days < 14 ? `${days} days ago` : days < 60 ? `${Math.round(days / 7)} weeks ago` : `${Math.round(days / 30)} months ago`;
   return `${timesText(n)} · last ${ago}`;
 }
 // Suggestions for a day: well rated, and not had in a while (never made counts as a while)
@@ -1950,14 +1975,14 @@ function stepIngredients(dish, text) {
 function mealCardHtml(meal, tonight, label = 'Tonight') { // tonight: today's highlighted card; label: Tonight / For lunch / Dessert ...
   const ri = ratingInfo(meal.name);
   const sides = meal.sides.map((d) => esc(d.name)).join(' &amp; ');
-  const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;]/)[0]) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
+  const time = meal.planTotal ? esc(meal.planTotal.split(/[.,;(]/)[0].trim().replace(/\s+on \w+day$/i, '')) : meal.totalMin != null ? `≈ ${fmtDuration(meal.totalMin)}` : '';
   const timeAndProgress = `${time ? `<span class="time">${ICONS.timer} ${time}</span>` : ''}${progressHtml(meal.id, meal.keys)}`;
   return `<a class="card meal-card${tonight ? ' tonight-card' : ri.done ? ' rated' : ''}" href="#/meal/${meal.id}">
       <div class="eyebrow">${tonight ? `<span class="tonight-label">${esc(label)}</span>` : `${esc(meal.title)}${plannedChip(meal)}`}</div>
       ${(() => { const th = state.thumbs[dishKey(meal.main)]; return th ? `<div class="mc-titlerow"><h2>${esc(meal.main.name)}</h2><img class="mc-thumb" src="${th}" alt=""></div>` : `<h2>${esc(meal.main.name)}</h2>`; })()}
       ${sides ? `<p class="sides">with ${sides}</p>` : ''}
       ${tonight || !madeCount(meal) ? '' : `<p class="lastmade">${esc(lastMadeText(meal))}</p>`}
-      ${tonight || nextPlanned(meal.name) ? '' : `<span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span>`}
+      ${tonight || nextPlanned(meal.name) ? '' : `<span class="mc-actions"><span class="pickday" role="button" tabindex="0" data-pickday="${esc(meal.id)}">${ICONS.cal} Pick a day</span><span class="pickday madeit" role="button" tabindex="0" data-madeit="${esc(meal.id)}">✓ We made it</span></span>`}
       <div class="meta">${tonight ? timeAndProgress : ri.done ? `<span class="avg">${starsText(ri.avg, ri.mine)}</span>` : timeAndProgress}</div>
       ${tonight ? headStartReminder(meal) : ''}
       ${tonight ? (() => { const first = meal.starts.length ? meal.starts[0].dish : meal.dishes.find((x) => x.steps.length); const i = first ? meal.dishes.indexOf(first) : -1;
@@ -2747,6 +2772,8 @@ document.addEventListener('click', async (e) => {
   if (tc) { e.preventDefault(); const id = tc.dataset.tonightcook, tm = mealById(id), i = tm && tm.combined && ls.get('combined-view', true) ? -1 : +tc.dataset.dish; addEventListener('hashchange', () => openCook(id, i), { once: true }); location.hash = '#/meal/' + id; return; }
   const pd = e.target.closest('[data-pickday]');
   if (pd) { e.preventDefault(); const meal = mealById(pd.dataset.pickday); if (meal) pickDayFor(meal); return; }
+  const mi = e.target.closest('[data-madeit]');
+  if (mi) { e.preventDefault(); const meal = mealById(mi.dataset.madeit); if (meal) madeItFor(meal); return; }
   const hk = e.target.closest('[data-hintok]');
   if (hk) { ls.set(hk.dataset.hintok, true); route(); return; }
   const rp = e.target.closest('[data-replacephoto]');
@@ -3152,7 +3179,7 @@ function start() {
     state.bought = ls.get('local-bought', {}); state.amtOver = ls.get('local-amt', {}); state.scale = ls.get('local-scale', {}); state.shopOrder = ls.get('local-shoporder', []); state.need = ls.get('local-need', {}); state.store = ls.get('local-store', {}); state.dc = ls.get('local-dc', {}); state.check = ls.get('local-check', {});
     state.ideas = ls.get('local-ideas', {});
     state.nextTime = ls.get('local-nexttime', {});
-    state.madeAdjust = ls.get('local-adjust', {}); state.retired = ls.get('local-retired', {});
+    state.madeAdjust = ls.get('local-adjust', {}); state.retired = ls.get('local-retired', {}); state.madeOff = ls.get('local-madeoff', {});
     state.photos = ls.get('local-photos', {});
     state.thumbs = ls.get('local-thumbs', {}); thumbsLoaded = true;
     state.sync = 'local'; renderSync(); renderTimers();
