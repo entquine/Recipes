@@ -1549,6 +1549,11 @@ document.addEventListener('contextmenu', (e) => { if (e.target.closest('.item[da
 document.addEventListener('contextmenu', (e) => { if (!e.target.closest('input, textarea, [contenteditable="true"]')) e.preventDefault(); });
 // Press and hold a shopping line: change how much to buy (shared, with who changed it), or mark it as usually have.
 // A changed amount belongs to the meals the line was for at the time; if that changes, the recipe amount is back.
+function forList(parts) { // "Butter Chicken, Thanksgiving Dinner (Turkey, Gravy)"
+  const out = new Map();
+  for (const x of parts) { const k = mealLabel(x.meal); if (!out.has(k)) out.set(k, new Set()); if (isFeast(x.meal) && x.dish) out.get(k).add(cookTabName(x.meal, x.dish)); }
+  return [...out].map(([k, ds]) => (ds.size ? `${k} (${[...ds].join(', ')})` : k)).join(', ');
+}
 const lineParts = (l) => (l.done ? l.parts : l.open);
 const lineFor = (l) => [...new Set(lineParts(l).map((x) => x.rid))].sort().join(',');
 function amtOverride(l) { const o = (state.amtOver || {})[l.key]; return o && o.for === lineFor(l) ? o : null; }
@@ -1571,7 +1576,7 @@ async function lineMenu(key) {
   setTimeout(() => { const sel = $('#storesel'); if (sel) sel.addEventListener('change', () => { setStore(key, sel.value); toast(sel.value ? `${sel.value} item` : 'Standard store'); }); }, 0);
   const l = shopLines().find((x) => x.key === key); if (!l) return;
   const on = isStaple(l.item), o = amtOverride(l), recipeAmt = amountText(lineParts(l)) || 'as needed';
-  const forTxt = [...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', ');
+  const forTxt = forList(lineParts(l));
   const r = await formDialog(`<p class="picktitle">${esc(l.item)}</p>
     <p class="small" style="margin:0 0 10px">For: ${esc(forTxt)} · the recipe${lineParts(l).length > 1 ? 's' : ''} call${lineParts(l).length > 1 ? '' : 's'} for ${esc(recipeAmt)}${o ? `<br>Changed to ${esc(o.text)} by ${esc(nameFor(o.by, 'someone'))}` : ''}</p>
     <label class="small" for="amtin">How much to buy</label>
@@ -1631,7 +1636,7 @@ function shopLines() {
       if (!it.shop || it.shop.none) continue;
       const key = shopKey(it.shop.item);
       if (!lines.has(key)) lines.set(key, { key, item: it.shop.item, section: it.shop.section, parts: [] });
-      lines.get(key).parts.push({ rid: meal.rid, meal, qty: it.shop.qty == null || it.shop.qty === '' ? it.shop.qty : it.shop.qty * scaleOf(meal.rid), unit: it.shop.unit });
+      lines.get(key).parts.push({ rid: meal.rid, meal, dish: d, qty: it.shop.qty == null || it.shop.qty === '' ? it.shop.qty : it.shop.qty * scaleOf(meal.rid), unit: it.shop.unit });
     }
   }
   for (const l of lines.values()) {
@@ -1753,7 +1758,7 @@ function renderAutoShopping(m) {
   const row = (l, inStaples) => { const o = amtOverride(l), amt = o ? o.text : amountText(lineParts(l)), needed = isStaple(l.item) && !inStaples;
     return `<li class="item gline${l.done ? ' done' : ''}${inStaples && !l.done ? ' hasneed' : ''}" data-line="${esc(l.key)}" data-name="${esc(l.item)}" role="checkbox" aria-checked="${l.done}" tabindex="0"><span class="box">${CHECK_SVG}</span>
     <span class="body"><strong>${esc(l.item)}</strong>${amt ? ` · ${o ? '<span class="amtchanged">' : ''}${esc(amt)}${o ? '</span>' : ''}` : ''}${l.partly ? ' <span class="more">more</span>' : ''}
-    <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}For: ${esc([...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
+    <span class="sub">${(state.store || {})[l.key] ? `<span class="storechip">${esc(state.store[l.key])}</span> ` : ''}${needed ? 'Running low · ' : ''}For: ${esc(forList(lineParts(l)))}${o ? ` · amount changed by ${esc(nameFor(o.by, 'someone'))}` : ''}</span></span>${inStaples && !l.done ? `<button class="needbtn" data-need="${esc(l.key)}" aria-label="Need ${esc(l.item)} this time">+ Need</button>` : ''}</li>`; };
   const away = (l) => isStaple(l.item) && !(state.need || {})[l.key]; // staples stay in "Usually have" unless marked as needed this time
   let h = '';
   // Store filter: only offered while a specialty store has something left to buy; everything shows by default
@@ -1768,7 +1773,7 @@ function renderAutoShopping(m) {
   const dcRow = (key, name, amt, sub, extra) => `<li class="dcrow"><span class="body"><strong>${esc(name)}</strong>${amt ? ` · ${esc(amt)}` : ''}<span class="sub">${esc(sub)}</span></span>
       <span class="dcbtns"><button class="btn ghost" data-dchave="${esc(key)}"${extra ? ' data-extra="1"' : ''}>✓ Have it</button><button class="btn ghost" data-dcneed="${esc(key)}">Buy it</button></span></li>`;
   if (dcl.length + dcx.length) h += `<section class="card dcheck"><p class="section-label">Before you go: check the pantry <span class="bk-count">${dcl.length + dcx.length}</span></p><ul class="list">${dcl.map((l) => { const o = amtOverride(l);
-    return dcRow(l.key, l.item, o ? o.text : amountText(lineParts(l)), 'For: ' + [...new Set(lineParts(l).map((x) => mealLabel(x.meal)))].join(', '), false); }).join('')}${dcx.map(([id, x]) => dcRow(extraKey(id), x.name, x.amount, 'Added by ' + nameFor(x.email), true)).join('')}</ul></section>`;
+    return dcRow(l.key, l.item, o ? o.text : amountText(lineParts(l)), 'For: ' + forList(lineParts(l)), false); }).join('')}${dcx.map(([id, x]) => dcRow(extraKey(id), x.name, x.amount, 'Added by ' + nameFor(x.email), true)).join('')}</ul></section>`;
   for (const sec of sections) {
     const here = lines.filter((l) => l.section === sec && !away(l) && !l.mealDone && !dcl.includes(l) && (!only || (state.store || {})[l.key] === only)).sort((a, b) => a.done - b.done || a.item.localeCompare(b.item));
     const rows = here.map((l) => row(l)).join('') + extrasListHtml(sec, false, only);
@@ -2290,6 +2295,7 @@ function renderFeastHub(meal) {
   h += `<div class="listhead">${progressHtml(S, meal.keys)}</div>`;
   h += `<div class="tlbanner" data-tlbanner="${esc(S)}">${tlBannerHtml(meal)}</div>`;
   h += `<p class="section-label fhlabel">Days</p><div class="fgrid">${days.join('')}</div>`;
+  if (meal.uses.length || rows.length) h += `<button type="button" class="btn tlviewbtn fhtl" data-tlview="${esc(S)}">${ICONS.cal} View ${esc(wd)}’s timeline</button>`;
   h += `<p class="section-label fhlabel">Dishes <span class="small">by when they start</span></p><div class="fgrid">${dishes.map(({ d, i, s, p }) =>
     `<a class="fbtn fdish ft-${d.type.toLowerCase()}${p.done ? ' done' : ''}" href="#/meal/${S}/${i}"><em class="ftype">${esc(d.type)}</em><b>${esc(d.name)}</b><span>${p.done ? '✓ Done' : `${s.text ? `Starts ${/^\d/.test(s.text) ? '' : ''}${esc(s.text)}` : esc(d.type)}${p.n ? ` · ${p.n}/${p.total}` : ''}`}</span></a>`).join('')}</div>`;
   h += `<a class="partof fhall" href="#/meal/${S}/all">Everything on one page<span>›</span></a>`;

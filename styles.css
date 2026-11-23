@@ -1091,3 +1091,4 @@ html .tbar.dish::before { display: none; }
 .tlnowline { position: absolute; top: 26px; bottom: 0; width: 2px; margin-left: 96px; background: var(--danger); z-index: 1; pointer-events: none; }
 .tlnowline { margin-left: 108px; }
 .tldetail { margin: 0; padding: 10px 16px calc(env(safe-area-inset-bottom, 0px) + 12px); border-top: 1px solid var(--line); font-size: 14.5px; background: var(--surface); }
+.fhtl { margin-top: 10px; }
