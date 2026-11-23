@@ -984,3 +984,39 @@ details.todaybox:not([open]) > summary.todaylabel { margin: 0 4px; } /* folded: 
 .madeitdate .dlg-input { flex: 1 1 0; min-width: 0; width: 100%; margin: 0; }
 .madeitdate .btn { flex: none; white-space: nowrap; }
 .mc-actions { margin-bottom: 6px; }
+/* Big meals: timeline with clock times */
+.timeline .tleat { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 10px; font-size: 15.5px; }
+.tlshift { display: inline-flex; gap: 6px; }
+.tlshift button { min-width: 44px; height: 34px; padding: 0 10px; border-radius: 10px; border: 1.5px solid var(--line); background: var(--surface); color: var(--ink); font-weight: 700; font-size: 14px; cursor: pointer; }
+.tlbanner:empty { display: none; }
+.tlbanner { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
+.tlbanner p { margin: 0; padding: 9px 12px; border-radius: 12px; background: var(--accent-bg, rgba(31,110,104,.10)); font-size: 14.5px; line-height: 1.35; }
+.tlbanner .tlnow { background: var(--warn-bg); color: var(--warn-ink); }
+.tlbanner .tlwhen { display: block; font-weight: 750; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; margin-bottom: 2px; }
+.mc-tl { margin: 10px 0 0; }
+.item.tlrow { grid-template-columns: 44px 76px minmax(0, 1fr); }
+.item.tlrow:not([data-tlat]) { grid-template-columns: 44px minmax(0, 1fr); }
+.tlrow .tltime { font-weight: 750; font-variant-numeric: tabular-nums; font-size: 14px; padding-top: 2px; white-space: nowrap; }
+.tlrow .tltext { min-width: 0; }
+.tlrow.late:not(.done) .tltime { color: var(--danger); }
+/* Oven, stove & grill lanes */
+.eqchart { position: relative; margin: 6px 0 8px; }
+.eqaxis { position: relative; height: 18px; margin-left: 74px; font-size: 11.5px; color: var(--muted); }
+.eqaxis span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.eqaxis span:first-child { transform: none; }
+.eqaxis span.last { transform: translateX(-100%); }
+.eqlane { display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.eqname { flex: none; width: 66px; font-size: 13px; font-weight: 700; padding-top: 4px; overflow-wrap: anywhere; }
+.eqtrack { position: relative; flex: 1; min-width: 0; }
+.eqgrid { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); opacity: .6; }
+.eqbar { position: absolute; height: 22px; padding: 0 5px; border: 0; border-radius: 4px; background: var(--accent); color: var(--accent-ink, #fff); font-size: 11.5px; font-weight: 650; text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: pointer; }
+.eqbar span { display: block; overflow: hidden; text-overflow: ellipsis; line-height: 22px; }
+.eqbar.clash { background: var(--danger); }
+.eqnow { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--danger); border-radius: 1px; }
+.eqwarn { color: var(--danger); }
+.eqclash { margin-bottom: 8px; }
+.eqlist { list-style: none; margin: 0 0 8px; padding: 0; }
+.eqlist li { display: flex; gap: 10px; padding: 4px 0; font-size: 14.5px; }
+.eqlist li .tltime { flex: none; min-width: 132px; font-weight: 700; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.eqlist li.clash { color: var(--danger); }
+.eqfold h4 { margin: 8px 0 2px; }

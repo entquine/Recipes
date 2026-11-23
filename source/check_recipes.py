@@ -8,7 +8,7 @@ import sys
 
 import openpyxl
 
-SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made", "made with", "again", "ahead", "source"}
+SECTIONS = {"makes", "plan total", "plan first", "plan", "ingredient", "step", "tip", "made", "made with", "again", "ahead", "source", "clock", "uses"}
 RECIPE_COLS = ["Recipe", "Type", "Meal", "Section", "Group", "Order", "Amount", "Text", "ID"]
 SHOP_COLS = ["Item", "Amount", "Section", "Used in", "List"]
 ALL_IDS = {}  # dish ID -> (tab, meal, dish), across both tabs
@@ -119,6 +119,15 @@ def check_meals(ws, tab, errors, warnings):
                 errors.append(f"{where}: Made with needs the old main dish's ID in Text (e.g. d-lemon-herb-chicken-cutlets), found {text!r}")
             if amount not in (None, "") and not re.match(r"^\d{4}-\d{2}-\d{2}$", str(amount).strip()):
                 errors.append(f"{where}: Made with Amount should be the date it was split off, as YYYY-MM-DD, found {amount!r}")
+        if s == "clock" and not re.fullmatch(r"\d{1,2}:\d{2}\s*(AM|PM)", str(amount or "").strip(), re.I):
+            errors.append(f"{where}: Clock needs the clock time of the plan's 0:00 in Amount, e.g. 10:15 AM, found {amount!r}")
+        if s == "uses":
+            if not str(group or "").strip():
+                errors.append(f"{where}: Uses needs the equipment in Group (Oven, Stove, Grill, Air fryer...)")
+            if not re.fullmatch(r"\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}", str(amount or "").strip()):
+                errors.append(f"{where}: Uses needs a time range in Amount, on the Plan's clock, e.g. 1:30-4:15, found {amount!r}")
+        if s in ("clock", "uses"):
+            d["planrows"] += 1
         if s == "source" and not str(text or "").strip():
             warnings.append(f"{where}: Source needs a web address (https://...) or where it's from, e.g. 'Purple People Cookbook'")
         if s == "made":

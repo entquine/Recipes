@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['116', ['Big meals (Thanksgiving): a Timeline with real clock times, from the day before through to Eat, with −15 / +15 to move the whole day (both phones). On the day it shows what’s due now and next, and gives a heads-up when a step comes due while the app is open.', 'An Oven, stove & grill chart shows what’s in each one when, and warns about clashes (two oven temperatures at once, too many burners).', 'The ham is now part of the Thanksgiving dinner, so one plan covers everything.']],
   ['115', ['Meals: ✓ We made it (beside Pick a day, and in a recipe’s press-and-hold menu in the Recipe Book) marks a meal as made on a day you choose, even if it was never on the calendar. It counts as made, moves to Made before and comes off the shopping list (with Undo).']],
   ['114', ['Takeout: Edit spots is now the one place to add, rename, remove and reorder your spots, saved together; the takeout menu is just the list to pick from.']],
   ['113', ['Calendar: a Takeout choice for dinner or lunch, with your usual spots to pick from. Add a spot right there, or Edit spots to rename or remove them (shared by both phones).']],
