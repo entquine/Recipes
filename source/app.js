@@ -371,7 +371,7 @@ function startFirestore() {
   }), (err) => {
     console.error(err);
     state.dbError = err.code === 'permission-denied'
-      ? 'This account is not allowed to read the shared ticks. Check the two email addresses in the Firestore rules (SETUP.md step 4).'
+      ? 'This account isn’t allowed to see the shared lists.'
       : 'Sync error: ' + (err.code || err.message);
     state.sync = 'error'; renderSync(); route();
   });
@@ -2944,7 +2944,6 @@ function renderLogin(err = '') {
   setTitle(APP_NAME, false);
   $('#tabs').hidden = true;
   view().innerHTML = `<section class="card login"><h2>Sign in</h2>
-    <p class="small">Use the email and password you set up in Firebase (SETUP.md step 2). You only do this once per phone.</p>
     <form id="loginform">
       <label class="field">Email<input type="email" id="email" autocomplete="username" required value="${esc(ls.get('last-email', ''))}"></label>
       <label class="field">Password<input type="password" id="password" autocomplete="current-password" required></label>
