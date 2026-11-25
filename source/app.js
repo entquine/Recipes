@@ -2454,7 +2454,7 @@ function openTimeline(meal) {
   body += whats.map((w) => lane(esc(w), uses.filter((u) => u.what === w).sort((a, b) => a.a - b.a).map((u) => ({ a: u.a, b: u.b, label: u.text, tip: `${fmtClock(u.a)}–${fmtClock(u.b)} · ${w}: ${u.text}`, cls: 'eq' + (bad.has(u.text + u.from) ? ' clash' : '') })))).join('');
   body += `<div class="tlsep">Dishes</div>`;
   body += dishLanes.map(({ d, from, to, jobs }) => lane(`<span class="${d.chip} tldot"></span>${esc(cookTabName(meal, d))}`, [{ a: from, b: to, label: d.name, tip: `${d.name}: ${jobs.map((p) => `${fmtClock(tlClock(meal, p.min))} ${tlStrip(p.text)}`).join(' · ')}`, cls: `dish ${d.chip}` }], ' dl')).join('');
-  if (isToday && now >= lo && now <= hi) body += `<i class="tlnowline" style="left:${at(now)}"></i>`;
+  if (isToday) body += `<i class="tlnowline" hidden><b></b></i>`; // on the day: a line at the time now, moving along
   let dlg = $('#tldlg'); if (!dlg) { dlg = document.createElement('dialog'); dlg.id = 'tldlg'; document.body.appendChild(dlg); }
   dlg.innerHTML = `<div class="tldhead"><div><p class="section-label">Timeline</p><h2>${esc(meal.title)}</h2></div><button type="button" class="btn ghost" data-tlclose>Close</button></div>
     <div class="tlzoom"><span class="small">Pinch to zoom.${ahead.length ? ` Made ahead: ${ahead.map((d) => esc(cookTabName(meal, d))).join(', ')}.` : ''}</span><span class="tlzbtns"><button type="button" data-tlz="out" aria-label="Zoom out">−</button><button type="button" data-tlz="fit">Fit</button><button type="button" data-tlz="in" aria-label="Zoom in">+</button></span></div>
@@ -2482,8 +2482,11 @@ function openTimeline(meal) {
   sc.addEventListener('touchend', (e) => { if (e.touches.length < 2) pinch = null; }, { passive: true });
   sc.addEventListener('gesturestart', (e) => e.preventDefault()); // Safari: don't zoom the whole page
   sc.addEventListener('wheel', (e) => { if (!e.ctrlKey) return; e.preventDefault(); const r = sc.getBoundingClientRect(); zoomTo(px * Math.exp(-e.deltaY / 200), e.clientX - r.left); }, { passive: false }); // trackpad pinch on a computer
-  apply();
-  if (isToday && now > lo) sc.scrollLeft = Math.max(0, ((now - lo) / 60) * px - 60);
+  px = fitPx(); apply(); // opens zoomed out: the whole day on one screen
+  const nowLine = dlg.querySelector('.tlnowline');
+  const moveNow = () => { if (!nowLine || !dlg.open) return; const n = nowMinutes(), show = tlDay(meal) === dayKey(new Date()) && n >= lo && n <= hi;
+    nowLine.hidden = !show; if (show) { nowLine.style.left = at(n); nowLine.firstChild.textContent = fmtClock(n); } };
+  moveNow(); const nowTimer = setInterval(() => { if (!dlg.open) { clearInterval(nowTimer); return; } moveNow(); }, 20000);
   keepLabels();
 }
 function setFeastShift(id, n) {
