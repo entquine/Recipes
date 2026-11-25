@@ -512,6 +512,7 @@ async function resetLocalData() {
 let guestTickUnsubs = {};
 function startGuest() {
   const { db } = state.firebase;
+  if (!document.body.classList.contains('guest') && !/^#\/meal\//.test(location.hash)) location.replace('#/'); // just signed in: start on the feast
   document.body.classList.add('guest');
   state.plan = {}; state.planX = {}; state.feastShift = {};
   unsubPlan = onSnapshot(doc(db, 'guest', 'feast'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
@@ -2904,7 +2905,7 @@ function renderShopping() {
   const m = state.model;
   if (!m) { view().innerHTML = '<p class="loading">Loading…</p>'; return; }
   let h = banners();
-  h += `<details class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}${notesOpen ? ' open' : ''}><summary id="notesummary">${notesSummaryHtml()}</summary>
+  if (!state.guest) h += `<details class="card notes" id="notescard"${Object.keys(state.notes).length ? '' : ' hidden'}${notesOpen ? ' open' : ''}><summary id="notesummary">${notesSummaryHtml()}</summary>
     <ul id="notelist" class="list notelist">${notesListHtml()}</ul></details>`;
   h += `<div class="listhead">${progressHtml(SHOP(), m.shopKeys)}</div>
     <div class="shoptools"><label class="switch hidetoggle"><input type="checkbox" id="hideticked"${ls.get('hide-ticked', false) ? ' checked' : ''}><span>Hide ticked</span></label><button class="btn ghost addinline" id="addinline">＋ Add item</button></div>
@@ -3545,7 +3546,10 @@ function start() {
     state.firebase = { auth, db };
     onAuthStateChanged(auth, (user) => {
       state.user = user; state.authReady = true; state.dbError = '';
-      if (user) startFirestore(); else { stopFirestore(); state.ticks = {}; state.guest = undefined; document.body.classList.remove('guest'); }
+      if (user) startFirestore(); else { // signed out: forget everything shared, so the next account (e.g. a guest) starts clean
+        stopFirestore(); state.guest = undefined; document.body.classList.remove('guest');
+        Object.assign(state, { ticks: {}, notes: {}, extras: {}, plan: {}, planX: {}, planDone: {}, ratings: {}, bought: {}, amtOver: {}, need: {}, store: {}, check: {}, dc: {}, staples: {}, ideas: {}, nextTime: {}, madeAdjust: {}, retired: {}, madeOff: {}, feastShift: {}, spots: [] });
+      }
       updateSync(true); route();
     });
   } else {

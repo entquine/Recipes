@@ -1,7 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
-  ['130', ['Timeline opens zoomed out to fit the whole day. On the day itself a red line with the time shows where you are, moving along as time passes.']],
+  ['130', ['Timeline opens zoomed out to fit the whole day. On the day itself a red line with the time shows where you are, moving along as time passes.', 'A guest never sees your shopping-list notes, and signing out clears what the phone was holding, so the next account starts clean.']],
   ['129', ['A guest gets a Shopping tab with just the Thanksgiving items (and the Shop for menu). Their ticks and yours are shared.']],
   ['124', ['Guest sign-in for a feast: a helper’s account (set up in Firebase) sees only the Thanksgiving page, its recipes, ticks, timers and timeline. They can’t see the calendar, other meals, ratings or shopping, and can’t move the dinner time.', 'The sign-in screen is just email and password (no setup note).', 'A guest gets two tabs: Meals (straight to Thanksgiving) and Settings (screen on, updates, colour, name, sign out; no What’s new). The −15 / +15 buttons are hidden for a guest.']],
   ['122', ['Shopping: with Thanksgiving planned, “Shop for” picks one dish (say the cheesecake bars): the list shows just its items and amounts, and ticking them counts for that dish only. (The menu uses short names, A to Z.)']],
