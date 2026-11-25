@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     // Guests: a helper for one feast (Thanksgiving). Replace the address with theirs (lower-case).
-    // They can read which feast is shared and its day, tick that feast's steps, use the cooking timers,
+    // They can read which feast is shared and its day, tick that feast's steps and shopping, use the cooking timers,
     // see names and dish photos, and save their own name. Nothing else: no calendar, other meals,
     // ratings, notes, ideas or shopping.
     function isGuest() {
@@ -20,6 +20,7 @@ service cloud.firestore {
         && request.auth.token.email.lower() in ['guest@example.com'];
     }
     match /guest/feast { allow read: if isGuest(); }
+    match /guest/shop { allow read, write: if isGuest(); }
     match /ticks/m-14-thanksgiving-dinner { allow read, write: if isGuest(); }
     match /cooking/session { allow read, write: if isGuest(); }
     match /profiles/{uid} {

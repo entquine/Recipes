@@ -1111,7 +1111,9 @@ html .tbar.dish::before { display: none; }
 .dishfilter.on { border-color: var(--c0); background: var(--c0-soft); }
 .dishfilter select { flex: 1; min-width: 0; font: inherit; font-weight: 650; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
 /* Guest (one feast only): no tabs, no photo or rating controls */
-body.guest #tabs a[data-tab="calendar"], body.guest #tabs a[data-tab="planning"], body.guest #tabs a[data-tab="shopping"] { display: none !important; }
+body.guest #tabs a[data-tab="calendar"], body.guest #tabs a[data-tab="planning"] { display: none !important; }
 body.guest .tlshift, .tlshift[hidden], body.guest [data-addphoto], body.guest [data-replacephoto], body.guest [data-removephoto], body.guest .rate-link, body.guest #quickname { display: none !important; }
 .guestfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 20px 0 8px; color: var(--muted); font-size: 14px; }
 .guestfoot span { flex: 1 1 100%; }
+/* Guest shopping: tick only (no adding, + Need, or tips about press and hold) */
+body.guest #addinline, body.guest .needbtn, body.guest .staplehint, body.guest #notescard { display: none !important; }

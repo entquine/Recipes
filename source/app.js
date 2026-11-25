@@ -295,6 +295,7 @@ const CFG = window.APP_CONFIG || {};
 const fbConfig = CFG.firebase && CFG.firebase.apiKey && CFG.firebase.projectId ? CFG.firebase : null;
 
 // ---------------------------------------------------------------- ticks store
+let unsubFeastShop = null;
 let unsubSession = null, unsubStaples = null, unsubBought = null, unsubIdeas = null, unsubAdjust = null, unsubNext = null, unsubThumbs = null, thumbsLoaded = false, boughtLoaded = false, ticksLoaded = false, extrasLoaded = false, unsubTicks = null, unsubPlan = null, unsubRatings = null, unsubNotes = null, unsubProfile = null, unsubExtras = null, lastSnapPending = false;
 
 // The shopping page fills at least the screen, so its buttons sit just above the tabs when the list is short
@@ -305,6 +306,27 @@ function fitShopPage() {
 }
 addEventListener('resize', () => { if (document.querySelector('.shopfoot')) fitShopPage(); });
 // Tick everything on the shopping list at once (staples stay as they are), with Undo.
+// Bought marks: a feast's (Thanksgiving's) live in guest/shop, which a guest may read and change; everything else in shopping/bought.
+const isFeastRid = (rid) => !!state.model && state.model.meals.some((m) => isFeast(m) && m.rid === rid);
+function saveBoughtRids(rids) {
+  if (!state.firebase) { ls.set('local-bought', state.bought); return; }
+  const main = {}, feast = {};
+  for (const rid of new Set(rids)) { const v = state.bought[rid]; (isFeastRid(rid) ? feast : main)[rid] = v && Object.keys(v.i || {}).length ? v : deleteField(); }
+  const put = (a, b, bb) => { const ks = Object.keys(bb); if (!ks.length) return; setDoc(doc(state.firebase.db, a, b), { b: bb }, { mergeFields: ks.map((rid) => new FieldPath('b', rid)) }).catch((err) => toast('Could not save: ' + (err.code || err.message))); };
+  if (!state.guest) put('shopping', 'bought', main);
+  put('guest', 'shop', feast);
+}
+// owners: put the two together (and move a feast's old marks from shopping/bought into guest/shop, once)
+let boughtMain = {}, boughtFeast = {}, feastShopLoaded = false;
+function mergeBought() {
+  const b = { ...boughtMain }, move = [];
+  for (const rid of Object.keys(boughtMain)) if (isFeastRid(rid)) { if (feastShopLoaded && !(rid in boughtFeast)) move.push(rid); }
+  Object.assign(b, boughtFeast); state.bought = b;
+  if (move.length && boughtLoaded && state.firebase && !state.guest) {
+    setDoc(doc(state.firebase.db, 'guest', 'shop'), { b: Object.fromEntries(move.map((rid) => [rid, boughtMain[rid]])) }, { merge: true })
+      .then(() => setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: Object.fromEntries(move.map((rid) => [rid, deleteField()])) }, { merge: true })).catch(() => {});
+  }
+}
 function markAllBought() {
   const before = JSON.parse(JSON.stringify(state.bought)), today = dayKey(new Date()), ticked = [];
   for (const l of shopLines()) {
@@ -316,10 +338,7 @@ function markAllBought() {
   }
   const t = state.ticks[SHOP()] || {};
   for (const [id, x] of Object.entries(state.extras)) if (!isStaple(x.name) && !t[extraKey(id)]) ticked.push(extraKey(id));
-  const saveBought = () => {
-    if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }, { mergeFields: ['b'] }).catch((err) => toast('Could not save: ' + (err.code || err.message)));
-    else ls.set('local-bought', state.bought);
-  };
+  const saveBought = () => saveBoughtRids([...Object.keys(before), ...Object.keys(state.bought)]);
   saveBought(); ticked.forEach((k) => setTick(SHOP(), k, true)); route();
   undoToast('Everything marked as bought', () => { state.bought = before; saveBought(); ticked.forEach((k) => setTick(SHOP(), k, false)); route(); });
 }
@@ -419,13 +438,17 @@ function startFirestore() {
   unsubStaples = onSnapshot(doc(db, 'shopping', 'staples'), { includeMetadataChanges: true }, safely('staples', (snap) => {
     state.staples = { ...((snap.exists() && snap.data().s) || {}) }; syncLoaded('staples', snap);
     if (changed('staples', state.staples)) renderExtras();
+    setTimeout(syncGuestFeast, 0);
   }), (err) => listenerFailed('staples', err));
   unsubBought = onSnapshot(doc(db, 'shopping', 'bought'), { includeMetadataChanges: true }, safely('bought', (snap) => {
     const dd = (snap.exists() && snap.data()) || {};
-    state.bought = { ...(dd.b || {}) }; state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; state.dc = { ...(dd.dc || {}) }; state.check = { ...(dd.check || {}) }; syncLoaded('bought', snap);
+    boughtMain = { ...(dd.b || {}) }; mergeBought(); setTimeout(syncGuestFeast, 0); state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; state.dc = { ...(dd.dc || {}) }; state.check = { ...(dd.check || {}) }; syncLoaded('bought', snap);
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
     if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need, st: state.store, dc: state.dc, ck: state.check })) renderExtras();
   }), (err) => listenerFailed('bought', err));
+  unsubFeastShop = onSnapshot(doc(db, 'guest', 'shop'), safely('bought', (snap) => {
+    boughtFeast = { ...((snap.exists() && snap.data().b) || {}) }; feastShopLoaded = true; mergeBought(); renderExtras();
+  }), () => {});
   unsubIdeas = onSnapshot(doc(db, 'ideas', 'list'), { includeMetadataChanges: true }, safely('ideas', (snap) => {
     state.ideas = { ...((snap.exists() && snap.data().i) || {}) }; syncLoaded('ideas', snap);
     if (changed('ideas', state.ideas) && /^#\/ideas/.test(location.hash)) route();
@@ -494,6 +517,8 @@ function startGuest() {
   unsubPlan = onSnapshot(doc(db, 'guest', 'feast'), { includeMetadataChanges: true }, safely('calendar', (snap) => {
     const m = (snap.exists() && snap.data().m) || {};
     state.guest = { meals: m }; state.plan = {}; state.feastShift = {};
+    const sh = (snap.exists() && snap.data().shop) || {};
+    state.staples = { ...(sh.staples || {}) }; state.need = { ...(sh.need || {}) }; state.store = { ...(sh.store || {}) }; state.shopOrder = sh.order || [];
     for (const [id, v] of Object.entries(m)) { if (v && v.day && v.rid) state.plan[v.day] = v.rid; if (v && v.fs) state.feastShift[id] = v.fs; }
     for (const id of Object.keys(m)) if (!guestTickUnsubs[id]) guestTickUnsubs[id] = onSnapshot(doc(db, 'ticks', id), { includeMetadataChanges: true }, safely('ticks', (t) => {
       state.ticks[id] = { ...((t.exists() && t.data().k) || {}) }; state.dbError = ''; updateSync(t.metadata.fromCache); refreshTicks();
@@ -504,6 +529,9 @@ function startGuest() {
     const d = (snap.exists() && snap.data()) || {};
     state.session = { dinner: { ...(d.dinner || {}) }, timers: { ...(d.timers || {}) } }; syncLoaded('cooking', snap); renderTimers();
   }), (err) => listenerFailed('cooking', err));
+  unsubFeastShop = onSnapshot(doc(db, 'guest', 'shop'), safely('bought', (snap) => { // Thanksgiving's bought marks, shared with us
+    state.bought = { ...((snap.exists() && snap.data().b) || {}) }; boughtLoaded = true; if (/^#\/shopping/.test(location.hash)) renderExtras();
+  }), (err) => listenerFailed('bought', err));
   unsubProfile = onSnapshot(collection(db, 'profiles'), safely('names', (snap) => {
     const names = {}; snap.forEach((d) => { const x = d.data(); if (x.email) names[String(x.email).toLowerCase()] = x.name || ''; if (d.id === (state.user && state.user.uid)) state.myName = x.name || ''; });
     state.names = names;
@@ -516,11 +544,13 @@ function syncGuestFeast() {
   if (!state.firebase || state.guest !== null || !state.model || !state.user) return;
   const m = {};
   for (const meal of state.model.meals.filter(isFeast)) m[meal.id] = { rid: meal.rid, day: tlDay(meal) || '', fs: feastShift(meal) };
-  const j = JSON.stringify(m); if (j === ls.get('guest-feast-sent', '')) return;
+  const fl = shopLines().filter((l) => l.parts.some((x) => isFeast(x.meal))), shop = { staples: {}, need: {}, store: {}, order: state.shopOrder || [] };
+  for (const l of fl) { if (isStaple(l.item)) shop.staples[stapleId(l.item)] = true; if ((state.need || {})[l.key]) shop.need[l.key] = true; if ((state.store || {})[l.key]) shop.store[l.key] = state.store[l.key]; }
+  const j = JSON.stringify({ m, shop }); if (j === ls.get('guest-feast-sent', '')) return;
   ls.set('guest-feast-sent', j);
-  setDoc(doc(state.firebase.db, 'guest', 'feast'), { m }).catch(() => ls.set('guest-feast-sent', ''));
+  setDoc(doc(state.firebase.db, 'guest', 'feast'), { m, shop }).catch(() => ls.set('guest-feast-sent', ''));
 }
-function stopFirestore() { for (const k in guestTickUnsubs) { guestTickUnsubs[k](); delete guestTickUnsubs[k]; } for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs, unsubNext]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = unsubNext = null; }
+function stopFirestore() { if (unsubFeastShop) { unsubFeastShop(); unsubFeastShop = null; } boughtMain = {}; boughtFeast = {}; feastShopLoaded = false; for (const k in guestTickUnsubs) { guestTickUnsubs[k](); delete guestTickUnsubs[k]; } for (const k in lastSeen) delete lastSeen[k]; for (const k in photoUnsubs) { photoUnsubs[k](); delete photoUnsubs[k]; } for (const u of [unsubTicks, unsubPlan, unsubRatings, unsubNotes, unsubProfile, unsubExtras, unsubSession, unsubStaples, unsubBought, unsubIdeas, unsubAdjust, unsubThumbs, unsubNext]) if (u) u(); unsubTicks = unsubPlan = unsubRatings = unsubNotes = unsubProfile = unsubExtras = unsubSession = unsubStaples = unsubBought = unsubIdeas = unsubAdjust = unsubThumbs = unsubNext = null; }
 
 // ---------------------------------------------------------------- Planning: recipe ideas
 // Stored in Firestore ideas/list as { i: { id: { text, email, at, sent } } } (one document, so one read per app open).
@@ -1577,7 +1607,7 @@ const markLift = () => { if (held) { held = false; liftAt = Date.now(); } };
 document.addEventListener('pointerup', markLift, true); document.addEventListener('touchend', markLift, true);
 document.addEventListener('click', (e) => { if (liftAt && Date.now() - liftAt < 450) { liftAt = 0; e.preventDefault(); e.stopImmediatePropagation(); } else liftAt = 0; }, true);
 document.addEventListener('pointerdown', (e) => {
-  const it = e.target.closest('.item[data-name], .bookrow[data-dish]'); if (!it) return;
+  const it = e.target.closest('.item[data-name], .bookrow[data-dish]'); if (!it || state.guest) return;
   held = false; const x0 = e.clientX, y0 = e.clientY, sy = scrollY;
   const stop = () => { clearTimeout(holdTimer); for (const [t, f] of offs) document.removeEventListener(t, f, true); removeEventListener('scroll', stop, true); };
   const moved = (ev) => { const p = ev.touches ? ev.touches[0] : ev; if (!p || Math.hypot(p.clientX - x0, p.clientY - y0) > 8) stop(); };
@@ -1657,6 +1687,7 @@ async function stapleMenu(name, storeKey) { // storeKey: an item you added yours
 // marks are used up once one of its calendar days has passed since they were set (it's been cooked).
 function shopMeals() {
   if (!state.model) return [];
+  if (state.guest) return state.model.meals.filter((m) => (state.guest.meals || {})[m.id]); // a guest shops for the feast only
   const today = dayKey(new Date()), seen = new Set(), out = [];
   const add = (m) => { if (m && !seen.has(m.rid)) { seen.add(m.rid); out.push(m); } };
   state.model.meals.filter(isPlannedMeal).forEach(add); // made meals drop off until they're planned again
@@ -1703,8 +1734,7 @@ function mealShopKeys(rid) { return shopLines().filter((l) => l.parts.some((x) =
 function mealShopped(rid) { const ks = mealShopKeys(rid); return ks.length > 0 && ks.every((k) => isBought(rid, k)); }
 function saveMealBought(rid) {
   if (!state.firebase) { ls.set('local-bought', state.bought); return; }
-  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: { [rid]: state.bought[rid] || deleteField() } }, { mergeFields: [new FieldPath('b', rid)] })
-    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+  saveBoughtRids([rid]);
 }
 function toggleMealShopped(rid) {
   const meal = allMeals().find((x) => x.rid === rid); if (!meal) return;
@@ -1799,10 +1829,7 @@ function toggleLine(key) {
   } else if (l.done) l.parts.forEach((x) => set(x.rid, false)); else { l.open.forEach((x) => set(x.rid, true)); if (navigator.vibrate) navigator.vibrate(12); }
   route();
   if (!state.firebase) { ls.set('local-bought', state.bought); return; }
-  const b = {}; for (const [rid, v] of Object.entries(changes)) b[rid] = Object.keys(v.i).length ? v : deleteField();
-  // replace each changed meal's record whole, so a reset after cooking doesn't keep old marks
-  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b }, { mergeFields: Object.keys(b).map((rid) => new FieldPath('b', rid)) })
-    .catch((e) => toast('Could not save: ' + (e.code || e.message)));
+  saveBoughtRids(Object.keys(changes)); // replaces each changed meal's record whole, so a reset after cooking doesn't keep old marks
 }
 // once both lists are loaded: drop bought marks for meals that have been cooked
 function tidyBought() {
@@ -1811,7 +1838,7 @@ function tidyBought() {
   if (!gone.length) return;
   gone.forEach((rid) => delete state.bought[rid]);
   if (!state.firebase) { ls.set('local-bought', state.bought); return; }
-  setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: Object.fromEntries(gone.map((rid) => [rid, deleteField()])) }, { merge: true }).catch(() => {});
+  saveBoughtRids(gone);
 }
 function renderAutoShopping(m) {
   const all = shopLines(), fid = dishFilter(), lines = fid ? forDish(all, fid) : all;
@@ -3206,9 +3233,9 @@ document.addEventListener('click', async (e) => {
   const ca2 = e.target.closest('[data-clearauto]');
   if (ca2) { // clear straight away, with Undo
     const beforeB = JSON.parse(JSON.stringify(state.bought)), beforeT = { ...(state.ticks[SHOP()] || {}) };
-    const saveBought = () => { if (state.firebase) setDoc(doc(state.firebase.db, 'shopping', 'bought'), { b: state.bought }, { mergeFields: ['b'] }).catch((err) => toast('Could not save: ' + (err.code || err.message))); else ls.set('local-bought', state.bought); };
-    state.bought = {}; saveBought(); clearScope(SHOP()); route();
-    undoToast('All ticks cleared', () => { state.bought = beforeB; saveBought(); clearScope(SHOP(), beforeT); route(); });
+    const saveBought = () => saveBoughtRids([...Object.keys(beforeB), ...Object.keys(state.bought)]);
+    state.bought = {}; saveBought(); if (!state.guest) clearScope(SHOP()); route();
+    undoToast('All ticks cleared', () => { state.bought = beforeB; saveBought(); if (!state.guest) clearScope(SHOP(), beforeT); route(); });
     return;
   }
   const item = e.target.closest('.item[data-key]');
@@ -3332,7 +3359,7 @@ function pullShow(dy) {
 // Press and hold a section name (MEAT, PRODUCE ...), then drag it up or down. Saved for both phones.
 let secDrag = null;
 document.addEventListener('pointerdown', (e) => {
-  const lab = e.target.closest('.shopsec > .secdrag'); if (!lab || (e.pointerType === 'mouse' && e.button !== 0)) return;
+  const lab = e.target.closest('.shopsec > .secdrag'); if (!lab || state.guest || (e.pointerType === 'mouse' && e.button !== 0)) return;
   secDrag = { card: lab.parentElement, x0: e.clientX, y0: e.clientY, y: e.clientY, active: false };
   secDrag.timer = setTimeout(() => { if (!secDrag) return; secDrag.active = true; secDrag.card.classList.add('secmoving'); document.body.classList.add('is-dragging'); if (navigator.vibrate) navigator.vibrate(25); }, 350);
 });
@@ -3465,7 +3492,7 @@ function route() {
   $('#tabs').hidden = false;
   if (state.guest) { // a guest only sees the feast(s) shared with them
     const ok = Object.keys(state.guest.meals || {}), [pg, ar] = location.hash.replace(/^#\/?/, '').split('/');
-    if (!(pg === 'meal' && ok.includes(decodeURIComponent(ar || ''))) && pg !== 'settings') { // Meals goes straight to the feast; Settings is theirs too
+    if (!(pg === 'meal' && ok.includes(decodeURIComponent(ar || ''))) && pg !== 'settings' && pg !== 'shopping') { // Meals goes straight to the feast; Shopping (feast items only) and Settings are theirs too
       if (ok.length && state.model && mealById(ok[0])) { location.replace('#/meal/' + ok[0]); return; }
       setTitle(APP_NAME); view().innerHTML = `<p class="empty">${state.model ? 'Nothing has been shared with you yet.' : 'Loading…'}</p>${guestFooterHtml()}`; return;
     }
