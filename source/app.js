@@ -442,7 +442,7 @@ function startFirestore() {
   }), (err) => listenerFailed('staples', err));
   unsubBought = onSnapshot(doc(db, 'shopping', 'bought'), { includeMetadataChanges: true }, safely('bought', (snap) => {
     const dd = (snap.exists() && snap.data()) || {};
-    boughtMain = { ...(dd.b || {}) }; mergeBought(); setTimeout(syncGuestFeast, 0); state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; state.dc = { ...(dd.dc || {}) }; state.check = { ...(dd.check || {}) }; syncLoaded('bought', snap);
+    boughtMain = { ...(dd.b || {}) }; mergeBought(); syncLoaded('bought', snap); setTimeout(syncGuestFeast, 0); state.amtOver = { ...(dd.amt || {}) }; state.scale = { ...(dd.scale || {}) }; state.shopOrder = dd.order || []; state.need = { ...(dd.need || {}) }; state.store = { ...(dd.store || {}) }; state.dc = { ...(dd.dc || {}) }; state.check = { ...(dd.check || {}) }; syncLoaded('bought', snap);
     if (!snap.metadata.fromCache) { boughtLoaded = true; tidyBought(); }
     if (changed('bought', { b: state.bought, a: state.amtOver, s: state.scale, o: state.shopOrder, n: state.need, st: state.store, dc: state.dc, ck: state.check })) renderExtras();
   }), (err) => listenerFailed('bought', err));
@@ -481,7 +481,17 @@ const safely = (what, fn) => (snap) => {
 };
 // Sync health: what each shared list last loaded, and any error (shown in Settings and as a banner).
 const syncInfo = {};
-function syncLoaded(what, snap) { syncInfo[what] = { ok: true, server: !snap.metadata.fromCache, at: Date.now() }; if (state.listenErr && state.listenErr.what === what) { state.listenErr = null; route(); } }
+// Pages that filter by shared data (Meals, Shopping, Calendar, Recipe Book) wait for it, so they don't show everything first.
+let gateWaiting = null, gateSince = 0;
+const gateNeeds = (pg) => (pg === 'shopping' ? ['calendar', 'times made', 'bought', 'staples'] : pg === 'calendar' ? ['calendar'] : ['calendar', 'times made']);
+function filtersReady(pg) {
+  if (!state.firebase || !state.user) return true;
+  if (gateSince && Date.now() - gateSince > 6000) return true; // offline with nothing saved yet: show what we have
+  if (state.guest === undefined) return false; // owner or guest? not known yet
+  const need = state.guest ? (pg === 'shopping' ? ['calendar', 'bought'] : ['calendar']) : gateNeeds(pg);
+  return need.every((k) => syncInfo[k]);
+}
+function syncLoaded(what, snap) { syncInfo[what] = { ok: true, server: !snap.metadata.fromCache, at: Date.now() }; if (gateWaiting && filtersReady(gateWaiting)) { gateWaiting = null; setTimeout(route, 0); } if (state.listenErr && state.listenErr.what === what) { state.listenErr = null; route(); } }
 function listenerFailed(what, err) {
   console.error('sync failed:', what, err);
   syncInfo[what] = { ok: false, error: err.code || err.message, at: Date.now() };
@@ -531,7 +541,7 @@ function startGuest() {
     state.session = { dinner: { ...(d.dinner || {}) }, timers: { ...(d.timers || {}) } }; syncLoaded('cooking', snap); renderTimers();
   }), (err) => listenerFailed('cooking', err));
   unsubFeastShop = onSnapshot(doc(db, 'guest', 'shop'), safely('bought', (snap) => { // Thanksgiving's bought marks, shared with us
-    state.bought = { ...((snap.exists() && snap.data().b) || {}) }; boughtLoaded = true; if (/^#\/shopping/.test(location.hash)) renderExtras();
+    state.bought = { ...((snap.exists() && snap.data().b) || {}) }; boughtLoaded = true; syncLoaded('bought', snap); if (/^#\/shopping/.test(location.hash)) renderExtras();
   }), (err) => listenerFailed('bought', err));
   unsubProfile = onSnapshot(collection(db, 'profiles'), safely('names', (snap) => {
     const names = {}; snap.forEach((d) => { const x = d.data(); if (x.email) names[String(x.email).toLowerCase()] = x.name || ''; if (d.id === (state.user && state.user.uid)) state.myName = x.name || ''; });
@@ -3512,6 +3522,11 @@ function route() {
   view().style.minHeight = ''; // only the shopping page stretches to fill the screen
   view().classList.toggle('hidesteps', page === 'meal' && ls.get('hide-steps', false)); // "Hide checked" on recipe pages (this phone)
   if (cook && !(page === 'meal' && decodeURIComponent(arg || '') === cook.meal)) { cook = null; renderCook(); }
+  if (!['meal', 'settings', 'ideas'].includes(page) && !filtersReady(page || 'meals')) {
+    if (!gateWaiting) { gateSince = Date.now(); setTimeout(() => { if (gateWaiting) route(); }, 6100); }
+    gateWaiting = page || 'meals'; view().innerHTML = '<p class="loading">Loading…</p>'; return;
+  }
+  gateWaiting = null;
   if (page === 'meal') renderMeal(decodeURIComponent(arg || ''), sub);
   else if (page === 'shopping') renderShopping();
   else if (page === 'calendar') renderCalendar();
@@ -3547,7 +3562,7 @@ function start() {
     onAuthStateChanged(auth, (user) => {
       state.user = user; state.authReady = true; state.dbError = '';
       if (user) startFirestore(); else { // signed out: forget everything shared, so the next account (e.g. a guest) starts clean
-        stopFirestore(); state.guest = undefined; document.body.classList.remove('guest');
+        stopFirestore(); state.guest = undefined; document.body.classList.remove('guest'); for (const k in syncInfo) delete syncInfo[k]; gateSince = 0;
         Object.assign(state, { ticks: {}, notes: {}, extras: {}, plan: {}, planX: {}, planDone: {}, ratings: {}, bought: {}, amtOver: {}, need: {}, store: {}, check: {}, dc: {}, staples: {}, ideas: {}, nextTime: {}, madeAdjust: {}, retired: {}, madeOff: {}, feastShift: {}, spots: [] });
       }
       updateSync(true); route();
