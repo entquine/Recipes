@@ -3076,6 +3076,14 @@ document.addEventListener('click', async (e) => {
       const again = document.querySelector('.jump-all'); if (again) setTimeout(() => again.click(), 30);
       return;
     }
+    { // a step that isn't on this page (a feast's timeline or day page): open that dish and go to the step
+      const m = jump.dataset.jump.match(/^(.+)-d(\d+)-s(\d+)$/), fm = m && mealById(m[1]);
+      if (m && fm && !document.getElementById(jump.dataset.jump) && fm.dishes[+m[2]]) {
+        const go = jump.dataset.jump;
+        addEventListener('hashchange', () => setTimeout(() => { const a = document.createElement('a'); a.dataset.jump = go; a.hidden = true; document.body.appendChild(a); a.click(); a.remove(); }, 80), { once: true });
+        location.hash = `#/meal/${fm.id}/${m[2]}`; return;
+      }
+    }
     const target = document.getElementById(jump.dataset.jump) || document.getElementById(jump.dataset.jump.replace(/-s\d+$/, ''));
     if (target) {
       for (let f = target.closest('details'); f; f = f.parentElement && f.parentElement.closest('details')) f.open = true; // open any folded card it's in
