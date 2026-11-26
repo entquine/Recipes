@@ -1,7 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
-  ['135', ['On a wide screen (tablet sideways, laptop), Thanksgiving shows the plan on the left and the dish you pick on the right, each scrolling on its own. Tapping a step link opens that dish on the right at that step.']],
+  ['135', ['On a wide screen (tablet sideways, laptop), Thanksgiving shows the plan on the left and the dish you pick on the right, each scrolling on its own. Tapping a step link opens that dish on the right at that step (straight there, no scrolling).']],
   ['134', ['Thanksgiving: tapping a step link like “Turkey steps 7-13” on the timeline or a day page opens the turkey at step 7.']],
   ['133', ['Thanksgiving day pages (like Wednesday): each dish folds shut once its steps for that day are ticked; tap its name to open or fold it.']],
   ['132', ['Meals, Shopping, Calendar and the Recipe Book wait (Loading…) until your calendar and lists have arrived, instead of showing every meal for a moment first.']],

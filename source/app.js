@@ -3097,6 +3097,7 @@ document.addEventListener('click', async (e) => {
   const jump = e.target.closest('[data-jump]');
   if (jump) {
     e.preventDefault();
+    const how = jump.dataset.instant ? 'auto' : 'smooth'; // opening another recipe at a step: straight there
     if (jump.classList.contains('jump-all') && !document.getElementById(jump.dataset.jump)) { // in By dish view: switch to Combined, then go there
       ls.set('combined-view', true); const y = scrollY; route(); scrollTo(0, y);
       const again = document.querySelector('.jump-all'); if (again) setTimeout(() => again.click(), 30);
@@ -3106,7 +3107,7 @@ document.addEventListener('click', async (e) => {
       const m = jump.dataset.jump.match(/^(.+)-d(\d+)-s(\d+)$/), fm = m && mealById(m[1]);
       if (m && fm && !document.getElementById(jump.dataset.jump) && fm.dishes[+m[2]]) {
         const go = jump.dataset.jump;
-        addEventListener('hashchange', () => setTimeout(() => { const a = document.createElement('a'); a.dataset.jump = go; a.hidden = true; document.body.appendChild(a); a.click(); a.remove(); }, 80), { once: true });
+        addEventListener('hashchange', () => setTimeout(() => { const a = document.createElement('a'); a.dataset.jump = go; a.dataset.instant = '1'; a.hidden = true; document.body.appendChild(a); a.click(); a.remove(); }, 80), { once: true });
         location.hash = `#/meal/${fm.id}/${m[2]}`; return;
       }
     }
@@ -3120,16 +3121,16 @@ document.addEventListener('click', async (e) => {
       const toSeg = seg && (jump.classList.contains('jump-all') || (!ls.get('combined-view', true) && jump === jump.parentElement.querySelector('[class*="chip-"]')));
       const col = target.closest('.dishes .card.dish');
       if (toSeg) {
-        scrollTo({ top: seg.getBoundingClientRect().top + scrollY - 118, behavior: 'smooth' });
-        if (col) col.scrollTo({ top: 0, behavior: 'smooth' });
+        scrollTo({ top: seg.getBoundingClientRect().top + scrollY - 118, behavior: how });
+        if (col) col.scrollTo({ top: 0, behavior: how });
       } else if (col && col.scrollHeight > col.clientHeight + 2) {
-        col.scrollTo({ top: col.scrollTop + target.getBoundingClientRect().top - col.getBoundingClientRect().top - col.clientHeight / 3, behavior: 'smooth' });
-        const ct = col.getBoundingClientRect().top; if (ct < 56 || ct > innerHeight / 2) scrollTo({ top: ct + scrollY - 130, behavior: 'smooth' });
+        col.scrollTo({ top: col.scrollTop + target.getBoundingClientRect().top - col.getBoundingClientRect().top - col.clientHeight / 3, behavior: how });
+        const ct = col.getBoundingClientRect().top; if (ct < 56 || ct > innerHeight / 2) scrollTo({ top: ct + scrollY - 130, behavior: how });
       } else if (target.closest('.fleft, .fright')) {
         const pane = target.closest('.fleft, .fright');
-        pane.scrollTo({ top: pane.scrollTop + target.getBoundingClientRect().top - pane.getBoundingClientRect().top - 70, behavior: 'smooth' });
+        pane.scrollTo({ top: pane.scrollTop + target.getBoundingClientRect().top - pane.getBoundingClientRect().top - 70, behavior: how });
       } else {
-        scrollTo({ top: target.getBoundingClientRect().top + scrollY - 130, behavior: 'smooth' });
+        scrollTo({ top: target.getBoundingClientRect().top + scrollY - 130, behavior: how });
       }
       if (target.classList.contains('item')) { target.classList.remove('flash'); void target.offsetWidth; target.classList.add('flash'); }
     }
