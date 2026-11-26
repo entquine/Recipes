@@ -1130,3 +1130,5 @@ body.guest #addinline, body.guest .needbtn, body.guest .staplehint, body.guest #
   .fright .dishes .card.dish { max-height: none; overflow: visible; position: static; }
   .fsplit .banner { display: none; }
 }
+.duein { display: inline-block; margin: 0 6px 0 2px; padding: 0 7px; border-radius: 999px; background: var(--warn-bg); color: var(--warn-ink); border: 1px solid var(--warn-line); font-size: 12.5px; font-weight: 800; vertical-align: 1px; white-space: nowrap; }
+.duein.isnow { background: var(--danger); border-color: var(--danger); color: #fff; }

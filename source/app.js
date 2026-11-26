@@ -2547,7 +2547,23 @@ function tlAlerts() {
   }
   if (changedF) { for (const k of Object.keys(fired)) if (k.slice(0, 10) < today) delete fired[k]; ls.set('tl-fired', fired); }
   document.querySelectorAll('[data-tlbanner]').forEach((el) => { const meal = mealById(el.dataset.tlbanner); if (meal) el.innerHTML = tlBannerHtml(meal); });
+  paintDue();
   document.querySelectorAll('.tlrow[data-tlat]').forEach((el) => el.classList.toggle('late', tlDay(mealById(el.dataset.scope) || {}) === today && +el.dataset.tlat <= now && !el.classList.contains('done')));
+}
+// On the day, on a dish's own page: a step whose text has a clock time ("12:15 PM: take the ham out") shows
+// "in 23 min" when that's under an hour away (moved with the timeline's −15 / +15), and "now" for a few minutes after.
+function paintDue() {
+  const m = location.hash.match(/^#\/meal\/([^/]+)\/(\d+)$/), meal = m && mealById(decodeURIComponent(m[1]));
+  const on = meal && isFeast(meal) && tlDay(meal) === dayKey(new Date());
+  document.querySelectorAll('.card.dish .item[data-key]').forEach((el) => {
+    let badge = el.querySelector('.duein');
+    if (el.dataset.clock === undefined) { const t = (el.querySelector('.body') || el).textContent.match(/\b(\d{1,2}):(\d{2})\s*(AM|PM)\b/i); el.dataset.clock = t ? clockMinutes(`${t[1]}:${t[2]} ${t[3]}`) : ''; } // read once, before any badge
+    let txt = '';
+    if (on && !el.classList.contains('done') && el.dataset.clock !== '') { const at = +el.dataset.clock + feastShift(meal), d = at - nowMinutes(); txt = d > 0 && d <= 60 ? `in ${d} min` : d <= 0 && d > -10 ? 'now' : ''; }
+    if (!txt) { if (badge) badge.remove(); return; }
+    if (!badge) { badge = document.createElement('span'); badge.className = 'duein'; const num = el.querySelector('.body .num'), body = el.querySelector('.body') || el; if (num) num.after(badge); else body.prepend(badge); }
+    badge.textContent = txt; badge.classList.toggle('isnow', txt === 'now');
+  });
 }
 setInterval(tlAlerts, 30000);
 function headStartReminder(meal) { // today's card on Meals: until every early step is ticked, then how long it's been
