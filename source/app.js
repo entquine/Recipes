@@ -2433,7 +2433,8 @@ function renderFeastAhead(meal, day) {
   for (const p of g.rows) for (const m of String(p.text).matchAll(REF_RE)) { const d = resolveRef(m[1], meal); if (!d) continue; const a = +m[3], b = m[4] ? +m[4].replace(/\D/g, '') : a; if (!want.has(d)) want.set(d, new Set()); for (let i = a; i <= b; i++) want.get(d).add(i); }
   for (const [d, nums] of want) {
     const steps = d.steps.filter((x, i) => nums.has(i + 1)), di = meal.dishes.indexOf(d);
-    h += `<section class="card dish" id="${d.anchor}" data-meal="${esc(S)}"><div class="dish-head ${d.dc}"><p class="section-label">${d.type}</p><h2><a class="fdlink" href="#/meal/${esc(S)}/${di}">${esc(d.name)} ›</a></h2></div>`;
+    const aid = `${d.anchor}-ahead-${slug(day)}`; // folds by itself once that day's steps for the dish are all ticked
+    h += `<section class="card dish${foldedDishes.has(aid) ? ' folded' : ''}" id="${aid}" data-dishkeys="${esc(steps.map((x) => x.key).join(','))}" data-meal="${esc(S)}"><div class="dish-head foldable ${d.dc}" title="Fold or open this dish"><p class="section-label">${d.type}</p><h2>${esc(d.name)}</h2><p class="makes"><a class="fdlink" href="#/meal/${esc(S)}/${di}">Whole recipe ›</a></p></div>`;
     if (d.groups.length) h += `<details class="ingfold"><summary><h3>Ingredients</h3></summary>${d.groups.map((gr) => `${gr.name ? `<h4>${esc(gr.name)}</h4>` : ''}<ul class="list ings">${gr.items.map((it) => `<li class="ing">${it.amount ? `<span class="amt">${esc(scaleText(it.amount))}</span> ` : ''}${esc(it.text)}</li>`).join('')}</ul>`).join('')}</details>`;
     h += stepsHeadHtml(meal, steps.map((x) => x.key)) + '<ul class="list">' + steps.map((x) => stepItemHtml(meal, d, x, prepOf, false)).join('') + '</ul></section>';
   }

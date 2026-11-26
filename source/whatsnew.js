@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['133', ['Thanksgiving day pages (like Wednesday): each dish folds shut once its steps for that day are ticked; tap its name to open or fold it.']],
   ['132', ['Meals, Shopping, Calendar and the Recipe Book wait (Loading…) until your calendar and lists have arrived, instead of showing every meal for a moment first.']],
   ['130', ['Timeline opens zoomed out to fit the whole day. On the day itself a red line with the time shows where you are, moving along as time passes.', 'A guest never sees your shopping-list notes, and signing out clears what the phone was holding, so the next account starts clean.']],
   ['129', ['A guest gets a Shopping tab with just the Thanksgiving items (and the Shop for menu). Their ticks and yours are shared.']],
