@@ -2501,6 +2501,31 @@ function openTimeline(meal) {
   moveNow(); const nowTimer = setInterval(() => { if (!dlg.open) { clearInterval(nowTimer); return; } moveNow(); }, 20000);
   keepLabels();
 }
+// Wide screens (sideways tablet, laptop): a feast shows its plan on the left (Thursday's timeline, or a day ahead) and,
+// on the right, the dish you picked (or the dish buttons). Each side scrolls on its own and keeps its place.
+let splitInner = false;
+const feastPane = {};
+function renderFeastSplit(meal, only) {
+  const fp = feastPane[meal.id] || (feastPane[meal.id] = { left: 'day', right: null });
+  if (only === 'day' || /^ahead-/.test(only || '')) fp.left = only;
+  else if (only != null && /^\d+$/.test(only)) fp.right = only;
+  else if (only == null) fp.right = null;
+  const old = document.querySelector('.fsplit');
+  const keepL = old && old.dataset.meal === meal.id && old.dataset.left === fp.left ? old.querySelector('.fleft').scrollTop : 0;
+  const keepR = old && old.dataset.meal === meal.id && old.dataset.right === String(fp.right) ? old.querySelector('.fright').scrollTop : 0;
+  splitInner = true;
+  try {
+    if (fp.left === 'day') renderFeastDay(meal); else renderFeastAhead(meal, decodeURIComponent(fp.left.slice(6)));
+    const left = view().innerHTML;
+    if (fp.right == null) renderFeastHub(meal); else renderMeal(meal.id, fp.right);
+    const right = view().innerHTML;
+    view().innerHTML = `<div class="fsplit" data-meal="${esc(meal.id)}" data-left="${esc(fp.left)}" data-right="${esc(String(fp.right))}"><div class="fleft">${left}</div><div class="fright">${right}</div></div>`;
+  } finally { splitInner = false; }
+  setTitle(meal.title, true); setTab('meals');
+  const sp = view().querySelector('.fsplit');
+  sp.querySelector('.fleft').scrollTop = keepL; sp.querySelector('.fright').scrollTop = keepR;
+  paintPhotos(); refreshTicks();
+}
 function setFeastShift(id, n) {
   state.feastShift = state.feastShift || {};
   if (n) state.feastShift[id] = n; else delete state.feastShift[id];
@@ -2561,6 +2586,7 @@ function prepCardHtml(meal) {
 function renderMeal(id, only) {
   const full = mealById(id);
   if (!full) { if (state.model) location.replace('#/'); else view().innerHTML = '<p class="loading">Loading…</p>'; return; }
+  if (isFeast(full) && !splitInner && only !== 'all' && matchMedia('(min-width: 900px)').matches) return renderFeastSplit(full, only); // wide screen: plan | recipe
   if (isFeast(full)) {
     if (only == null) return renderFeastHub(full);
     if (only === 'day') return renderFeastDay(full);
@@ -2998,7 +3024,7 @@ function renderLogin(err = '') {
 // ---------------------------------------------------------------- tick rendering
 function refreshTicks() {
   refreshSince(); renderTimers(); setTimeout(tlAlerts, 0);
-  { const hub = document.querySelector('.feasthub'); if (hub) { const m = mealById(hub.dataset.meal); if (m && hubSignature(m) !== hub.dataset.sig) setTimeout(() => renderFeastHub(m), 0); } } // count-ups in the timer bar follow the ticks
+  { const hub = document.querySelector('.feasthub'); if (hub && !splitInner) { const m = mealById(hub.dataset.meal); if (m && hubSignature(m) !== hub.dataset.sig) setTimeout(() => (hub.closest('.fsplit') ? route() : renderFeastHub(m)), 0); } } // count-ups in the timer bar follow the ticks
   document.querySelectorAll('[data-untickall]').forEach((b) => { const t = state.ticks[b.dataset.untickall] || {}, ks = b.dataset.keys.split(',').filter(Boolean); b.hidden = !ks.length || !ks.every((k) => t[k]); });
   document.querySelectorAll('.item[data-key]').forEach((el) => {
     const on = !!(state.ticks[el.dataset.scope] || {})[el.dataset.key];
@@ -3099,6 +3125,9 @@ document.addEventListener('click', async (e) => {
       } else if (col && col.scrollHeight > col.clientHeight + 2) {
         col.scrollTo({ top: col.scrollTop + target.getBoundingClientRect().top - col.getBoundingClientRect().top - col.clientHeight / 3, behavior: 'smooth' });
         const ct = col.getBoundingClientRect().top; if (ct < 56 || ct > innerHeight / 2) scrollTo({ top: ct + scrollY - 130, behavior: 'smooth' });
+      } else if (target.closest('.fleft, .fright')) {
+        const pane = target.closest('.fleft, .fright');
+        pane.scrollTo({ top: pane.scrollTop + target.getBoundingClientRect().top - pane.getBoundingClientRect().top - 70, behavior: 'smooth' });
       } else {
         scrollTo({ top: target.getBoundingClientRect().top + scrollY - 130, behavior: 'smooth' });
       }
@@ -3550,6 +3579,7 @@ function route() {
   updateWakeLock();
 }
 addEventListener('hashchange', route);
+{ const mq = matchMedia('(min-width: 900px)'); const f = () => { if (/^#\/meal\//.test(location.hash)) route(); }; if (mq.addEventListener) mq.addEventListener('change', f); }
 
 // ---------------------------------------------------------------- start
 function start() {

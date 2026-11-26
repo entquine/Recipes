@@ -1120,3 +1120,13 @@ body.guest #addinline, body.guest .needbtn, body.guest .staplehint, body.guest #
 /* Timeline: the time now, on the day */
 .tlnowline b { position: absolute; top: -22px; left: 50%; transform: translateX(-50%); padding: 1px 6px; border-radius: 6px; background: var(--danger); color: #fff; font-size: 11.5px; font-weight: 800; white-space: nowrap; }
 .tlnowline { z-index: 4; }
+/* Feast on a wide screen: the plan on the left, the recipe on the right, each scrolling on its own */
+@media (min-width: 900px) {
+  #view:has(.fsplit) { max-width: none; }
+  .fsplit { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+  .fleft, .fright { max-height: calc(100dvh - 56px - 72px - 36px); overflow-y: auto; overscroll-behavior: contain; padding: 0 4px 16px 0; border-radius: 16px; }
+  .fsplit .jump { margin: 0 0 12px; position: sticky; top: 0; z-index: 3; padding: 8px 0; background: var(--bg); }
+  .fright .dishes { display: block; }
+  .fright .dishes .card.dish { max-height: none; overflow: visible; position: static; }
+  .fsplit .banner { display: none; }
+}
