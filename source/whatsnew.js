@@ -1,6 +1,7 @@
 // What's new, shown folded in Settings. Newest first. Small tweaks are folded into a nearby entry.
 // Add an entry for each version you push (plain language, a line or two per change).
 export const WHATS_NEW = [
+  ['138', ['Thanksgiving is put away until next year: it’s in the Recipe Book as “Thanksgiving Dinner” (opens the whole feast page), and off the Meals and shopping lists. A guest sees nothing for now.']],
   ['137', ['On Thanksgiving day, a dish’s steps with a clock time (like “12:15 PM: take the ham out”) show “in 23 min” when it’s under an hour away, then “now”.']],
   ['135', ['On a wide screen (tablet sideways, laptop), Thanksgiving shows the plan on the left and the dish you pick on the right, each scrolling on its own. Tapping a step link opens that dish on the right at that step (straight there, no scrolling).']],
   ['134', ['Thanksgiving: tapping a step link like “Turkey steps 7-13” on the timeline or a day page opens the turkey at step 7.']],

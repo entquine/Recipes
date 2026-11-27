@@ -1959,8 +1959,8 @@ function bookRowHtml(meal, dish, inPlanned) {
   const starsHtml = ri.done ? `<span class="bk-stars">★ ${ri.avg.toFixed(1)}${ri.mine ? ` <span class="mine-stars">(${ri.mine})</span>` : ''}</span>`
     : ri.mine ? `<span class="bk-stars mine" title="Your rating (waiting for the other vote)">★ ${ri.mine}</span>` : ''; // only your vote so far: paler
   const di = meal.dishes.indexOf(dish), th = state.thumbs[dishKey(dish)];
-  return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}${meal.dishes.length > 1 ? '/' + di : ''}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
-    <span class="bk-name">${esc(dish.name)}</span>${starsHtml}
+  return `<li class="bookli">${bookThumbs() ? `<span class="bk-thumb">${th ? `<img src="${th}" alt="">` : ''}</span>` : ''}<a class="bookrow" href="#/meal/${meal.id}${meal.dishes.length > 1 && !(isFeast(meal) && dish === meal.main) ? '/' + di : ''}" data-meal="${esc(meal.id)}" data-dish="${di}" data-search="${esc(words)}">
+    <span class="bk-name">${esc(isFeast(meal) && dish === meal.main ? meal.title : dish.name)}</span>${starsHtml}
     <span class="bk-meta">${meta}</span></a><button class="bookmore" data-bookmenu="1" data-meal="${esc(meal.id)}" data-dish="${di}" aria-label="More for ${esc(dish.name)}">⋯</button></li>`;
 }
 let bookQuery = '';

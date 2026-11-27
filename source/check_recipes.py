@@ -199,7 +199,7 @@ def check_meals(ws, tab, errors, warnings):
         breakfasts = [n for n, d in dishes.items() if d["type"] == "Breakfast"]
         if tab == "Archive":
             # Archive: one entry per dish. An entry is a single Main or a single Side.
-            if len(dishes) != 1:
+            if len(dishes) != 1 and not any(d.get("clock") for d in dishes.values()):  # a feast (Clock row) is archived whole, ready for next time
                 errors.append(f"Archive entry {meal!r}: must hold exactly one dish (one entry per dish), found {len(dishes)}")
             for n in sides:
                 if dishes[n]["plan"] or dishes[n]["planrows"]:
